@@ -180,7 +180,7 @@ export interface Page {
   tenant?: (number | null) | Tenant;
   title?: string | null;
   slug: string;
-  layout?: (HeroBlock | ContentBlock | CallToActionBlock)[] | null;
+  layout?: (HeroBlock | ContentBlock | CallToActionBlock | HeroBasicBlock)[] | null;
   meta?: {
     title?: string | null;
     description?: string | null;
@@ -310,6 +310,43 @@ export interface CallToActionBlock {
   id?: string | null;
   blockName?: string | null;
   blockType: 'cta';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "HeroBasicBlock".
+ */
+export interface HeroBasicBlock {
+  eyebrow?: string | null;
+  title: string;
+  description: string;
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  proofItems?:
+    | {
+        label: string;
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'heroBasic';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -1064,6 +1101,7 @@ export interface PagesSelect<T extends boolean = true> {
         hero?: T | HeroBlockSelect<T>;
         content?: T | ContentBlockSelect<T>;
         cta?: T | CallToActionBlockSelect<T>;
+        heroBasic?: T | HeroBasicBlockSelect<T>;
       };
   meta?:
     | T
@@ -1119,6 +1157,38 @@ export interface CallToActionBlockSelect<T extends boolean = true> {
         label?: T;
         url?: T;
         appearance?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "HeroBasicBlock_select".
+ */
+export interface HeroBasicBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  proofItems?:
+    | T
+    | {
+        label?: T;
         id?: T;
       };
   id?: T;

@@ -12,11 +12,6 @@ export const RenderBlocks: React.FC<{
 }> = (props) => {
   const { blocks } = props
 
-  // Typed indirection so the map stays useful while empty: payload-components
-  // inserts entries into `blockComponents` above via its install anchors.
-  const components: Record<string, React.ComponentType<Record<string, unknown>> | undefined> =
-    blockComponents
-
   if (!blocks || !Array.isArray(blocks) || blocks.length === 0) {
     return null
   }
@@ -26,14 +21,20 @@ export const RenderBlocks: React.FC<{
       {blocks.map((block, index) => {
         const { blockType } = block
 
-        const Block = blockType ? components[blockType] : undefined
+        if (blockType && blockType in blockComponents) {
+          // Block data is a union across every block type; the map lookup
+          // guarantees the component matches, which TS can't see through.
+          const Block = blockComponents[
+            blockType as keyof typeof blockComponents
+          ] as React.ComponentType<{ disableInnerContainer?: boolean }>
 
-        if (Block) {
-          return (
-            <div className="my-16" key={index}>
-              <Block {...block} />
-            </div>
-          )
+          if (Block) {
+            return (
+              <div className="my-16" key={index}>
+                <Block {...block} disableInnerContainer />
+              </div>
+            )
+          }
         }
 
         return null
