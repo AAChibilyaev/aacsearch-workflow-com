@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "components": {
+    "hero-basic": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "hero-basic",
+      "targetId": "payload-website-starter",
+      "installedAt": null,
+      "installedFiles": [
+        "src/blocks/HeroBasic/Component.tsx",
+        "src/blocks/HeroBasic/config.ts",
+        "src/blocks/shared/heroFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-11T20:14:48.376Z",
+      "lastError": {
+        "message": "Command failed: pnpm generate:types",
+        "stage": "post-install"
+      },
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "partial"
+    }
+  }
+}
