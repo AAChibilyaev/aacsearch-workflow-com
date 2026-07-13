@@ -23,8 +23,66 @@ import { sanitizeEntitlements } from './dto'
  */
 
 const CACHE_TTL_MS = 60_000
+/** Hard ceiling on distinct tenants held in the isolate cache (bounded memory). */
+const CACHE_MAX_ENTRIES = 500
 
-const entitlementsCache = new Map<string, { expiresAt: number; value: EntitlementsRecord }>()
+/**
+ * Bounded, per-entry-TTL cache with an injectable clock (pure — unit-testable).
+ * Insertion/recency order is the Map's own order, so the "oldest" key evicted
+ * on overflow is the least-recently used. Expired entries are pruned on read
+ * and opportunistically on overflow, so a churn of distinct tenants can never
+ * grow the map without bound.
+ */
+export const createBoundedTtlCache = <T>(
+  ttlMs: number,
+  maxEntries: number,
+  now: () => number = () => Date.now(),
+): {
+  clear: () => void
+  get: (key: string) => T | undefined
+  set: (key: string, value: T) => void
+  size: () => number
+} => {
+  const store = new Map<string, { expiresAt: number; value: T }>()
+  return {
+    clear: () => store.clear(),
+    get: (key) => {
+      const hit = store.get(key)
+      if (!hit) return undefined
+      if (hit.expiresAt <= now()) {
+        store.delete(key) // prune on expiry
+        return undefined
+      }
+      // Recency bump: re-insert so this key is newest (LRU eviction order)
+      store.delete(key)
+      store.set(key, hit)
+      return hit.value
+    },
+    set: (key, value) => {
+      store.delete(key)
+      store.set(key, { expiresAt: now() + ttlMs, value })
+      if (store.size <= maxEntries) return
+      // Over capacity: prune expired first, then evict oldest (LRU) until bounded
+      const current = now()
+      for (const k of [...store.keys()]) {
+        if (store.size <= maxEntries) break
+        const entry = store.get(k)
+        if (entry && entry.expiresAt <= current) store.delete(k)
+      }
+      while (store.size > maxEntries) {
+        const oldest = store.keys().next().value
+        if (oldest === undefined) break
+        store.delete(oldest)
+      }
+    },
+    size: () => store.size,
+  }
+}
+
+const entitlementsCache = createBoundedTtlCache<EntitlementsRecord>(
+  CACHE_TTL_MS,
+  CACHE_MAX_ENTRIES,
+)
 
 /** Test/webhook helper: drop cached entitlements so the next read is fresh. */
 export const clearEntitlementsCache = (): void => {
@@ -44,7 +102,7 @@ export const getTenantEntitlements = async (
 ): Promise<EntitlementsRecord> => {
   const cacheKey = String(tenantID)
   const hit = entitlementsCache.get(cacheKey)
-  if (hit && hit.expiresAt > Date.now()) return hit.value
+  if (hit !== undefined) return hit
 
   let value: EntitlementsRecord = {}
   try {
@@ -62,7 +120,7 @@ export const getTenantEntitlements = async (
     value = {}
   }
 
-  entitlementsCache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, value })
+  entitlementsCache.set(cacheKey, value)
   return value
 }
 
@@ -136,24 +194,96 @@ const enforcePlanQuota =
   }
 
 /**
+ * Team-seat quota. `users` isn't in QUOTA_COLLECTIONS: it has no flat `tenant`
+ * field to count by (`enforcePlanQuota` can't cover it), and a membership is
+ * added via `create` (brand-new user) or `update` (existing platform user
+ * joining another tenant) rather than a single collection create. This hook
+ * instead diffs `data.tenants` against `originalDoc.tenants` to find the
+ * tenant ids being newly joined, and gates each one on `max_team_members`.
+ */
+const enforceTeamMemberQuota: CollectionBeforeChangeHook = async ({
+  data,
+  operation,
+  originalDoc,
+  req,
+}) => {
+  if (!data || (operation !== 'create' && operation !== 'update')) return data
+  if (!Array.isArray(data.tenants)) return data
+
+  const priorTenantIds = new Set(
+    (Array.isArray((originalDoc as { tenants?: unknown[] } | undefined)?.tenants)
+      ? (originalDoc as { tenants: Record<string, unknown>[] }).tenants
+      : []
+    )
+      .map(resolveTenantID)
+      .filter((id): id is number | string => id !== null)
+      .map(String),
+  )
+
+  const newTenantIds: (number | string)[] = []
+  const seenInThisWrite = new Set<string>()
+  for (const row of data.tenants as Record<string, unknown>[]) {
+    const tenantID = resolveTenantID(row)
+    if (tenantID === null) continue
+    const key = String(tenantID)
+    if (priorTenantIds.has(key) || seenInThisWrite.has(key)) continue
+    seenInThisWrite.add(key)
+    newTenantIds.push(tenantID)
+  }
+
+  for (const tenantID of newTenantIds) {
+    const entitlements = await getTenantEntitlements(req.payload, tenantID, req)
+    const limit = entitlements.max_team_members
+    if (typeof limit !== 'number') continue
+
+    const { totalDocs } = await req.payload.count({
+      collection: 'users',
+      req, // same transaction — sees pending writes, matches enforcePlanQuota
+      where: { 'tenants.tenant': { equals: tenantID } },
+    })
+
+    if (totalDocs >= limit) {
+      throw new APIError(
+        `Your current plan allows up to ${limit} team members. Upgrade your plan to add more.`,
+        403,
+        { code: 'PLAN_LIMIT', collection: 'team-members', limit },
+      )
+    }
+  }
+
+  return data
+}
+
+/**
  * Pure config transformer: appends the plan-quota hook to every capped
- * tenant collection present in the config. Always on — with no billing
- * mirror the hook is a no-op, so disabling billing never breaks writes.
+ * tenant collection present in the config, plus the team-seat quota on
+ * `users`. Always on — with no billing mirror the hooks are no-ops, so
+ * disabling billing never breaks writes.
  */
 export const entitlementsPlugin: Plugin = (config: Config): Config => ({
   ...config,
-  collections: (config.collections ?? []).map((collection) =>
-    (QUOTA_COLLECTIONS as readonly string[]).includes(collection.slug)
-      ? {
-          ...collection,
-          hooks: {
-            ...collection.hooks,
-            beforeChange: [
-              ...(collection.hooks?.beforeChange ?? []),
-              enforcePlanQuota(collection.slug),
-            ],
-          },
-        }
-      : collection,
-  ),
+  collections: (config.collections ?? []).map((collection) => {
+    if ((QUOTA_COLLECTIONS as readonly string[]).includes(collection.slug)) {
+      return {
+        ...collection,
+        hooks: {
+          ...collection.hooks,
+          beforeChange: [
+            ...(collection.hooks?.beforeChange ?? []),
+            enforcePlanQuota(collection.slug),
+          ],
+        },
+      }
+    }
+    if (collection.slug === 'users') {
+      return {
+        ...collection,
+        hooks: {
+          ...collection.hooks,
+          beforeChange: [...(collection.hooks?.beforeChange ?? []), enforceTeamMemberQuota],
+        },
+      }
+    }
+    return collection
+  }),
 })

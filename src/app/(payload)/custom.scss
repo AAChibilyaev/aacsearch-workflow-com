@@ -1,0 +1,65 @@
+/* Admin-panel bridge for shadcn/ui components used in custom views (Search,
+ * Engine, ...). Only the Tailwind THEME + UTILITIES layers are imported —
+ * deliberately NOT the PREFLIGHT layer, which is a global element reset that
+ * would clobber Payload's own admin styling (buttons, inputs, tables) across
+ * every collection view in the CMS, not just these custom ones. Utility
+ * classes are opt-in (nothing changes unless an element carries one), so this
+ * is safe to load admin-wide.
+ */
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* Map shadcn/ui's semantic color tokens onto Payload's OWN theme variables
+ * (--theme-elevation-*, --theme-success-*, --theme-error-*) instead of
+ * shipping a second, independent palette. Payload already flips these under
+ * `html[data-theme="dark"]`, so shadcn components inherit the admin's actual
+ * light/dark toggle for free — no separate `.dark` class needed. */
+:root {
+  --background: var(--theme-elevation-0);
+  --foreground: var(--theme-elevation-800);
+  --card: var(--theme-elevation-25);
+  --card-foreground: var(--theme-elevation-800);
+  --popover: var(--theme-elevation-0);
+  --popover-foreground: var(--theme-elevation-800);
+  --primary: var(--theme-elevation-800);
+  --primary-foreground: var(--theme-elevation-0);
+  --secondary: var(--theme-elevation-100);
+  --secondary-foreground: var(--theme-elevation-800);
+  --muted: var(--theme-elevation-50);
+  --muted-foreground: var(--theme-elevation-600);
+  --accent: var(--theme-elevation-100);
+  --accent-foreground: var(--theme-elevation-800);
+  --destructive: var(--theme-error-500);
+  --destructive-foreground: var(--theme-elevation-0);
+  --border: var(--theme-elevation-150);
+  --input: var(--theme-elevation-150);
+  --ring: var(--theme-elevation-150);
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-4xl: calc(var(--radius) + 28px);
+}

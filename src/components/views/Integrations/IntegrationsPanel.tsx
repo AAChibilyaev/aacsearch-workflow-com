@@ -129,6 +129,7 @@ export const IntegrationsPanel: React.FC<Props> = ({ initialTenantId, lang, tena
   const [tenant, setTenant] = React.useState<null | string>(initialTenantId)
   const [result, setResult] = React.useState<LoadResult | null>(null)
   const [actionError, setActionError] = React.useState<null | string>(null)
+  const [notice, setNotice] = React.useState<null | string>(null)
   const [busyKey, setBusyKey] = React.useState<null | string>(null)
   const [query, setQuery] = React.useState('')
   const [reloadKey, setReloadKey] = React.useState(0)
@@ -232,7 +233,15 @@ export const IntegrationsPanel: React.FC<Props> = ({ initialTenantId, lang, tena
       const { token } = (await res.json()) as { expiresAt: string; token: string }
       // Heavy SDK stays out of the initial admin chunk — load on demand
       const { default: ConnectSDK } = await import('@nangohq/frontend')
-      const sdk = new ConnectSDK({ connectSessionToken: token })
+      // Self-hosted deployments MUST talk to their own connector host, not the
+      // vendor cloud. With no host the SDK silently defaults to the vendor
+      // domain, leaking it to the browser. (On vendor Cloud the popup domain is
+      // inherent — a custom callback domain is required, out of code scope.)
+      const connectorHost = process.env.NEXT_PUBLIC_NANGO_HOST
+      const sdk = new ConnectSDK({
+        connectSessionToken: token,
+        ...(connectorHost ? { host: connectorHost } : {}),
+      })
       await sdk.auth(provider.key)
       await refreshConnections()
     } catch {
@@ -247,6 +256,7 @@ export const IntegrationsPanel: React.FC<Props> = ({ initialTenantId, lang, tena
     if (!tenant || busyKey) return
     setBusyKey(connection.id)
     setActionError(null)
+    setNotice(null)
     try {
       const res = await fetch(
         `${apiURL(`/integrations/connections/${encodeURIComponent(connection.id)}` as `/${string}`)}?tenant=${encodeURIComponent(tenant)}`,
@@ -256,6 +266,59 @@ export const IntegrationsPanel: React.FC<Props> = ({ initialTenantId, lang, tena
       await refreshConnections()
     } catch {
       setActionError(t(lang, 'disconnectFailed'))
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  /** Manual "Sync now" — re-runs the connection's data pull on demand. */
+  const syncNow = async (connection: IntegrationConnection): Promise<void> => {
+    if (!tenant || busyKey) return
+    setBusyKey(connection.id)
+    setActionError(null)
+    setNotice(null)
+    try {
+      const res = await fetch(
+        `${apiURL(`/integrations/connections/${encodeURIComponent(connection.id)}/sync` as `/${string}`)}?tenant=${encodeURIComponent(tenant)}`,
+        { credentials: 'include', method: 'POST' },
+      )
+      if (!res.ok) throw new Error(String(res.status))
+      setNotice(t(lang, 'syncStarted'))
+    } catch {
+      setActionError(t(lang, 'syncFailed'))
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  /**
+   * Repair a broken connection ('error' status) WITHOUT minting a new
+   * connection id: the backend opens a reconnect session and the same
+   * headless auth flow re-authorizes the existing connection.
+   */
+  const reconnect = async (connection: IntegrationConnection): Promise<void> => {
+    if (!tenant || busyKey) return
+    setBusyKey(connection.id)
+    setActionError(null)
+    setNotice(null)
+    try {
+      const res = await fetch(
+        `${apiURL(`/integrations/connections/${encodeURIComponent(connection.id)}/reconnect` as `/${string}`)}?tenant=${encodeURIComponent(tenant)}`,
+        { credentials: 'include', method: 'POST' },
+      )
+      if (!res.ok) throw new Error(String(res.status))
+      const { token } = (await res.json()) as { expiresAt: string; token: string }
+      const { default: ConnectSDK } = await import('@nangohq/frontend')
+      const connectorHost = process.env.NEXT_PUBLIC_NANGO_HOST
+      const sdk = new ConnectSDK({
+        connectSessionToken: token,
+        ...(connectorHost ? { host: connectorHost } : {}),
+      })
+      await sdk.auth(connection.integration)
+      await refreshConnections()
+    } catch {
+      // Never surface raw SDK errors — they may name the vendor
+      setActionError(t(lang, 'reconnectFailed'))
     } finally {
       setBusyKey(null)
     }
@@ -343,6 +406,20 @@ export const IntegrationsPanel: React.FC<Props> = ({ initialTenantId, lang, tena
         </div>
       )}
 
+      {notice && (
+        <div
+          role="status"
+          style={{
+            ...cardStyle,
+            borderColor: 'var(--theme-success-200, #bfe5cc)',
+            color: 'var(--theme-success-750, #14713d)',
+            marginBottom: 'calc(var(--base, 20px) * 0.75)',
+          }}
+        >
+          {notice}
+        </div>
+      )}
+
       {/* Connected sources */}
       <div style={{ ...cardStyle, marginBottom: 'calc(var(--base, 20px) * 0.75)' }}>
         <h3 style={{ margin: '0 0 0.6rem' }}>{t(lang, 'connectedTitle')}</h3>
@@ -391,6 +468,31 @@ export const IntegrationsPanel: React.FC<Props> = ({ initialTenantId, lang, tena
                   >
                     {connection.status}
                   </Badge>
+                  <button
+                    disabled={busyKey !== null}
+                    onClick={() => void syncNow(connection)}
+                    style={{
+                      ...buttonStyle,
+                      opacity: busyKey === connection.id ? 0.6 : 1,
+                    }}
+                    type="button"
+                  >
+                    {t(lang, 'syncNow')}
+                  </button>
+                  {(connection.status.toLowerCase() === 'error' ||
+                    connection.status.toLowerCase() === 'failed') && (
+                    <button
+                      disabled={busyKey !== null}
+                      onClick={() => void reconnect(connection)}
+                      style={{
+                        ...buttonStyle,
+                        opacity: busyKey === connection.id ? 0.6 : 1,
+                      }}
+                      type="button"
+                    >
+                      {t(lang, 'reconnect')}
+                    </button>
+                  )}
                   <button
                     disabled={busyKey !== null}
                     onClick={() => void disconnect(connection)}

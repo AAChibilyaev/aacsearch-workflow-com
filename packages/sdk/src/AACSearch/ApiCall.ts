@@ -10,6 +10,30 @@ import RequestUnauthorized from './Errors/RequestUnauthorized';
 import ServerError from './Errors/ServerError';
 
 const DEFAULT_RETRY_MS = 1000;
+const GATEWAY_DIRECT_PATHS = new Set([
+  '/analytics/events',
+  '/health',
+  '/keys/scoped',
+  '/multi_search',
+  '/proxy',
+]);
+
+const splitEndpoint = (
+  endpoint: string,
+  params?: Record<string, unknown>,
+): { path: string; params?: Record<string, unknown> } => {
+  const queryIndex = endpoint.indexOf('?');
+  if (queryIndex === -1) return { path: endpoint, params };
+
+  const path = endpoint.slice(0, queryIndex);
+  const queryParams = new URLSearchParams(endpoint.slice(queryIndex + 1));
+  const merged: Record<string, unknown> = {};
+  queryParams.forEach((value, key) => {
+    merged[key] = value;
+  });
+
+  return { path, params: { ...merged, ...params } };
+};
 
 export default class ApiCall {
   private readonly configuration: Configuration;
@@ -79,20 +103,32 @@ export default class ApiCall {
     axiosParams: { params?: Record<string, unknown> },
     body?: unknown,
   ): Promise<T> {
-    const url = `${node.protocol}://${node.host}:${node.port}${node.path || ''}${endpoint}`;
+    const { path, params } = splitEndpoint(endpoint, axiosParams.params);
+    const shouldUseGatewayProxy =
+      this.configuration.useGatewayProxy && !GATEWAY_DIRECT_PATHS.has(path);
+    const requestPath = shouldUseGatewayProxy ? '/proxy' : path;
+    const requestMethod = shouldUseGatewayProxy ? 'post' : method;
+    const requestBody = shouldUseGatewayProxy
+      ? {
+          path,
+          method: method.toUpperCase(),
+          body: body ?? null,
+        }
+      : body;
+    const url = `${node.protocol}://${node.host}:${node.port}${node.path || ''}${requestPath}`;
 
     const headers: Record<string, string> = {
-      'Authorization': `Bearer ${this.configuration.apiKey}`,
+      'Authorization': `${this.configuration.apiKeyAuthCollection} API-Key ${this.configuration.apiKey}`,
       'Content-Type': 'application/json',
       ...this.configuration.additionalHeaders,
     };
 
     const config: AxiosRequestConfig = {
-      method: method as AxiosRequestConfig['method'],
+      method: requestMethod as AxiosRequestConfig['method'],
       url,
       headers,
-      params: axiosParams.params,
-      data: body,
+      params,
+      data: requestBody,
       timeout: this.configuration.connectionTimeoutSeconds * 1000,
       validateStatus: (status) => status >= 200 && status < 600,
     };

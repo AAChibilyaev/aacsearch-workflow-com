@@ -8,8 +8,11 @@ export default class AACSearchError extends Error {
     this.httpStatus = httpStatus;
     this.code = code;
 
-    if (typeof (Error as any).captureStackTrace === 'function') {
-      (Error as any).captureStackTrace(this, this.constructor);
+    const errorCtor = Error as unknown as {
+      captureStackTrace?: (target: object, constructorOpt?: unknown) => void;
+    };
+    if (typeof errorCtor.captureStackTrace === 'function') {
+      errorCtor.captureStackTrace(this, this.constructor);
     }
   }
 }

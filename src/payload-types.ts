@@ -73,7 +73,10 @@ export interface Config {
     products: Product;
     documents: Document;
     integrations: Integration;
+    invoices: Invoice;
     'collection-definitions': CollectionDefinition;
+    'golden-queries': GoldenQuery;
+    'reindex-jobs': ReindexJob;
     'tenant-settings': TenantSetting;
     'api-keys': ApiKey;
     users: User;
@@ -100,7 +103,10 @@ export interface Config {
     products: ProductsSelect<false> | ProductsSelect<true>;
     documents: DocumentsSelect<false> | DocumentsSelect<true>;
     integrations: IntegrationsSelect<false> | IntegrationsSelect<true>;
+    invoices: InvoicesSelect<false> | InvoicesSelect<true>;
     'collection-definitions': CollectionDefinitionsSelect<false> | CollectionDefinitionsSelect<true>;
+    'golden-queries': GoldenQueriesSelect<false> | GoldenQueriesSelect<true>;
+    'reindex-jobs': ReindexJobsSelect<false> | ReindexJobsSelect<true>;
     'tenant-settings': TenantSettingsSelect<false> | TenantSettingsSelect<true>;
     'api-keys': ApiKeysSelect<false> | ApiKeysSelect<true>;
     users: UsersSelect<false> | UsersSelect<true>;
@@ -143,6 +149,7 @@ export interface Config {
     tasks: {
       createCollectionExport: TaskCreateCollectionExport;
       createCollectionImport: TaskCreateCollectionImport;
+      reindexCollection: TaskReindexCollection;
       inline: {
         input: unknown;
         output: unknown;
@@ -257,6 +264,26 @@ export interface Page {
         | LogoCloudMarqueeBlock
         | IntegrationMarqueeBlock
         | CallToActionSignupBlock
+        | ComparatorGridBlock
+        | ComparatorStackBlock
+        | ComparatorTableBlock
+        | FaqAccordionBlock
+        | FaqCardBlock
+        | FaqGridBlock
+        | FaqGroupedBlock
+        | FaqIconsBlock
+        | FaqSplitBlock
+        | PricingCardsBlock
+        | PricingCardsCtaBlock
+        | PricingCardsMutedBlock
+        | PricingEnterpriseBlock
+        | PricingSplitBlock
+        | TestimonialsBentoBlock
+        | TestimonialsGridBlock
+        | TestimonialsQuoteBlock
+        | TestimonialsRatingBlock
+        | TestimonialsSpotlightBlock
+        | TestimonialsWallBlock
       )[]
     | null;
   meta?: {
@@ -313,6 +340,9 @@ export interface Tenant {
       | boolean
       | null;
     syncedAt?: string | null;
+    walletId?: string | null;
+    walletBalanceCents?: number | null;
+    walletCurrency?: string | null;
   };
   updatedAt: string;
   createdAt: string;
@@ -337,6 +367,7 @@ export interface HeroBlock {
  */
 export interface Media {
   id: number;
+  tenant?: (number | null) | Tenant;
   alt: string;
   /**
    * Keywords which describe the image. Used when searching for the image.
@@ -1383,6 +1414,682 @@ export interface CallToActionSignupBlock {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ComparatorGridBlock".
+ */
+export interface ComparatorGridBlock {
+  title?: string | null;
+  description?: string | null;
+  plans: {
+    name: string;
+    price?: string | null;
+    /**
+     * Shown next to the price, e.g. "/month".
+     */
+    period?: string | null;
+    /**
+     * Optional pill above the plan name, e.g. "Most popular".
+     */
+    badge?: string | null;
+    /**
+     * Tints this column to draw the eye to the recommended plan.
+     */
+    highlighted?: boolean | null;
+    links?:
+      | {
+          link: {
+            type?: ('reference' | 'custom') | null;
+            newTab?: boolean | null;
+            reference?: {
+              relationTo: 'pages';
+              value: number | Page;
+            } | null;
+            url?: string | null;
+            label: string;
+            /**
+             * Choose how the link should be rendered.
+             */
+            appearance?: ('default' | 'outline') | null;
+          };
+          id?: string | null;
+        }[]
+      | null;
+    id?: string | null;
+  }[];
+  features: {
+    feature: string;
+    /**
+     * One cell per plan, in the same order as Plans. Tick "included" for a checkmark, or set a label for a text value.
+     */
+    values?:
+      | {
+          included?: boolean | null;
+          label?: string | null;
+          id?: string | null;
+        }[]
+      | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'comparatorGrid';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ComparatorStackBlock".
+ */
+export interface ComparatorStackBlock {
+  title?: string | null;
+  description?: string | null;
+  plans: {
+    name: string;
+    description?: string | null;
+    price?: string | null;
+    /**
+     * Shown next to the price, e.g. "/month".
+     */
+    period?: string | null;
+    /**
+     * Optional pill beside the plan name, e.g. "Most popular".
+     */
+    badge?: string | null;
+    /**
+     * Adds an accent ring to draw the eye to the recommended plan.
+     */
+    highlighted?: boolean | null;
+    links?:
+      | {
+          link: {
+            type?: ('reference' | 'custom') | null;
+            newTab?: boolean | null;
+            reference?: {
+              relationTo: 'pages';
+              value: number | Page;
+            } | null;
+            url?: string | null;
+            label: string;
+            /**
+             * Choose how the link should be rendered.
+             */
+            appearance?: ('default' | 'outline') | null;
+          };
+          id?: string | null;
+        }[]
+      | null;
+    features?:
+      | {
+          label: string;
+          included?: boolean | null;
+          /**
+           * Text value for this feature. Leave "included" unticked and this empty for an excluded feature.
+           */
+          value?: string | null;
+          id?: string | null;
+        }[]
+      | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'comparatorStack';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ComparatorTableBlock".
+ */
+export interface ComparatorTableBlock {
+  title?: string | null;
+  description?: string | null;
+  plans: {
+    name: string;
+    /**
+     * Optional pill above the plan name, e.g. "Most popular".
+     */
+    badge?: string | null;
+    /**
+     * Tints this column to draw the eye to the recommended plan.
+     */
+    highlighted?: boolean | null;
+    links?:
+      | {
+          link: {
+            type?: ('reference' | 'custom') | null;
+            newTab?: boolean | null;
+            reference?: {
+              relationTo: 'pages';
+              value: number | Page;
+            } | null;
+            url?: string | null;
+            label: string;
+            /**
+             * Choose how the link should be rendered.
+             */
+            appearance?: ('default' | 'outline') | null;
+          };
+          id?: string | null;
+        }[]
+      | null;
+    id?: string | null;
+  }[];
+  features: {
+    /**
+     * Optional section heading rendered as a divider row above this feature.
+     */
+    groupLabel?: string | null;
+    feature: string;
+    /**
+     * One cell per plan, in the same order as Plans. Tick "included" for a checkmark, or set a label for a text value.
+     */
+    values?:
+      | {
+          included?: boolean | null;
+          label?: string | null;
+          id?: string | null;
+        }[]
+      | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'comparatorTable';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqAccordionBlock".
+ */
+export interface FaqAccordionBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  items: {
+    question: string;
+    answer: string;
+    id?: string | null;
+  }[];
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'faqAccordion';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqCardBlock".
+ */
+export interface FaqCardBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  items: {
+    question: string;
+    answer: string;
+    id?: string | null;
+  }[];
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'faqCard';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqGridBlock".
+ */
+export interface FaqGridBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  items: {
+    question: string;
+    answer: string;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'faqGrid';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqGroupedBlock".
+ */
+export interface FaqGroupedBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  groups: {
+    icon?: ('clock' | 'credit-card' | 'truck' | 'globe' | 'package' | 'help-circle') | null;
+    title: string;
+    items: {
+      question: string;
+      answer: string;
+      id?: string | null;
+    }[];
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'faqGrouped';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqIconsBlock".
+ */
+export interface FaqIconsBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  items: {
+    icon?: ('clock' | 'credit-card' | 'truck' | 'globe' | 'package' | 'help-circle') | null;
+    question: string;
+    answer: string;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'faqIcons';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqSplitBlock".
+ */
+export interface FaqSplitBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  items: {
+    question: string;
+    answer: string;
+    id?: string | null;
+  }[];
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'faqSplit';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PricingCardsBlock".
+ */
+export interface PricingCardsBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  plans: {
+    name: string;
+    price: string;
+    period?: string | null;
+    description?: string | null;
+    featured?: boolean | null;
+    features: {
+      feature: string;
+      id?: string | null;
+    }[];
+    links?:
+      | {
+          link: {
+            type?: ('reference' | 'custom') | null;
+            newTab?: boolean | null;
+            reference?: {
+              relationTo: 'pages';
+              value: number | Page;
+            } | null;
+            url?: string | null;
+            label: string;
+            /**
+             * Choose how the link should be rendered.
+             */
+            appearance?: ('default' | 'outline') | null;
+          };
+          id?: string | null;
+        }[]
+      | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'pricingCards';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PricingCardsCtaBlock".
+ */
+export interface PricingCardsCtaBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  plans: {
+    name: string;
+    price: string;
+    period?: string | null;
+    description?: string | null;
+    featured?: boolean | null;
+    features: {
+      feature: string;
+      id?: string | null;
+    }[];
+    links?:
+      | {
+          link: {
+            type?: ('reference' | 'custom') | null;
+            newTab?: boolean | null;
+            reference?: {
+              relationTo: 'pages';
+              value: number | Page;
+            } | null;
+            url?: string | null;
+            label: string;
+            /**
+             * Choose how the link should be rendered.
+             */
+            appearance?: ('default' | 'outline') | null;
+          };
+          id?: string | null;
+        }[]
+      | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'pricingCardsCta';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PricingCardsMutedBlock".
+ */
+export interface PricingCardsMutedBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  plans: {
+    name: string;
+    price: string;
+    period?: string | null;
+    description?: string | null;
+    featured?: boolean | null;
+    features: {
+      feature: string;
+      id?: string | null;
+    }[];
+    links?:
+      | {
+          link: {
+            type?: ('reference' | 'custom') | null;
+            newTab?: boolean | null;
+            reference?: {
+              relationTo: 'pages';
+              value: number | Page;
+            } | null;
+            url?: string | null;
+            label: string;
+            /**
+             * Choose how the link should be rendered.
+             */
+            appearance?: ('default' | 'outline') | null;
+          };
+          id?: string | null;
+        }[]
+      | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'pricingCardsMuted';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PricingEnterpriseBlock".
+ */
+export interface PricingEnterpriseBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  plans: {
+    name: string;
+    price: string;
+    period?: string | null;
+    description?: string | null;
+    featured?: boolean | null;
+    features: {
+      feature: string;
+      id?: string | null;
+    }[];
+    links?:
+      | {
+          link: {
+            type?: ('reference' | 'custom') | null;
+            newTab?: boolean | null;
+            reference?: {
+              relationTo: 'pages';
+              value: number | Page;
+            } | null;
+            url?: string | null;
+            label: string;
+            /**
+             * Choose how the link should be rendered.
+             */
+            appearance?: ('default' | 'outline') | null;
+          };
+          id?: string | null;
+        }[]
+      | null;
+    id?: string | null;
+  }[];
+  logos?:
+    | {
+        logo: number | Media;
+        name: string;
+        href?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'pricingEnterprise';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PricingSplitBlock".
+ */
+export interface PricingSplitBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  plans: {
+    name: string;
+    price: string;
+    period?: string | null;
+    description?: string | null;
+    featured?: boolean | null;
+    features: {
+      feature: string;
+      id?: string | null;
+    }[];
+    links?:
+      | {
+          link: {
+            type?: ('reference' | 'custom') | null;
+            newTab?: boolean | null;
+            reference?: {
+              relationTo: 'pages';
+              value: number | Page;
+            } | null;
+            url?: string | null;
+            label: string;
+            /**
+             * Choose how the link should be rendered.
+             */
+            appearance?: ('default' | 'outline') | null;
+          };
+          id?: string | null;
+        }[]
+      | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'pricingSplit';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialsBentoBlock".
+ */
+export interface TestimonialsBentoBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  testimonials: {
+    quote: string;
+    author: string;
+    role?: string | null;
+    avatar?: (number | null) | Media;
+    logo?: (number | null) | Media;
+    /**
+     * Give this testimonial the large bento cell.
+     */
+    featured?: boolean | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'testimonialsBento';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialsGridBlock".
+ */
+export interface TestimonialsGridBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  testimonials: {
+    quote: string;
+    author: string;
+    role?: string | null;
+    avatar?: (number | null) | Media;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'testimonialsGrid';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialsQuoteBlock".
+ */
+export interface TestimonialsQuoteBlock {
+  quote: string;
+  author: string;
+  role?: string | null;
+  avatar?: (number | null) | Media;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'testimonialsQuote';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialsRatingBlock".
+ */
+export interface TestimonialsRatingBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  testimonials: {
+    rating: number;
+    quote: string;
+    author: string;
+    role?: string | null;
+    avatar?: (number | null) | Media;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'testimonialsRating';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialsSpotlightBlock".
+ */
+export interface TestimonialsSpotlightBlock {
+  quote: string;
+  author: string;
+  role?: string | null;
+  avatar?: (number | null) | Media;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'testimonialsSpotlight';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialsWallBlock".
+ */
+export interface TestimonialsWallBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  testimonials: {
+    quote: string;
+    author: string;
+    role?: string | null;
+    avatar?: (number | null) | Media;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'testimonialsWall';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "products".
  */
 export interface Product {
@@ -1439,25 +2146,120 @@ export interface Document {
 export interface CollectionDefinition {
   id: number;
   tenant?: (number | null) | Tenant;
+  /**
+   * A friendly name for this collection, shown in your search dashboard.
+   */
   name: string;
+  /**
+   * A short, unique id used in the search API (lowercase letters, numbers, dashes).
+   */
   slug: string;
+  /**
+   * Describe each piece of information a record holds and how AACSearch should treat it.
+   */
   fields?:
     | {
+        /**
+         * Lowercase letters, numbers and underscores only (e.g. product_title).
+         */
         name: string;
         label?: string | null;
-        fieldType: 'text' | 'textarea' | 'number' | 'checkbox' | 'date' | 'select';
+        /**
+         * What kind of information this field holds.
+         */
+        fieldType:
+          | 'text'
+          | 'textarea'
+          | 'string[]'
+          | 'int32'
+          | 'int64'
+          | 'float'
+          | 'number'
+          | 'checkbox'
+          | 'date'
+          | 'select'
+          | 'geopoint'
+          | 'object'
+          | 'object[]'
+          | 'auto';
+        /**
+         * A record cannot be saved without a value for this field.
+         */
         required?: boolean | null;
-        localized?: boolean | null;
+        /**
+         * Include this field when your visitors search. On by default.
+         */
+        searchable?: boolean | null;
+        /**
+         * Let visitors filter and group results by this field.
+         */
         facet?: boolean | null;
+        /**
+         * Allow results to be ordered by this field.
+         */
+        sortable?: boolean | null;
+        /**
+         * Records may leave this field empty in the search index.
+         */
+        optional?: boolean | null;
+        localized?: boolean | null;
+        /**
+         * Match text that appears in the middle of words (e.g. part numbers).
+         */
+        infixSearch?: boolean | null;
+        /**
+         * Match different word forms (e.g. "running" also matches "run").
+         */
+        stem?: boolean | null;
+        /**
+         * Language of this field, to improve matching of word forms.
+         */
+        language?: ('' | 'en' | 'ru' | 'de') | null;
+        /**
+         * The allowed choices for this field.
+         */
         options?:
           | {
               value: string;
               id?: string | null;
             }[]
           | null;
+        /**
+         * Comma-separated text fields to power semantic ("meaning") search for this field.
+         */
+        embedFrom?: string | null;
+        /**
+         * The AACSearch understanding model. "Standard" fits most cases.
+         */
+        embedModel?: ('ts/e5-small' | 'ts/all-MiniLM-L12-v2' | 'openai/text-embedding-3-small') | null;
         id?: string | null;
       }[]
     | null;
+  /**
+   * Advanced AACSearch behaviour for this collection. Smart defaults are already set.
+   */
+  engineSettings?: {
+    /**
+     * Turn on meaning-based ("semantic") search so results match intent, not just words.
+     */
+    semanticSearch?: boolean | null;
+    /**
+     * The number field used to order results by default (must be a sortable number field).
+     */
+    defaultSortingField?: string | null;
+    /**
+     * Allow nested object fields. Enabled automatically when you add a nested field.
+     */
+    enableNestedFields?: boolean | null;
+    /**
+     * Characters that split words apart, comma-separated (helps match "wi-fi" as "wi fi").
+     */
+    tokenSeparators?: string | null;
+    /**
+     * Symbols kept as part of words, comma-separated (so "c++" and "c#" stay searchable).
+     */
+    symbolsToIndex?: string | null;
+  };
   updatedAt: string;
   createdAt: string;
 }
@@ -1491,31 +2293,266 @@ export interface Integration {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "invoices".
+ */
+export interface Invoice {
+  id: number;
+  tenant?: (number | null) | Tenant;
+  externalId?: string | null;
+  number?: string | null;
+  status?: ('draft' | 'finalized' | 'payment_pending' | 'payment_succeeded' | 'payment_failed' | 'void') | null;
+  amountCents?: number | null;
+  currency?: string | null;
+  invoiceType?: ('subscription' | 'wallet_top_up' | 'credit' | 'one_off') | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  paidAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "golden-queries".
+ */
+export interface GoldenQuery {
+  id: number;
+  tenant?: (number | null) | Tenant;
+  /**
+   * A short label for this test case, e.g. "Blue shoes should surface the blue sneaker".
+   */
+  name: string;
+  /**
+   * The collection to search, by its friendly slug (as used by the search API).
+   */
+  collection: string;
+  /**
+   * The search query to run.
+   */
+  query: string;
+  /**
+   * Comma-separated fields to search in, e.g. title, description.
+   */
+  queryBy?: string | null;
+  /**
+   * Comma-separated document IDs expected to appear in the top results.
+   */
+  expectedDocIds: string;
+  /**
+   * How many top results count as "in range" for this test.
+   */
+  topN?: number | null;
+  /**
+   * When this test case was last run.
+   */
+  lastRunAt?: string | null;
+  /**
+   * Whether the last run found an expected document in range.
+   */
+  lastRunPassed?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "reindex-jobs".
+ */
+export interface ReindexJob {
+  id: number;
+  /**
+   * Physical engine collection to copy documents FROM.
+   */
+  sourceCollection: string;
+  /**
+   * Physical engine collection to copy documents INTO. Created automatically (using the source schema, unless overridden at start) if it does not already exist.
+   */
+  targetCollection: string;
+  status?: ('pending' | 'running' | 'completed' | 'failed') | null;
+  /**
+   * How many documents have been processed so far.
+   */
+  cursorOffset?: number | null;
+  /**
+   * Snapshot of the source collection document count, taken once when the job starts.
+   */
+  totalDocuments?: number | null;
+  /**
+   * The last error message, if the job failed.
+   */
+  error?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "tenant-settings".
  */
 export interface TenantSetting {
   id: number;
   tenant?: (number | null) | Tenant;
+  /**
+   * Fields users can search, most important first. Weight boosts a field: a higher number makes matches in that field rank higher.
+   */
+  searchableFields?:
+    | {
+        field: string;
+        /**
+         * Higher = more important (default 1).
+         */
+        weight?: number | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Legacy simple field list. Prefer "Searchable fields" above; this is used only when that is empty.
+   */
   searchFields?:
     | {
         field: string;
         id?: string | null;
       }[]
     | null;
+  /**
+   * Fields shown as filters (facets) next to results, e.g. brand or category.
+   */
   facetFields?:
     | {
         field: string;
         id?: string | null;
       }[]
     | null;
+  /**
+   * How forgiving search is of spelling mistakes.
+   */
+  typoTolerance?: {
+    /**
+     * Maximum typos allowed per word (0–2). Default 2.
+     */
+    numTypos?: number | null;
+    /**
+     * A word must be at least this long before 1 typo is allowed. Default 4.
+     */
+    minLen1Typo?: number | null;
+    /**
+     * A word must be at least this long before 2 typos are allowed. Default 7.
+     */
+    minLen2Typo?: number | null;
+    /**
+     * Only look for typo matches when a search returns fewer than this many results. Default 1.
+     */
+    typoTokensThreshold?: number | null;
+  };
+  /**
+   * How results are ordered.
+   */
+  ranking?: {
+    /**
+     * Default order for results, e.g. "popularity:desc" or "price:asc". Leave empty to sort purely by relevance.
+     */
+    defaultSortingField?: string | null;
+    /**
+     * Extra tie-breaker order applied when the default sort is equal, e.g. "rating:desc".
+     */
+    pinnedTieBreakers?: string | null;
+  };
+  /**
+   * AI-powered search that understands meaning, not just keywords.
+   */
+  semantic?: {
+    /**
+     * Also match results by meaning, blended with keyword matches.
+     */
+    enableSemanticSearch?: boolean | null;
+    /**
+     * Which AI model builds the meaning index. Compact is fastest; high-quality is more accurate.
+     */
+    embeddingModel?: ('ts/e5-small' | 'ts/all-MiniLM-L12-v2' | 'openai/text-embedding-3-small') | null;
+    /**
+     * Balance between meaning and keywords: 0 = keywords only, 1 = meaning only. Default 0.3.
+     */
+    hybridAlpha?: number | null;
+  };
+  /**
+   * Hand-tune results for specific searches: pin some results to the top or hide others.
+   */
+  curation?:
+    | {
+        /**
+         * The search term this rule applies to, e.g. "shoes". Leave empty to trigger by filter instead.
+         */
+        query?: string | null;
+        /**
+         * Whether the search term must match exactly or just contain the words.
+         */
+        match?: ('exact' | 'contains') | null;
+        /**
+         * Result IDs to pin to the top, in order, comma-separated.
+         */
+        pinnedDocIds?: string | null;
+        /**
+         * Result IDs to hide, comma-separated.
+         */
+        hiddenDocIds?: string | null;
+        /**
+         * Optional filter, e.g. "in_stock:=true". Used as the applied filter for a query rule, or as the trigger when no search term is set.
+         */
+        filterBy?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Common words to ignore while searching, e.g. "the", "a", "of".
+   */
+  stopwords?:
+    | {
+        word: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Words treated as equivalent. Leave "Root" empty for two-way synonyms; set it for one-way (root → synonyms).
+   */
   synonyms?:
     | {
-        root: string;
+        root?: string | null;
+        /**
+         * Comma-separated equivalent words, e.g. "couch, sofa, settee".
+         */
         synonymList: string;
         id?: string | null;
       }[]
     | null;
+  /**
+   * Learn from what your users search for.
+   */
+  analytics?: {
+    /**
+     * Track popular searches to power suggestions and reports.
+     */
+    enableQuerySuggestions?: boolean | null;
+    /**
+     * Record searches that returned no results, so you can fix gaps in your content.
+     */
+    enableNoHitsTracking?: boolean | null;
+  };
+  /**
+   * Accent color for your search widget, e.g. "#2563eb".
+   */
   brandColor?: string | null;
+  /**
+   * Let visitors ask questions in plain language and get a synthesized answer.
+   */
+  aiSearch?: {
+    enableNlSearch?: boolean | null;
+    /**
+     * Which configured AI model to use (set up by your platform administrator).
+     */
+    nlModelId?: string | null;
+    enableConversationalSearch?: boolean | null;
+    /**
+     * Which configured conversation model to use (set up by your platform administrator).
+     */
+    conversationModelId?: string | null;
+  };
   updatedAt: string;
   createdAt: string;
 }
@@ -1901,7 +2938,7 @@ export interface PluginAiInstruction {
    */
   'field-type'?: ('text' | 'textarea' | 'upload' | 'richText') | null;
   'relation-to'?: string | null;
-  'model-id'?: ('Oai-text' | 'dall-e' | 'gpt-image-1' | 'tts' | 'Oai-object' | '11Labs-m-v2') | null;
+  'model-id'?: ('Oai-text' | 'dall-e' | 'gpt-image-1' | 'tts' | 'Oai-object' | 'ANTH-C-text' | 'ANTH-C-object') | null;
   /**
    * Please reload your collection after applying the changes
    */
@@ -1958,15 +2995,37 @@ export interface PluginAiInstruction {
     temperature?: number | null;
     extractAttachments?: boolean | null;
   };
-  '11Labs-settings'?: {
-    voice_id: string;
-    stability: number;
-    similarity_boost: number;
-    style?: number | null;
-    use_speaker_boost?: boolean | null;
-    seed?: number | null;
-    previous_text?: string | null;
-    next_text?: string | null;
+  'ANTH-C-text-settings'?: {
+    model?:
+      | (
+          | 'claude-opus-4-1'
+          | 'claude-opus-4-0'
+          | 'claude-sonnet-4-0'
+          | 'claude-3-opus-latest'
+          | 'claude-3-5-haiku-latest'
+          | 'claude-3-5-sonnet-latest'
+          | 'claude-3-7-sonnet-latest'
+        )
+      | null;
+    maxTokens?: number | null;
+    temperature?: number | null;
+    extractAttachments?: boolean | null;
+  };
+  'ANTH-C-object-settings'?: {
+    model?:
+      | (
+          | 'claude-opus-4-1'
+          | 'claude-opus-4-0'
+          | 'claude-sonnet-4-0'
+          | 'claude-3-opus-latest'
+          | 'claude-3-5-haiku-latest'
+          | 'claude-3-5-sonnet-latest'
+          | 'claude-3-7-sonnet-latest'
+        )
+      | null;
+    maxTokens?: number | null;
+    temperature?: number | null;
+    extractAttachments?: boolean | null;
   };
   updatedAt: string;
   createdAt: string;
@@ -2121,7 +3180,7 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'createCollectionExport' | 'createCollectionImport';
+        taskSlug: 'inline' | 'createCollectionExport' | 'createCollectionImport' | 'reindexCollection';
         taskID: string;
         input?:
           | {
@@ -2154,10 +3213,14 @@ export interface PayloadJob {
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'createCollectionExport' | 'createCollectionImport') | null;
+  taskSlug?: ('inline' | 'createCollectionExport' | 'createCollectionImport' | 'reindexCollection') | null;
   queue?: string | null;
   waitUntil?: string | null;
   processing?: boolean | null;
+  /**
+   * Used for concurrency control. Jobs with the same key are subject to exclusive/supersedes rules.
+   */
+  concurrencyKey?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -2185,8 +3248,20 @@ export interface PayloadLockedDocument {
         value: number | Integration;
       } | null)
     | ({
+        relationTo: 'invoices';
+        value: number | Invoice;
+      } | null)
+    | ({
         relationTo: 'collection-definitions';
         value: number | CollectionDefinition;
+      } | null)
+    | ({
+        relationTo: 'golden-queries';
+        value: number | GoldenQuery;
+      } | null)
+    | ({
+        relationTo: 'reindex-jobs';
+        value: number | ReindexJob;
       } | null)
     | ({
         relationTo: 'tenant-settings';
@@ -2348,6 +3423,26 @@ export interface PagesSelect<T extends boolean = true> {
         logoCloudMarquee?: T | LogoCloudMarqueeBlockSelect<T>;
         integrationMarquee?: T | IntegrationMarqueeBlockSelect<T>;
         callToActionSignup?: T | CallToActionSignupBlockSelect<T>;
+        comparatorGrid?: T | ComparatorGridBlockSelect<T>;
+        comparatorStack?: T | ComparatorStackBlockSelect<T>;
+        comparatorTable?: T | ComparatorTableBlockSelect<T>;
+        faqAccordion?: T | FaqAccordionBlockSelect<T>;
+        faqCard?: T | FaqCardBlockSelect<T>;
+        faqGrid?: T | FaqGridBlockSelect<T>;
+        faqGrouped?: T | FaqGroupedBlockSelect<T>;
+        faqIcons?: T | FaqIconsBlockSelect<T>;
+        faqSplit?: T | FaqSplitBlockSelect<T>;
+        pricingCards?: T | PricingCardsBlockSelect<T>;
+        pricingCardsCta?: T | PricingCardsCtaBlockSelect<T>;
+        pricingCardsMuted?: T | PricingCardsMutedBlockSelect<T>;
+        pricingEnterprise?: T | PricingEnterpriseBlockSelect<T>;
+        pricingSplit?: T | PricingSplitBlockSelect<T>;
+        testimonialsBento?: T | TestimonialsBentoBlockSelect<T>;
+        testimonialsGrid?: T | TestimonialsGridBlockSelect<T>;
+        testimonialsQuote?: T | TestimonialsQuoteBlockSelect<T>;
+        testimonialsRating?: T | TestimonialsRatingBlockSelect<T>;
+        testimonialsSpotlight?: T | TestimonialsSpotlightBlockSelect<T>;
+        testimonialsWall?: T | TestimonialsWallBlockSelect<T>;
       };
   meta?:
     | T
@@ -3318,6 +4413,631 @@ export interface CallToActionSignupBlockSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ComparatorGridBlock_select".
+ */
+export interface ComparatorGridBlockSelect<T extends boolean = true> {
+  title?: T;
+  description?: T;
+  plans?:
+    | T
+    | {
+        name?: T;
+        price?: T;
+        period?: T;
+        badge?: T;
+        highlighted?: T;
+        links?:
+          | T
+          | {
+              link?:
+                | T
+                | {
+                    type?: T;
+                    newTab?: T;
+                    reference?: T;
+                    url?: T;
+                    label?: T;
+                    appearance?: T;
+                  };
+              id?: T;
+            };
+        id?: T;
+      };
+  features?:
+    | T
+    | {
+        feature?: T;
+        values?:
+          | T
+          | {
+              included?: T;
+              label?: T;
+              id?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ComparatorStackBlock_select".
+ */
+export interface ComparatorStackBlockSelect<T extends boolean = true> {
+  title?: T;
+  description?: T;
+  plans?:
+    | T
+    | {
+        name?: T;
+        description?: T;
+        price?: T;
+        period?: T;
+        badge?: T;
+        highlighted?: T;
+        links?:
+          | T
+          | {
+              link?:
+                | T
+                | {
+                    type?: T;
+                    newTab?: T;
+                    reference?: T;
+                    url?: T;
+                    label?: T;
+                    appearance?: T;
+                  };
+              id?: T;
+            };
+        features?:
+          | T
+          | {
+              label?: T;
+              included?: T;
+              value?: T;
+              id?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ComparatorTableBlock_select".
+ */
+export interface ComparatorTableBlockSelect<T extends boolean = true> {
+  title?: T;
+  description?: T;
+  plans?:
+    | T
+    | {
+        name?: T;
+        badge?: T;
+        highlighted?: T;
+        links?:
+          | T
+          | {
+              link?:
+                | T
+                | {
+                    type?: T;
+                    newTab?: T;
+                    reference?: T;
+                    url?: T;
+                    label?: T;
+                    appearance?: T;
+                  };
+              id?: T;
+            };
+        id?: T;
+      };
+  features?:
+    | T
+    | {
+        groupLabel?: T;
+        feature?: T;
+        values?:
+          | T
+          | {
+              included?: T;
+              label?: T;
+              id?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqAccordionBlock_select".
+ */
+export interface FaqAccordionBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  items?:
+    | T
+    | {
+        question?: T;
+        answer?: T;
+        id?: T;
+      };
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqCardBlock_select".
+ */
+export interface FaqCardBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  items?:
+    | T
+    | {
+        question?: T;
+        answer?: T;
+        id?: T;
+      };
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqGridBlock_select".
+ */
+export interface FaqGridBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  items?:
+    | T
+    | {
+        question?: T;
+        answer?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqGroupedBlock_select".
+ */
+export interface FaqGroupedBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  groups?:
+    | T
+    | {
+        icon?: T;
+        title?: T;
+        items?:
+          | T
+          | {
+              question?: T;
+              answer?: T;
+              id?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqIconsBlock_select".
+ */
+export interface FaqIconsBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  items?:
+    | T
+    | {
+        icon?: T;
+        question?: T;
+        answer?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FaqSplitBlock_select".
+ */
+export interface FaqSplitBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  items?:
+    | T
+    | {
+        question?: T;
+        answer?: T;
+        id?: T;
+      };
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PricingCardsBlock_select".
+ */
+export interface PricingCardsBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  plans?:
+    | T
+    | {
+        name?: T;
+        price?: T;
+        period?: T;
+        description?: T;
+        featured?: T;
+        features?:
+          | T
+          | {
+              feature?: T;
+              id?: T;
+            };
+        links?:
+          | T
+          | {
+              link?:
+                | T
+                | {
+                    type?: T;
+                    newTab?: T;
+                    reference?: T;
+                    url?: T;
+                    label?: T;
+                    appearance?: T;
+                  };
+              id?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PricingCardsCtaBlock_select".
+ */
+export interface PricingCardsCtaBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  plans?:
+    | T
+    | {
+        name?: T;
+        price?: T;
+        period?: T;
+        description?: T;
+        featured?: T;
+        features?:
+          | T
+          | {
+              feature?: T;
+              id?: T;
+            };
+        links?:
+          | T
+          | {
+              link?:
+                | T
+                | {
+                    type?: T;
+                    newTab?: T;
+                    reference?: T;
+                    url?: T;
+                    label?: T;
+                    appearance?: T;
+                  };
+              id?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PricingCardsMutedBlock_select".
+ */
+export interface PricingCardsMutedBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  plans?:
+    | T
+    | {
+        name?: T;
+        price?: T;
+        period?: T;
+        description?: T;
+        featured?: T;
+        features?:
+          | T
+          | {
+              feature?: T;
+              id?: T;
+            };
+        links?:
+          | T
+          | {
+              link?:
+                | T
+                | {
+                    type?: T;
+                    newTab?: T;
+                    reference?: T;
+                    url?: T;
+                    label?: T;
+                    appearance?: T;
+                  };
+              id?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PricingEnterpriseBlock_select".
+ */
+export interface PricingEnterpriseBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  plans?:
+    | T
+    | {
+        name?: T;
+        price?: T;
+        period?: T;
+        description?: T;
+        featured?: T;
+        features?:
+          | T
+          | {
+              feature?: T;
+              id?: T;
+            };
+        links?:
+          | T
+          | {
+              link?:
+                | T
+                | {
+                    type?: T;
+                    newTab?: T;
+                    reference?: T;
+                    url?: T;
+                    label?: T;
+                    appearance?: T;
+                  };
+              id?: T;
+            };
+        id?: T;
+      };
+  logos?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        href?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "PricingSplitBlock_select".
+ */
+export interface PricingSplitBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  plans?:
+    | T
+    | {
+        name?: T;
+        price?: T;
+        period?: T;
+        description?: T;
+        featured?: T;
+        features?:
+          | T
+          | {
+              feature?: T;
+              id?: T;
+            };
+        links?:
+          | T
+          | {
+              link?:
+                | T
+                | {
+                    type?: T;
+                    newTab?: T;
+                    reference?: T;
+                    url?: T;
+                    label?: T;
+                    appearance?: T;
+                  };
+              id?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialsBentoBlock_select".
+ */
+export interface TestimonialsBentoBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  testimonials?:
+    | T
+    | {
+        quote?: T;
+        author?: T;
+        role?: T;
+        avatar?: T;
+        logo?: T;
+        featured?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialsGridBlock_select".
+ */
+export interface TestimonialsGridBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  testimonials?:
+    | T
+    | {
+        quote?: T;
+        author?: T;
+        role?: T;
+        avatar?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialsQuoteBlock_select".
+ */
+export interface TestimonialsQuoteBlockSelect<T extends boolean = true> {
+  quote?: T;
+  author?: T;
+  role?: T;
+  avatar?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialsRatingBlock_select".
+ */
+export interface TestimonialsRatingBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  testimonials?:
+    | T
+    | {
+        rating?: T;
+        quote?: T;
+        author?: T;
+        role?: T;
+        avatar?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialsSpotlightBlock_select".
+ */
+export interface TestimonialsSpotlightBlockSelect<T extends boolean = true> {
+  quote?: T;
+  author?: T;
+  role?: T;
+  avatar?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TestimonialsWallBlock_select".
+ */
+export interface TestimonialsWallBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  testimonials?:
+    | T
+    | {
+        quote?: T;
+        author?: T;
+        role?: T;
+        avatar?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "products_select".
  */
 export interface ProductsSelect<T extends boolean = true> {
@@ -3364,6 +5084,24 @@ export interface IntegrationsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "invoices_select".
+ */
+export interface InvoicesSelect<T extends boolean = true> {
+  tenant?: T;
+  externalId?: T;
+  number?: T;
+  status?: T;
+  amountCents?: T;
+  currency?: T;
+  invoiceType?: T;
+  periodStart?: T;
+  periodEnd?: T;
+  paidAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "collection-definitions_select".
  */
 export interface CollectionDefinitionsSelect<T extends boolean = true> {
@@ -3377,16 +5115,64 @@ export interface CollectionDefinitionsSelect<T extends boolean = true> {
         label?: T;
         fieldType?: T;
         required?: T;
-        localized?: T;
+        searchable?: T;
         facet?: T;
+        sortable?: T;
+        optional?: T;
+        localized?: T;
+        infixSearch?: T;
+        stem?: T;
+        language?: T;
         options?:
           | T
           | {
               value?: T;
               id?: T;
             };
+        embedFrom?: T;
+        embedModel?: T;
         id?: T;
       };
+  engineSettings?:
+    | T
+    | {
+        semanticSearch?: T;
+        defaultSortingField?: T;
+        enableNestedFields?: T;
+        tokenSeparators?: T;
+        symbolsToIndex?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "golden-queries_select".
+ */
+export interface GoldenQueriesSelect<T extends boolean = true> {
+  tenant?: T;
+  name?: T;
+  collection?: T;
+  query?: T;
+  queryBy?: T;
+  expectedDocIds?: T;
+  topN?: T;
+  lastRunAt?: T;
+  lastRunPassed?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "reindex-jobs_select".
+ */
+export interface ReindexJobsSelect<T extends boolean = true> {
+  sourceCollection?: T;
+  targetCollection?: T;
+  status?: T;
+  cursorOffset?: T;
+  totalDocuments?: T;
+  error?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -3396,6 +5182,13 @@ export interface CollectionDefinitionsSelect<T extends boolean = true> {
  */
 export interface TenantSettingsSelect<T extends boolean = true> {
   tenant?: T;
+  searchableFields?:
+    | T
+    | {
+        field?: T;
+        weight?: T;
+        id?: T;
+      };
   searchFields?:
     | T
     | {
@@ -3408,6 +5201,43 @@ export interface TenantSettingsSelect<T extends boolean = true> {
         field?: T;
         id?: T;
       };
+  typoTolerance?:
+    | T
+    | {
+        numTypos?: T;
+        minLen1Typo?: T;
+        minLen2Typo?: T;
+        typoTokensThreshold?: T;
+      };
+  ranking?:
+    | T
+    | {
+        defaultSortingField?: T;
+        pinnedTieBreakers?: T;
+      };
+  semantic?:
+    | T
+    | {
+        enableSemanticSearch?: T;
+        embeddingModel?: T;
+        hybridAlpha?: T;
+      };
+  curation?:
+    | T
+    | {
+        query?: T;
+        match?: T;
+        pinnedDocIds?: T;
+        hiddenDocIds?: T;
+        filterBy?: T;
+        id?: T;
+      };
+  stopwords?:
+    | T
+    | {
+        word?: T;
+        id?: T;
+      };
   synonyms?:
     | T
     | {
@@ -3415,7 +5245,21 @@ export interface TenantSettingsSelect<T extends boolean = true> {
         synonymList?: T;
         id?: T;
       };
+  analytics?:
+    | T
+    | {
+        enableQuerySuggestions?: T;
+        enableNoHitsTracking?: T;
+      };
   brandColor?: T;
+  aiSearch?:
+    | T
+    | {
+        enableNlSearch?: T;
+        nlModelId?: T;
+        enableConversationalSearch?: T;
+        conversationModelId?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
 }
@@ -3476,6 +5320,7 @@ export interface UsersSelect<T extends boolean = true> {
  * via the `definition` "media_select".
  */
 export interface MediaSelect<T extends boolean = true> {
+  tenant?: T;
   alt?: T;
   keywords?: T;
   updatedAt?: T;
@@ -3506,6 +5351,9 @@ export interface TenantsSelect<T extends boolean = true> {
         trialEndsAt?: T;
         entitlements?: T;
         syncedAt?: T;
+        walletId?: T;
+        walletBalanceCents?: T;
+        walletCurrency?: T;
       };
   updatedAt?: T;
   createdAt?: T;
@@ -3821,17 +5669,21 @@ export interface PluginAiInstructionsSelect<T extends boolean = true> {
         temperature?: T;
         extractAttachments?: T;
       };
-  '11Labs-settings'?:
+  'ANTH-C-text-settings'?:
     | T
     | {
-        voice_id?: T;
-        stability?: T;
-        similarity_boost?: T;
-        style?: T;
-        use_speaker_boost?: T;
-        seed?: T;
-        previous_text?: T;
-        next_text?: T;
+        model?: T;
+        maxTokens?: T;
+        temperature?: T;
+        extractAttachments?: T;
+      };
+  'ANTH-C-object-settings'?:
+    | T
+    | {
+        model?: T;
+        maxTokens?: T;
+        temperature?: T;
+        extractAttachments?: T;
       };
   updatedAt?: T;
   createdAt?: T;
@@ -3910,6 +5762,7 @@ export interface PayloadJobsSelect<T extends boolean = true> {
   queue?: T;
   waitUntil?: T;
   processing?: T;
+  concurrencyKey?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -4073,7 +5926,10 @@ export interface TaskCreateCollectionExport {
       | 'products'
       | 'documents'
       | 'integrations'
+      | 'invoices'
       | 'collection-definitions'
+      | 'golden-queries'
+      | 'reindex-jobs'
       | 'tenant-settings'
       | 'api-keys'
       | 'users'
@@ -4124,6 +5980,21 @@ export interface TaskCreateCollectionImport {
     maxLimit?: number | null;
   };
   output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskReindexCollection".
+ */
+export interface TaskReindexCollection {
+  input: {
+    jobId: number;
+    targetSchema?: string | null;
+  };
+  output: {
+    cursorOffset?: number | null;
+    status?: string | null;
+    totalDocuments?: number | null;
+  };
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

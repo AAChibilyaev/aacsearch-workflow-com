@@ -1,9 +1,26 @@
 import type { CollectionConfig } from 'payload'
 
+import {
+  enforceTenantWriteScope,
+  readTenantScoped,
+  writeTenantScoped,
+} from '@/access/tenantScopedAccess'
+
 export const Products: CollectionConfig = {
   slug: 'products',
+  // Tenant isolation for api-key principals (the multi-tenant plugin only
+  // scopes `users`); the beforeValidate hook blocks cross-tenant writes.
+  access: {
+    create: writeTenantScoped,
+    delete: writeTenantScoped,
+    read: readTenantScoped,
+    update: writeTenantScoped,
+  },
   admin: {
     useAsTitle: 'title',
+  },
+  hooks: {
+    beforeValidate: [enforceTenantWriteScope],
   },
   fields: [
     {

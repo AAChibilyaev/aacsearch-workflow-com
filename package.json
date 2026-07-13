@@ -5,9 +5,10 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build",
+    "build": "pnpm run build:widget && opennextjs-cloudflare build",
+    "build:widget": "pnpm --filter @aacsearch/ui build && mkdir -p public/widget && cp packages/aacsearch-ui/dist/aacsearch-ui.js public/widget/aacsearch-ui.js",
     "deploy": "pnpm run deploy:database && pnpm run deploy:app",
-    "deploy:app": "opennextjs-cloudflare build --env=$CLOUDFLARE_ENV && opennextjs-cloudflare deploy --env=$CLOUDFLARE_ENV",
+    "deploy:app": "pnpm run build && opennextjs-cloudflare deploy --env=$CLOUDFLARE_ENV",
     "deploy:database": "cross-env NODE_ENV=production PAYLOAD_SECRET=ignore payload migrate && wrangler d1 execute D1 --command 'PRAGMA optimize' --env=$CLOUDFLARE_ENV --remote",
     "dev": "cross-env NODE_OPTIONS=--no-deprecation next dev",
     "devsafe": "rm -rf .next && rm -rf .open-next && cross-env NODE_OPTIONS=--no-deprecation next dev",
@@ -18,7 +19,7 @@
     "ii": "pnpm install --ignore-workspace",
     "lint": "cross-env NODE_OPTIONS=--no-deprecation eslint .",
     "payload": "cross-env NODE_OPTIONS=--no-deprecation payload",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview --env=$CLOUDFLARE_ENV",
+    "preview": "pnpm run build && opennextjs-cloudflare preview --env=$CLOUDFLARE_ENV",
     "start": "cross-env NODE_OPTIONS=--no-deprecation next start",
     "test": "pnpm run test:int && pnpm run test:e2e",
     "test:e2e": "cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" playwright test --config=playwright.config.ts",
@@ -53,6 +54,7 @@
     "@radix-ui/react-slot": "^1.3.0",
     "@rubixstudios/payload-typesense": "1.6.11",
     "@sentry/nextjs": "^10.65.0",
+    "@sentry/vercel-edge": "^10.65.0",
     "@veiag/payload-cmdk": "^1.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -64,8 +66,11 @@
     "motion": "^12.42.2",
     "next": "15.4.11",
     "payload": "3.86.0",
+    "payload-auditor": "^1.11.0",
     "payload-better-preview": "^2.1.3",
+    "payload-cloudflare-email-adapter": "^1.0.0",
     "payload-oapi": "^0.2.5",
+    "payload-totp": "^3.0.1",
     "radix-ui": "^1.6.2",
     "react": "19.2.1",
     "react-dom": "19.2.1",
@@ -95,7 +100,7 @@
     "wrangler": "~4.61.1"
   },
   "engines": {
-    "node": ">=24.15.0",
+    "node": ">=22.16.0",
     "pnpm": "^9 || ^10 || ^11"
   },
   "pnpm": {

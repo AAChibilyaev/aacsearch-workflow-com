@@ -22,7 +22,6 @@ let tenantA: Tenant
 let tenantB: Tenant
 let productA: Product
 let productB: Product
-let userA: User
 let superAdmin: User
 
 const userAEmail = `tenant-a-${uid}@test.local`
@@ -53,8 +52,12 @@ describe('multi-tenant stack', () => {
         roles: ['super-admin'],
       },
     })
+    const onboardingMembership = superAdmin.tenants?.[0]
+    expect(onboardingMembership?.roles).toContain('tenant-admin')
+    expect(onboardingMembership?.tenant).toBeDefined()
 
-    userA = await payload.create({
+    // Created for its side effect only — tests reference it via userAEmail/apiKey
+    await payload.create({
       collection: 'users',
       data: {
         email: userAEmail,

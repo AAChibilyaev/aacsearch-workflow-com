@@ -28,6 +28,7 @@ import {
   type ProviderDTO,
 } from '@/lib/integrations/dto'
 import { getPrincipalCollection, getPrincipalTenantIDs } from '@/lib/principal'
+import { getUserTenantIDs } from '@/utilities/getUserTenantIDs'
 
 /**
  * Integrations plugin — per-tenant third-party connections, fully white-label.
@@ -41,21 +42,34 @@ import { getPrincipalCollection, getPrincipalTenantIDs } from '@/lib/principal'
  * signature-verified webhook), so reads never fan out to the vendor API.
  */
 export type NangoPluginOptions = {
+  /** Nango environment API key; preferred by @nangohq/node */
+  apiKey?: string
   /** self-hosted URL; omit for the cloud default */
   host?: string
+  /** @deprecated Use apiKey. Kept for older deployments/env names. */
   secretKey?: string
-  /** HMAC key for inbound webhook verification (falls back to secretKey) */
+  /** HMAC key for inbound webhook verification (required with apiKey; falls back to secretKey) */
   webhookSigningKey?: string
 }
 
 const getClient = async (opts: NangoPluginOptions) => {
   const { Nango } = await import('@nangohq/node')
+  if (opts.apiKey) {
+    return new Nango({
+      apiKey: opts.apiKey,
+      host: opts.host,
+      webhookSigningKey: opts.webhookSigningKey,
+    })
+  }
   return new Nango({
     host: opts.host,
     secretKey: opts.secretKey as string,
     webhookSigningKey: opts.webhookSigningKey,
   })
 }
+
+const hasNangoCredentials = (opts: NangoPluginOptions): boolean =>
+  Boolean(opts.apiKey || opts.secretKey)
 
 /**
  * Tenant guard for BOTH principal shapes: `users` (tenants membership array)
@@ -78,6 +92,23 @@ const guardTenantParam = (req: PayloadRequest, tenant: string | undefined): stri
     throw new APIError('Forbidden', 403, { code: 'forbidden' })
   }
   return tenant
+}
+
+/**
+ * Connection lifecycle (connect / reconnect / disconnect / manual sync)
+ * follows the integrations collection contract: tenant-admin or super-admin.
+ * API-key principals are denied — no api-key scope grants integration
+ * management, and `guardTenantParam` alone only proves membership.
+ */
+const guardTenantAdmin = (req: PayloadRequest, tenant: string): void => {
+  if (isSuperAdmin(req.user)) return
+  if (getPrincipalCollection(req.user) === 'api-keys') {
+    throw new APIError('Forbidden', 403, { code: 'forbidden' })
+  }
+  const adminTenants = getUserTenantIDs(req.user as Parameters<typeof getUserTenantIDs>[0], 'tenant-admin')
+  if (!adminTenants.some((id) => String(id) === String(tenant))) {
+    throw new APIError('Forbidden', 403, { code: 'forbidden' })
+  }
 }
 
 /**
@@ -106,6 +137,39 @@ const getCatalogProviders = async (opts: NangoPluginOptions): Promise<CatalogPro
   const providers: CatalogProvider[] = data
   providerCache.set(providers)
   return providers
+}
+
+/**
+ * Load one connection by :id and confirm it belongs to the caller's tenant.
+ * Shared by disconnect / sync / status so the ownership check lives in one place;
+ * throws a 400/404 (never leaking cross-tenant existence) on any mismatch.
+ */
+const loadOwnedConnection = async (req: PayloadRequest): Promise<IntegrationDoc> => {
+  const tenant = guardTenantParam(
+    req,
+    typeof req.query?.tenant === 'string' ? req.query.tenant : undefined,
+  )
+  const rawID = req.routeParams?.id
+  if (rawID === undefined || rawID === null || rawID === '') {
+    throw new APIError('Connection id is required', 400, { code: 'id_required' })
+  }
+  const integrationsAPI = req.payload as unknown as IntegrationsLocalAPI
+  let doc: IntegrationDoc
+  try {
+    doc = await integrationsAPI.findByID({
+      collection: 'integrations',
+      depth: 0,
+      id: coerceIdValue(String(rawID)),
+      req,
+      ...principalScopedFindArgs(req),
+    })
+  } catch {
+    throw new APIError('Connection not found', 404, { code: 'not_found' })
+  }
+  if (String(extractRelationID(doc.tenant)) !== String(tenant)) {
+    throw new APIError('Connection not found', 404, { code: 'not_found' })
+  }
+  return doc
 }
 
 /** Tenant's connections from OUR collection, on behalf of the caller. */
@@ -211,7 +275,32 @@ const handleAuthWebhook = async (
   })
 }
 
-/** `type: 'sync'` webhook — enqueue the drain and ack immediately. */
+const markIntegrationStatus = async (
+  req: PayloadRequest,
+  connectionId: string,
+  status: NonNullable<IntegrationDoc['status']>,
+): Promise<void> => {
+  const integrationsAPI = req.payload as unknown as IntegrationsLocalAPI
+  const existing = await integrationsAPI.find({
+    collection: 'integrations',
+    depth: 0,
+    limit: 1,
+    req,
+    where: { connectionId: { equals: connectionId } },
+  })
+  const doc = existing.docs[0]
+  if (!doc) return
+  // A late sync webhook must not resurrect a connection an admin revoked.
+  if (doc.status === 'revoked') return
+  await integrationsAPI.update({
+    collection: 'integrations',
+    data: { status },
+    id: doc.id,
+    req,
+  })
+}
+
+/** `type: 'sync'` webhook — mirror state, enqueue the drain and ack immediately. */
 const queueIngestion = async (
   req: PayloadRequest,
   body: NangoSyncWebhookBodySuccess,
@@ -221,6 +310,7 @@ const queueIngestion = async (
     model: body.model,
     providerConfigKey: body.providerConfigKey,
     syncName: body.syncName,
+    syncVariant: body.syncVariant,
   }
   // The task slug is typed against generated TypedJobs only after the
   // orchestrator regenerates payload-types — queue through a narrow signature.
@@ -293,6 +383,7 @@ const integrationEndpoints = (opts: NangoPluginOptions): Endpoint[] => [
         req,
         body.tenant !== undefined && body.tenant !== null ? String(body.tenant) : undefined,
       )
+      guardTenantAdmin(req, tenant)
       const user = req.user!
 
       const nango = await getClient(opts)
@@ -334,6 +425,7 @@ const integrationEndpoints = (opts: NangoPluginOptions): Endpoint[] => [
         req,
         typeof req.query?.tenant === 'string' ? req.query.tenant : undefined,
       )
+      guardTenantAdmin(req, tenant)
       const rawID = req.routeParams?.id
       if (rawID === undefined || rawID === null || rawID === '') {
         throw new APIError('Connection id is required', 400, { code: 'id_required' })
@@ -376,6 +468,93 @@ const integrationEndpoints = (opts: NangoPluginOptions): Endpoint[] => [
       // System context: guard already ran and the upstream connection is gone
       await integrationsAPI.delete({ collection: 'integrations', id: doc.id, req })
       return Response.json({ disconnected: true })
+    },
+  },
+  {
+    // Reconnect a broken connection ('error' status: revoked/expired upstream
+    // credentials) WITHOUT minting a new connectionId — the standard repair
+    // path. Returns a session token for the same headless frontend flow as
+    // /integrations/session; white-label rules identical (no connect_link).
+    path: '/integrations/connections/:id/reconnect',
+    method: 'post',
+    handler: async (req) => {
+      const doc = await loadOwnedConnection(req)
+      const tenant = String(extractRelationID(doc.tenant))
+      guardTenantAdmin(req, tenant)
+      const user = req.user!
+
+      const nango = await getClient(opts)
+      const session = await nango.createReconnectSession({
+        connection_id: doc.connectionId,
+        integration_id: doc.integrationKey,
+        end_user: {
+          id: String(user.id),
+          email: 'email' in user && typeof user.email === 'string' ? user.email : undefined,
+        },
+        organization: { id: tenant },
+      })
+
+      return Response.json({ expiresAt: session.data.expires_at, token: session.data.token })
+    },
+  },
+  {
+    // Manual "Sync now": re-run this connection's data pull on demand.
+    // tenant-admins may sync their own connections; super-admin any. `?full=true`
+    // requests a full re-sync instead of incremental.
+    path: '/integrations/connections/:id/sync',
+    method: 'post',
+    handler: async (req) => {
+      const doc = await loadOwnedConnection(req)
+      guardTenantAdmin(req, String(extractRelationID(doc.tenant)))
+      const fullResync = req.query?.full === 'true' || req.query?.full === '1'
+      const nango = await getClient(opts)
+      try {
+        await nango.triggerSync(
+          doc.integrationKey,
+          undefined,
+          doc.connectionId,
+          // Full re-sync clears the connection's cache; incremental is the default
+          fullResync ? { emptyCache: true, reset: true } : undefined,
+        )
+      } catch (err) {
+        req.payload.logger.error({ err, msg: 'integration sync trigger failed' })
+        throw new APIError('Failed to start sync', 502, { code: 'sync_failed' })
+      }
+      return Response.json({ started: true })
+    },
+  },
+  {
+    // Live sync status for one connection — mapped to a white-label shape
+    // (generic sync name/state only; no vendor identifiers).
+    path: '/integrations/connections/:id/status',
+    method: 'get',
+    handler: async (req) => {
+      const doc = await loadOwnedConnection(req)
+      const nango = await getClient(opts)
+      try {
+        const status = (await nango.syncStatus(doc.integrationKey, '*', doc.connectionId)) as {
+          syncs?: Array<{
+            finishedAt?: null | string
+            latestResult?: unknown
+            name?: string
+            nextScheduledSyncAt?: null | string
+            status?: string
+          }>
+        }
+        const syncs = (status?.syncs ?? []).map((sync) => ({
+          finishedAt: sync.finishedAt ?? null,
+          name: sync.name ?? '',
+          nextRunAt: sync.nextScheduledSyncAt ?? null,
+          state: sync.status ?? 'unknown',
+        }))
+        return Response.json({ syncs })
+      } catch (err) {
+        req.payload.logger.warn({ err, msg: 'integration sync status failed' })
+        // Best-effort: fall back to the mirrored lastSyncedAt on our doc
+        return Response.json({
+          syncs: [{ finishedAt: doc.lastSyncedAt ?? null, name: '', nextRunAt: null, state: doc.status ?? 'unknown' }],
+        })
+      }
     },
   },
   {
@@ -431,8 +610,11 @@ const integrationEndpoints = (opts: NangoPluginOptions): Endpoint[] => [
       if (body.type === 'auth') {
         await handleAuthWebhook(req, opts, body)
       } else if (body.type === 'sync' && body.success) {
+        await markIntegrationStatus(req, body.connectionId, 'connected')
         // Heavy ingestion belongs to the jobs queue — ack fast
         await queueIngestion(req, body)
+      } else if (body.type === 'sync' && !body.success) {
+        await markIntegrationStatus(req, body.connectionId, 'error')
       }
 
       return Response.json({ received: true })
@@ -443,7 +625,7 @@ const integrationEndpoints = (opts: NangoPluginOptions): Endpoint[] => [
 export const nangoPlugin =
   (opts: NangoPluginOptions): Plugin =>
   (config: Config): Config => {
-    if (!opts.secretKey) return config
+    if (!hasNangoCredentials(opts)) return config
 
     return {
       ...config,
@@ -456,6 +638,7 @@ export const nangoPlugin =
           // orchestrator regenerates payload-types this structural task
           // narrows through the base TaskConfig shape.
           createIngestIntegrationRecordsTask({
+            apiKey: opts.apiKey,
             host: opts.host,
             secretKey: opts.secretKey,
           }) as unknown as TaskConfig,

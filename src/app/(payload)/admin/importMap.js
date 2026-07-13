@@ -31,6 +31,8 @@ import { PreviewComponent as PreviewComponent_a8a977ebc872c5d5ea7ee689724c0860 }
 import { ExportListMenuItem as ExportListMenuItem_cdf7e044479f899a31f804427d568b36 } from '@payloadcms/plugin-import-export/rsc'
 import { ImportListMenuItem as ImportListMenuItem_cdf7e044479f899a31f804427d568b36 } from '@payloadcms/plugin-import-export/rsc'
 import { AssignTenantFieldTrigger as AssignTenantFieldTrigger_1d0591e3cf4f332c83a86da13a0de59a } from '@payloadcms/plugin-multi-tenant/client'
+import { DocumentDataField as DocumentDataField_d7853548a6a57ef05fbcbd399ba4e341 } from '../../../components/fields/DocumentDataField'
+import { TOTPField as TOTPField_4eaf6cb33cfb75be01716613e3c9a512 } from 'payload-totp/rsc'
 import { AltTextField as AltTextField_0a0a871430f540863f89f94882312cf1 } from '@jhb.software/payload-alt-text-plugin/client'
 import { BulkGenerateAltTextsButton as BulkGenerateAltTextsButton_0a0a871430f540863f89f94882312cf1 } from '@jhb.software/payload-alt-text-plugin/client'
 import { WatchTenantCollection as WatchTenantCollection_1d0591e3cf4f332c83a86da13a0de59a } from '@payloadcms/plugin-multi-tenant/client'
@@ -66,8 +68,21 @@ import { ImportExportProvider as ImportExportProvider_cdf7e044479f899a31f804427d
 import { AdminBlockSyncProvider as AdminBlockSyncProvider_5c2fb41b02405b9edc17e0e235c72608 } from 'payload-better-preview/client'
 import { CommandMenuProvider as CommandMenuProvider_3bf5d3e334c5eaf4f0d216451590d3c2 } from '@veiag/payload-cmdk/client'
 import { InstructionsProvider as InstructionsProvider_4490b89d4413c1ffaecdacfe72efaf73 } from '@ai-stack/payloadcms/client'
+import { TOTPProvider as TOTPProvider_4eaf6cb33cfb75be01716613e3c9a512 } from 'payload-totp/rsc'
+import { TOTPSetup as TOTPSetup_4eaf6cb33cfb75be01716613e3c9a512 } from 'payload-totp/rsc'
+import { TOTPVerify as TOTPVerify_4eaf6cb33cfb75be01716613e3c9a512 } from 'payload-totp/rsc'
+import { AiSearchView as AiSearchView_137f4c26e962ef8542c8d6826941dc59 } from '../../../components/views/AiSearch'
 import { BillingView as BillingView_e5ae7e3966f5465c4344dac4dd93dbf9 } from '../../../components/views/Billing'
+import { EngineView as EngineView_3e4c1795292b42b2063bc0fc36051845 } from '../../../components/views/Engine'
 import { IntegrationsView as IntegrationsView_9e1735bac833ebc9ae622ee38570363b } from '../../../components/views/Integrations'
+import { GoldenQueriesView as GoldenQueriesView_a70af4e2e09bdc41d2c3429e51eea6fe } from '../../../components/views/GoldenQueries'
+import { QuerySuggestionsView as QuerySuggestionsView_b76bf11f0016581aa3081571b6b18219 } from '../../../components/views/QuerySuggestions'
+import { RelevanceView as RelevanceView_1b935389e81c6be1c3f65ee70ceddf3c } from '../../../components/views/Relevance'
+import { SearchView as SearchView_835c202eebadc702ec7d12e425f24683 } from '../../../components/views/Search'
+import { AnalyticsView as AnalyticsView_68dd62c073c3c45561db41846c33d484 } from '../../../components/views/Analytics'
+import { UsageView as UsageView_86b2ba38fc41696e7ffd083e3cd25777 } from '../../../components/views/Usage'
+import { TeamView as TeamView_8112ab5dfbe5f4d603de83d574f8a647 } from '../../../components/views/Team'
+import { WidgetView as WidgetView_e0b2a55c2309c80884f4640a8deb37e7 } from '../../../components/views/Widget'
 import { AltTextHealthWidget as AltTextHealthWidget_a35949d21b38efe8500764b5b0b3638b } from '@jhb.software/payload-alt-text-plugin/server'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 
@@ -106,6 +121,8 @@ export const importMap = {
   "@payloadcms/plugin-import-export/rsc#ExportListMenuItem": ExportListMenuItem_cdf7e044479f899a31f804427d568b36,
   "@payloadcms/plugin-import-export/rsc#ImportListMenuItem": ImportListMenuItem_cdf7e044479f899a31f804427d568b36,
   "@payloadcms/plugin-multi-tenant/client#AssignTenantFieldTrigger": AssignTenantFieldTrigger_1d0591e3cf4f332c83a86da13a0de59a,
+  "/components/fields/DocumentDataField#DocumentDataField": DocumentDataField_d7853548a6a57ef05fbcbd399ba4e341,
+  "payload-totp/rsc#TOTPField": TOTPField_4eaf6cb33cfb75be01716613e3c9a512,
   "@jhb.software/payload-alt-text-plugin/client#AltTextField": AltTextField_0a0a871430f540863f89f94882312cf1,
   "@jhb.software/payload-alt-text-plugin/client#BulkGenerateAltTextsButton": BulkGenerateAltTextsButton_0a0a871430f540863f89f94882312cf1,
   "@payloadcms/plugin-multi-tenant/client#WatchTenantCollection": WatchTenantCollection_1d0591e3cf4f332c83a86da13a0de59a,
@@ -141,8 +158,21 @@ export const importMap = {
   "payload-better-preview/client#AdminBlockSyncProvider": AdminBlockSyncProvider_5c2fb41b02405b9edc17e0e235c72608,
   "@veiag/payload-cmdk/client#CommandMenuProvider": CommandMenuProvider_3bf5d3e334c5eaf4f0d216451590d3c2,
   "@ai-stack/payloadcms/client#InstructionsProvider": InstructionsProvider_4490b89d4413c1ffaecdacfe72efaf73,
+  "payload-totp/rsc#TOTPProvider": TOTPProvider_4eaf6cb33cfb75be01716613e3c9a512,
+  "payload-totp/rsc#TOTPSetup": TOTPSetup_4eaf6cb33cfb75be01716613e3c9a512,
+  "payload-totp/rsc#TOTPVerify": TOTPVerify_4eaf6cb33cfb75be01716613e3c9a512,
+  "/components/views/AiSearch#AiSearchView": AiSearchView_137f4c26e962ef8542c8d6826941dc59,
   "/components/views/Billing#BillingView": BillingView_e5ae7e3966f5465c4344dac4dd93dbf9,
+  "/components/views/Engine#EngineView": EngineView_3e4c1795292b42b2063bc0fc36051845,
   "/components/views/Integrations#IntegrationsView": IntegrationsView_9e1735bac833ebc9ae622ee38570363b,
+  "/components/views/GoldenQueries#GoldenQueriesView": GoldenQueriesView_a70af4e2e09bdc41d2c3429e51eea6fe,
+  "/components/views/QuerySuggestions#QuerySuggestionsView": QuerySuggestionsView_b76bf11f0016581aa3081571b6b18219,
+  "/components/views/Relevance#RelevanceView": RelevanceView_1b935389e81c6be1c3f65ee70ceddf3c,
+  "/components/views/Search#SearchView": SearchView_835c202eebadc702ec7d12e425f24683,
+  "/components/views/Analytics#AnalyticsView": AnalyticsView_68dd62c073c3c45561db41846c33d484,
+  "/components/views/Usage#UsageView": UsageView_86b2ba38fc41696e7ffd083e3cd25777,
+  "/components/views/Team#TeamView": TeamView_8112ab5dfbe5f4d603de83d574f8a647,
+  "/components/views/Widget#WidgetView": WidgetView_e0b2a55c2309c80884f4640a8deb37e7,
   "@jhb.software/payload-alt-text-plugin/server#AltTextHealthWidget": AltTextHealthWidget_a35949d21b38efe8500764b5b0b3638b,
   "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1
 }

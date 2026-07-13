@@ -1,5 +1,10 @@
 import type { Client, DocumentSchema, GenerateScopedSearchKeyParams } from 'typesense'
 
+import { createHmac, timingSafeEqual } from 'node:crypto'
+
+import { isSuperAdmin } from '@/access/isSuperAdmin'
+import { getPrincipalCollection } from '@/lib/principal'
+
 /**
  * Shared search-engine client factories + pure helpers for the AACSearch
  * gateway. The engine is an implementation detail — nothing exported here may
@@ -24,12 +29,41 @@ export const MAX_PER_PAGE = 100
 export const GATEWAY_ERRORS = {
   collectionRequired: { error: 'Each search requires a collection' },
   forbidden: { error: 'Forbidden' },
+  forbiddenScope: { error: 'Insufficient scope' },
   invalidBody: { error: 'Invalid request body' },
+  invalidLocale: { error: 'Unsupported locale' },
   searchUnavailable: { error: 'Search unavailable' },
   tenantRequired: { error: 'tenant is required' },
   tooManySearches: { error: 'Too many searches in one request' },
   unauthorized: { error: 'Unauthorized' },
 } as const
+
+/**
+ * Locales the platform is configured for (mirrors payload.config
+ * `localization.locales`). A scoped key's locale is interpolated RAW into the
+ * engine `filter_by` string, so only this allowlist may reach it — an
+ * unvalidated value like `en || tenant:=OTHER` would otherwise break out of the
+ * tenant clause and enable cross-tenant search.
+ */
+export const SEARCH_LOCALES = ['en', 'ru', 'de'] as const
+export type SearchLocale = (typeof SEARCH_LOCALES)[number]
+export const isSearchLocale = (value: unknown): value is SearchLocale =>
+  typeof value === 'string' && (SEARCH_LOCALES as readonly string[]).includes(value)
+
+/**
+ * Scope gate for a principal on the search gateway.
+ *  - super-admins and session `users` are NOT scope-limited here (their reach
+ *    is already bounded by collection access control)
+ *  - `api-keys` principals must carry the scope in their `scopes` array
+ * Callers MUST reject a null/invalid principal (401) BEFORE calling this — a
+ * missing principal is not an api-key principal and would otherwise pass.
+ */
+export const hasScope = (user: unknown, scope: string): boolean => {
+  if (isSuperAdmin(user)) return true
+  if (getPrincipalCollection(user) !== 'api-keys') return true
+  const scopes = (user as { scopes?: unknown }).scopes
+  return Array.isArray(scopes) && scopes.includes(scope)
+}
 
 const ttlSecondsFromEnv = (): number => {
   const parsed = Number(process.env.SEARCH_KEY_TTL_SECONDS)
@@ -84,6 +118,11 @@ export type ScopedKeyParams = ScopedKeyExtraParams & {
   synonym_sets: string[]
 }
 
+export type VerifiedScopedKey = {
+  params: ScopedKeyParams
+  tenant: string
+}
+
 /**
  * Pure builder for scoped-search-key params. The tenant filter is ALWAYS the
  * first clause of filter_by and cannot be overridden by any option — a scoped
@@ -95,7 +134,14 @@ export const buildScopedKeyParams = (
   opts: ScopedKeyOptions = {},
 ): ScopedKeyParams => {
   const clauses = [`tenant:=${tenant}`]
-  if (locale) clauses.push(`locale:=${locale}`)
+  if (locale) {
+    // `locale` is interpolated RAW (unparenthesised) into filter_by. A crafted
+    // value such as `en || tenant:=OTHER` would escape the tenant clause, so
+    // only the platform's configured locales are ever allowed through. Callers
+    // validate + return 400; this throw is the last-line security boundary.
+    if (!isSearchLocale(locale)) throw new Error('Unsupported locale')
+    clauses.push(`locale:=${locale}`)
+  }
   let filterBy = clauses.join(' && ')
   const clientFilter = opts.filterBy?.trim()
   if (clientFilter) filterBy += ` && (${clientFilter})`
@@ -119,6 +165,66 @@ export const buildScopedKeyParams = (
   }
 }
 
+const extractTenantFromFilter = (filterBy: string): null | string => {
+  const match = /^tenant:=([^&)\s]+)/.exec(filterBy.trim())
+  return match?.[1] ?? null
+}
+
+export const verifyScopedKeyParams = (
+  searchOnlyKey: string | undefined,
+  scopedKey: string | undefined,
+): null | VerifiedScopedKey => {
+  if (!searchOnlyKey || !scopedKey) return null
+  try {
+    const raw = Buffer.from(scopedKey, 'base64').toString('utf8')
+    const digest = raw.slice(0, 44)
+    const keyPrefix = raw.slice(44, 48)
+    const paramsJSON = raw.slice(48)
+    if (keyPrefix !== searchOnlyKey.slice(0, 4) || !paramsJSON) return null
+
+    const expected = createHmac('sha256', searchOnlyKey).update(paramsJSON).digest('base64')
+    const expectedBytes = Buffer.from(expected)
+    const actualBytes = Buffer.from(digest)
+    if (expectedBytes.length !== actualBytes.length || !timingSafeEqual(expectedBytes, actualBytes)) {
+      return null
+    }
+
+    const params = JSON.parse(paramsJSON) as Partial<ScopedKeyParams>
+    const synonymSets =
+      typeof params.synonym_sets === 'string'
+        ? [params.synonym_sets]
+        : Array.isArray(params.synonym_sets)
+          ? params.synonym_sets.filter((entry): entry is string => typeof entry === 'string')
+          : null
+
+    if (
+      typeof params.filter_by !== 'string' ||
+      typeof params.expires_at !== 'number' ||
+      typeof params.limit_multi_searches !== 'number' ||
+      !synonymSets
+    ) {
+      return null
+    }
+    if (params.expires_at <= Math.floor(Date.now() / 1000)) return null
+
+    const tenant = extractTenantFromFilter(params.filter_by)
+    if (!tenant) return null
+
+    return {
+      params: {
+        ...(params as ScopedKeyExtraParams),
+        expires_at: params.expires_at,
+        filter_by: params.filter_by,
+        limit_multi_searches: params.limit_multi_searches,
+        synonym_sets: synonymSets,
+      },
+      tenant,
+    }
+  } catch {
+    return null
+  }
+}
+
 /** A single multi-search entry as received from a client (untrusted). */
 export type GatewaySearchEntry = Record<string, unknown>
 
@@ -136,6 +242,11 @@ const capPageSize = (value: unknown): number | undefined => {
  * - client-supplied upstream api-key/user-id headers-in-params are stripped
  * - per_page / limit are capped at MAX_PER_PAGE
  * - the tenant's synonym set is injected (foreign tenant_* sets dropped)
+ * - the tenant's preset / curation set / stopword set are applied by default
+ *   (engine relevance objects are opt-in PER SEARCH — synced-but-unreferenced
+ *   sets do nothing). A client value referencing ANOTHER tenant's `tenant_*`
+ *   object is replaced with the caller's own; the gateway's degradation retry
+ *   strips these again if the engine reports them missing.
  */
 export const mergeSearchTenantFilter = (
   search: GatewaySearchEntry,
@@ -143,14 +254,25 @@ export const mergeSearchTenantFilter = (
   commonFilterBy?: string,
 ): GatewaySearchEntry => {
   const {
+    curation_sets: curationSets,
     filter_by: rawFilter,
     limit,
     per_page: perPage,
+    preset,
+    stopwords,
     synonym_sets: synonymSets,
     'x-typesense-api-key': _clientApiKey,
     'x-typesense-user-id': _clientUserId,
     ...rest
   } = search
+
+  // All tenant relevance objects share the `tenant_<id>` base name
+  // (see settingsSync name helpers).
+  const own = tenantSynonymSetName(tenant)
+  const ownOrSafe = (value: unknown): string =>
+    typeof value === 'string' && value && !(value.startsWith('tenant_') && value !== own)
+      ? value
+      : own
 
   const clientFilter =
     typeof rawFilter === 'string' && rawFilter.trim()
@@ -161,7 +283,10 @@ export const mergeSearchTenantFilter = (
 
   const merged: GatewaySearchEntry = {
     ...rest,
+    curation_sets: mergeTenantSynonymSets(tenant, curationSets),
     filter_by: clientFilter ? `tenant:=${tenant} && (${clientFilter})` : `tenant:=${tenant}`,
+    preset: ownOrSafe(preset),
+    stopwords: ownOrSafe(stopwords),
     synonym_sets: mergeTenantSynonymSets(tenant, synonymSets),
   }
 
@@ -174,11 +299,32 @@ export const mergeSearchTenantFilter = (
 }
 
 /**
+ * Scrub engine-vendor identifiers from a single (error) string so nothing
+ * customer-visible reveals the backend:
+ *  - the literal vendor name
+ *  - any http(s) URL (upstream errors can embed the engine hostname/port)
+ *  - the configured engine host, when provided by the caller
+ * All collapse to the neutral token "search engine".
+ */
+const scrubVendorString = (text: string, host?: string): string => {
+  // Order matters: collapse whole URLs first (a URL may embed the host or the
+  // vendor name), then the bare configured host, then any residual vendor name.
+  let out = text.replace(/https?:\/\/[^\s"')]+/gi, 'search engine')
+  if (host) {
+    const escaped = host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    out = out.replace(new RegExp(escaped, 'gi'), 'search engine')
+  }
+  out = out.replace(/typesense/gi, 'search engine')
+  return out
+}
+
+/**
  * Scrub engine-vendor names from per-search error strings so the public
  * response stays white-label. Successful result payloads carry no vendor
- * strings; only upstream error messages might.
+ * strings; only upstream error messages might. Pass the configured engine
+ * `host` so a leaked hostname is neutralised too.
  */
-export const sanitizeSearchResponse = <T>(response: T): T => {
+export const sanitizeSearchResponse = <T>(response: T, host?: string): T => {
   if (!response || typeof response !== 'object') return response
   const withResults = response as { results?: unknown }
   if (!Array.isArray(withResults.results)) return response
@@ -188,7 +334,7 @@ export const sanitizeSearchResponse = <T>(response: T): T => {
       if (result && typeof result === 'object' && typeof (result as { error?: unknown }).error === 'string') {
         return {
           ...result,
-          error: ((result as { error: string }).error).replace(/typesense/gi, 'search engine'),
+          error: scrubVendorString((result as { error: string }).error, host),
         }
       }
       return result

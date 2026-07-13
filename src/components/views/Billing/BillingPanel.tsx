@@ -4,163 +4,210 @@ import { useConfig } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
 import React from 'react'
 
-import { Badge } from '@/components/ui/badge'
-
-import type { BillingMessageKey } from './i18n'
+import type {
+  BillingSummary,
+  Invoice,
+  Plan,
+  Wallet,
+  WalletTransaction,
+} from './shared'
 
 import { t } from './i18n'
-
-/** Shared endpoint contract: GET /api/billing/summary?tenant=ID */
-export type BillingUsageItem = {
-  amountCents: number
-  code: string
-  name: string
-  units: number
-}
-
-export type BillingSummary = {
-  entitlements: Record<string, boolean | number | string>
-  plan: { code: string; name: string } | null
-  status: 'active' | 'canceled' | 'none' | 'past_due' | 'suspended' | 'trialing'
-  trialEndsAt: null | string
-  usage: {
-    currency: string
-    fromDate: string
-    items: BillingUsageItem[]
-    toDate: string
-    totalCents: number
-  } | null
-}
+import { InvoicesTable } from './InvoicesTable'
+import { PlanCards } from './PlanCards'
+import {
+  cardStyle,
+  createFormatters,
+  inputStyle,
+  mutedStyle,
+  neutralButtonStyle,
+} from './shared'
+import { SubscriptionCard } from './SubscriptionCard'
+import { UsageMeters } from './UsageMeters'
+import { WalletCard } from './WalletCard'
 
 export type TenantOption = { id: string; label: string }
 
 type Props = {
+  /** tenant ids the current user may manage billing for (tenant-admin); ignored for super-admins */
+  adminTenantIds: string[]
   initialTenantId: null | string
   lang: string
+  superAdmin: boolean
   tenantOptions: TenantOption[]
 }
 
-/** Result of the latest fetch, stamped with the request it belongs to —
- * loading state is derived (stamp mismatch) instead of reset in the effect. */
-type FetchResult =
-  | { data: BillingSummary; kind: 'ready'; stamp: string }
+/** Latest load, stamped with the request it belongs to — loading is derived
+ * (stamp mismatch) rather than reset in the effect. Summary is required; the
+ * secondary resources degrade to `null` (neutral empty states) on failure. */
+type LoadResult =
+  | {
+      invoices: Invoice[] | null
+      kind: 'ready'
+      plans: Plan[] | null
+      stamp: string
+      summary: BillingSummary
+      transactions: WalletTransaction[] | null
+      wallet: Wallet | null
+    }
   | { kind: 'error'; stamp: string }
 
-const STATUS_KEY: Record<BillingSummary['status'], BillingMessageKey> = {
-  active: 'statusActive',
-  canceled: 'statusCanceled',
-  none: 'statusNone',
-  past_due: 'statusPastDue',
-  suspended: 'statusSuspended',
-  trialing: 'statusTrialing',
+type Notice = { text: string; tone: 'error' | 'success' }
+
+const SUBSCRIBE_PREFIX = 'subscribe:'
+
+/** Fetch + parse JSON, resolving to null on any transport/HTTP error. */
+async function loadJson<T>(url: string): Promise<null | T> {
+  try {
+    const res = await fetch(url, { credentials: 'include' })
+    if (!res.ok) return null
+    return (await res.json()) as T
+  } catch {
+    return null
+  }
 }
 
-const STATUS_STYLE: Record<BillingSummary['status'], { bg: string; fg: string }> = {
-  active: { bg: 'var(--theme-success-100, #e2f4e8)', fg: 'var(--theme-success-750, #14713d)' },
-  canceled: { bg: 'var(--theme-error-100, #fbe9e9)', fg: 'var(--theme-error-750, #8f1f1f)' },
-  none: { bg: 'var(--theme-elevation-100, #ededed)', fg: 'var(--theme-elevation-650, #666)' },
-  past_due: { bg: 'var(--theme-warning-100, #fbf1df)', fg: 'var(--theme-warning-750, #8a5b0b)' },
-  suspended: { bg: 'var(--theme-error-100, #fbe9e9)', fg: 'var(--theme-error-750, #8f1f1f)' },
-  trialing: { bg: 'var(--theme-elevation-100, #ededed)', fg: 'var(--theme-elevation-800, #333)' },
-}
-
-const cardStyle: React.CSSProperties = {
-  background: 'var(--theme-elevation-25, transparent)',
-  border: '1px solid var(--theme-elevation-100, #e3e3e3)',
-  borderRadius: 6,
-  padding: 'calc(var(--base, 20px) * 0.9)',
-}
-
-const mutedStyle: React.CSSProperties = { color: 'var(--theme-elevation-600, #6b6b6b)' }
-
-const Progress: React.FC<{ pct: number }> = ({ pct }) => {
-  const clamped = Math.max(0, Math.min(100, pct))
-  const color =
-    clamped >= 100
-      ? 'var(--theme-error-500, #d93030)'
-      : clamped >= 80
-        ? 'var(--theme-warning-500, #f5a623)'
-        : 'var(--theme-success-500, #3faf68)'
-  return (
-    <div
-      style={{
-        background: 'var(--theme-elevation-100, #ededed)',
-        borderRadius: 999,
-        height: 6,
-        minWidth: 120,
-        overflow: 'hidden',
-        width: '100%',
-      }}
-    >
-      <div style={{ background: color, borderRadius: 999, height: '100%', width: `${clamped}%` }} />
-    </div>
-  )
-}
-
-export const BillingPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOptions }) => {
+export const BillingPanel: React.FC<Props> = ({
+  adminTenantIds,
+  initialTenantId,
+  lang,
+  superAdmin,
+  tenantOptions,
+}) => {
   const { config } = useConfig()
+  const apiRoute = config.routes.api
+
   const [tenant, setTenant] = React.useState<null | string>(initialTenantId)
   const [reloadKey, setReloadKey] = React.useState(0)
-  const [result, setResult] = React.useState<FetchResult | null>(null)
+  const [result, setResult] = React.useState<LoadResult | null>(null)
+  const [busy, setBusy] = React.useState<null | string>(null)
+  const [notice, setNotice] = React.useState<Notice | null>(null)
 
-  const apiRoute = config.routes.api
   const stamp = `${tenant}:${reloadKey}`
+  const fmt = React.useMemo(() => createFormatters(lang), [lang])
+
+  const canManage = superAdmin || (tenant !== null && adminTenantIds.includes(tenant))
+
+  const apiURL = React.useCallback(
+    (path: `/${string}`) => formatAdminURL({ apiRoute, path }),
+    [apiRoute],
+  )
+
+  const withTenant = React.useCallback(
+    (path: `/${string}`, id: string) => `${apiURL(path)}?tenant=${encodeURIComponent(id)}`,
+    [apiURL],
+  )
+
+  // Auto-dismiss transient notices
+  React.useEffect(() => {
+    if (!notice) return
+    const id = setTimeout(() => setNotice(null), 6000)
+    return () => clearTimeout(id)
+  }, [notice])
 
   React.useEffect(() => {
     if (!tenant) return
     let cancelled = false
 
-    const run = async () => {
-      try {
-        const url = `${formatAdminURL({ apiRoute, path: '/billing/summary' })}?tenant=${encodeURIComponent(tenant)}`
-        const res = await fetch(url, { credentials: 'include' })
-        if (!res.ok) throw new Error(String(res.status))
-        const data = (await res.json()) as BillingSummary
-        if (!cancelled) setResult({ data, kind: 'ready', stamp })
-      } catch {
+    const run = async (): Promise<void> => {
+      const summary = await loadJson<BillingSummary>(withTenant('/billing/summary', tenant))
+      if (summary === null) {
         if (!cancelled) setResult({ kind: 'error', stamp })
+        return
       }
+      // Secondary resources — best-effort, in parallel. Failures degrade to null.
+      const [plansRes, walletRes, txnRes, invoiceRes] = await Promise.all([
+        loadJson<{ plans: Plan[] }>(apiURL('/billing/plans')),
+        loadJson<{ wallet: null | Wallet }>(withTenant('/billing/wallet', tenant)),
+        loadJson<{ transactions: WalletTransaction[] }>(
+          withTenant('/billing/wallet/transactions', tenant),
+        ),
+        loadJson<{ invoices: Invoice[] }>(withTenant('/billing/invoices', tenant)),
+      ])
+      if (cancelled) return
+      setResult({
+        invoices: invoiceRes?.invoices ?? null,
+        kind: 'ready',
+        plans: plansRes?.plans ?? null,
+        stamp,
+        summary,
+        transactions: txnRes?.transactions ?? null,
+        wallet: walletRes ? (walletRes.wallet ?? null) : null,
+      })
     }
 
     void run()
     return () => {
       cancelled = true
     }
-  }, [apiRoute, stamp, tenant])
+  }, [apiURL, stamp, tenant, withTenant])
 
-  const loading = result === null || result.stamp !== stamp
+  const refresh = React.useCallback(() => setReloadKey((key) => key + 1), [])
 
-  const formatNumber = (value: number): string => {
-    try {
-      return new Intl.NumberFormat(lang).format(value)
-    } catch {
-      return String(value)
-    }
+  const runMutation = React.useCallback(
+    async (
+      busyKey: string,
+      path: `/${string}`,
+      body: Record<string, unknown>,
+      successKey: 'subscribeSuccess' | 'subscriptionCanceled' | 'topupSuccess',
+    ): Promise<void> => {
+      if (!tenant || !canManage || busy) return
+      setBusy(busyKey)
+      setNotice(null)
+      try {
+        const res = await fetch(apiURL(path), {
+          body: JSON.stringify(body),
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        })
+        if (!res.ok) throw new Error(String(res.status))
+        const data = (await res.json()) as { checkoutUrl?: null | string }
+        if (data.checkoutUrl) {
+          window.location.assign(data.checkoutUrl)
+          return
+        }
+        setNotice({ text: t(lang, successKey), tone: 'success' })
+        refresh()
+      } catch {
+        setNotice({ text: t(lang, 'updateFailed'), tone: 'error' })
+      } finally {
+        setBusy(null)
+      }
+    },
+    [apiURL, busy, canManage, lang, refresh, tenant],
+  )
+
+  const subscribe = (planCode: string): void => {
+    if (!window.confirm(t(lang, 'confirmSubscribe'))) return
+    void runMutation(
+      `${SUBSCRIBE_PREFIX}${planCode}`,
+      '/billing/subscribe',
+      { planCode, tenant },
+      'subscribeSuccess',
+    )
   }
 
-  const formatMoney = (cents: number, currency: string): string => {
-    try {
-      return new Intl.NumberFormat(lang, { currency, style: 'currency' }).format(cents / 100)
-    } catch {
-      return `${(cents / 100).toFixed(2)} ${currency}`
-    }
+  const cancelPlan = (): void => {
+    if (!window.confirm(t(lang, 'confirmCancel'))) return
+    void runMutation('cancel', '/billing/cancel', { tenant }, 'subscriptionCanceled')
   }
 
-  const formatDate = (value: string): string => {
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return value
-    try {
-      return date.toLocaleDateString(lang)
-    } catch {
-      return date.toISOString().slice(0, 10)
-    }
+  const topup = (amountCents: number): void => {
+    void runMutation('topup', '/billing/wallet/topup', { amountCents, tenant }, 'topupSuccess')
   }
 
-  const formatEntitlement = (value: boolean | number | string): string => {
-    if (typeof value === 'boolean') return value ? t(lang, 'included') : '—'
-    if (typeof value === 'number') return formatNumber(value)
-    return value
-  }
+  const downloadUrlFor = React.useCallback(
+    (invoice: Invoice): null | string => {
+      if (invoice.downloadUrl) return invoice.downloadUrl
+      if (!tenant || !invoice.id) return null
+      return withTenant(
+        `/billing/invoices/${encodeURIComponent(invoice.id)}/download` as `/${string}`,
+        tenant,
+      )
+    },
+    [tenant, withTenant],
+  )
 
   if (!tenant) {
     return (
@@ -177,16 +224,11 @@ export const BillingPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpt
           {t(lang, 'workspace')}
         </label>
         <select
-          onChange={(event) => setTenant(event.target.value)}
-          style={{
-            background: 'var(--theme-input-bg, var(--theme-elevation-0, #fff))',
-            border: '1px solid var(--theme-elevation-150, #ccc)',
-            borderRadius: 4,
-            color: 'var(--theme-text, inherit)',
-            maxWidth: 320,
-            padding: '0.45rem 0.6rem',
-            width: '100%',
+          onChange={(event) => {
+            setNotice(null)
+            setTenant(event.target.value)
           }}
+          style={{ ...inputStyle, maxWidth: 320, width: '100%' }}
           value={tenant}
         >
           {tenantOptions.map((option) => (
@@ -198,10 +240,33 @@ export const BillingPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpt
       </div>
     ) : null
 
+  const noticeCard = notice ? (
+    <div
+      role="alert"
+      style={{
+        ...cardStyle,
+        borderColor:
+          notice.tone === 'error'
+            ? 'var(--theme-error-200, #f3c2c2)'
+            : 'var(--theme-success-200, #bfe6cd)',
+        color:
+          notice.tone === 'error'
+            ? 'var(--theme-error-750, #8f1f1f)'
+            : 'var(--theme-success-750, #14713d)',
+        marginBottom: 'calc(var(--base, 20px) * 0.75)',
+      }}
+    >
+      {notice.text}
+    </div>
+  ) : null
+
+  const loading = result === null || result.stamp !== stamp
+
   if (loading) {
     return (
       <div>
         {tenantSelect}
+        {noticeCard}
         <div style={cardStyle}>
           <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'loading')}</p>
         </div>
@@ -213,21 +278,11 @@ export const BillingPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpt
     return (
       <div>
         {tenantSelect}
+        {noticeCard}
         <div style={cardStyle}>
           <h3 style={{ margin: '0 0 0.35rem' }}>{t(lang, 'errorTitle')}</h3>
           <p style={{ ...mutedStyle, margin: '0 0 0.75rem' }}>{t(lang, 'errorHint')}</p>
-          <button
-            onClick={() => setReloadKey((key) => key + 1)}
-            style={{
-              background: 'var(--theme-elevation-100, #ededed)',
-              border: '1px solid var(--theme-elevation-150, #ccc)',
-              borderRadius: 4,
-              color: 'var(--theme-text, inherit)',
-              cursor: 'pointer',
-              padding: '0.4rem 0.9rem',
-            }}
-            type="button"
-          >
+          <button onClick={refresh} style={neutralButtonStyle} type="button">
             {t(lang, 'retry')}
           </button>
         </div>
@@ -235,186 +290,54 @@ export const BillingPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpt
     )
   }
 
-  const { data } = result
-  const statusStyle = STATUS_STYLE[data.status] ?? STATUS_STYLE.none
-  const statusBadge = (
-    <Badge
-      style={{
-        alignItems: 'center',
-        background: statusStyle.bg,
-        border: 'none',
-        borderRadius: 999,
-        color: statusStyle.fg,
-        display: 'inline-flex',
-        fontSize: '0.75rem',
-        fontWeight: 600,
-        lineHeight: 1,
-        padding: '0.4em 0.9em',
-      }}
-    >
-      {t(lang, STATUS_KEY[data.status] ?? 'statusNone')}
-    </Badge>
-  )
-
-  const noSubscription = data.plan === null || data.status === 'none'
-  const entitlementEntries = Object.entries(data.entitlements ?? {})
+  const { invoices, plans, summary, transactions, wallet } = result
+  const subscribingCode =
+    busy && busy.startsWith(SUBSCRIBE_PREFIX) ? busy.slice(SUBSCRIBE_PREFIX.length) : null
 
   return (
     <div>
       {tenantSelect}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'calc(var(--base, 20px) * 0.75)' }}>
-        {/* Current plan */}
-        <div style={cardStyle}>
-          <div
-            style={{
-              alignItems: 'center',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div>
-              <div style={{ ...mutedStyle, fontSize: '0.85rem' }}>
-                {noSubscription ? t(lang, 'noSubscription') : t(lang, 'currentPlan')}
-              </div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 600 }}>
-                {noSubscription ? '—' : (data.plan?.name ?? data.plan?.code)}
-              </div>
-            </div>
-            {statusBadge}
-          </div>
-          {noSubscription && (
-            <p style={{ ...mutedStyle, margin: '0.6rem 0 0' }}>{t(lang, 'noSubscriptionHint')}</p>
-          )}
-          {data.status === 'trialing' && data.trialEndsAt && (
-            <p style={{ ...mutedStyle, margin: '0.6rem 0 0' }}>
-              {t(lang, 'trialEnds')}: {formatDate(data.trialEndsAt)}
-            </p>
-          )}
-        </div>
+      {noticeCard}
+      <div
+        style={{ display: 'flex', flexDirection: 'column', gap: 'calc(var(--base, 20px) * 0.75)' }}
+      >
+        <SubscriptionCard
+          busy={busy === 'cancel'}
+          canManage={canManage}
+          fmt={fmt}
+          lang={lang}
+          onCancel={cancelPlan}
+          summary={summary}
+        />
 
-        {/* Usage */}
-        {!noSubscription && (
-          <div style={cardStyle}>
-            <h3 style={{ margin: '0 0 0.35rem' }}>{t(lang, 'usageTitle')}</h3>
-            {data.usage ? (
-              <>
-                <p style={{ ...mutedStyle, fontSize: '0.85rem', margin: '0 0 0.75rem' }}>
-                  {t(lang, 'period')}: {formatDate(data.usage.fromDate)} —{' '}
-                  {formatDate(data.usage.toDate)}
-                </p>
-                {data.usage.items.length === 0 ? (
-                  <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'usageEmpty')}</p>
-                ) : (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ borderCollapse: 'collapse', minWidth: 560, width: '100%' }}>
-                      <thead>
-                        <tr>
-                          {[
-                            t(lang, 'colMetric'),
-                            t(lang, 'colUsed'),
-                            t(lang, 'colLimit'),
-                            '',
-                            t(lang, 'colAmount'),
-                          ].map((heading, index) => (
-                            <th
-                              key={index}
-                              style={{
-                                ...mutedStyle,
-                                borderBottom: '1px solid var(--theme-elevation-100, #e3e3e3)',
-                                fontSize: '0.8rem',
-                                fontWeight: 500,
-                                padding: '0.4rem 0.75rem 0.4rem 0',
-                                textAlign: 'left',
-                              }}
-                            >
-                              {heading}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.usage.items.map((item) => {
-                          const limitRaw = data.entitlements?.[`max_${item.code}`]
-                          const limit = typeof limitRaw === 'number' ? limitRaw : null
-                          return (
-                            <tr key={item.code}>
-                              <td style={{ padding: '0.5rem 0.75rem 0.5rem 0' }}>
-                                {item.name || item.code}
-                              </td>
-                              <td style={{ padding: '0.5rem 0.75rem 0.5rem 0' }}>
-                                {formatNumber(item.units)}
-                              </td>
-                              <td style={{ ...mutedStyle, padding: '0.5rem 0.75rem 0.5rem 0' }}>
-                                {limit === null ? t(lang, 'unlimited') : formatNumber(limit)}
-                              </td>
-                              <td style={{ padding: '0.5rem 0.75rem 0.5rem 0', width: 160 }}>
-                                {limit !== null && limit > 0 && (
-                                  <Progress pct={(item.units / limit) * 100} />
-                                )}
-                              </td>
-                              <td style={{ padding: '0.5rem 0 0.5rem 0' }}>
-                                {formatMoney(item.amountCents, data.usage?.currency ?? 'USD')}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                        <tr>
-                          <td
-                            colSpan={4}
-                            style={{
-                              borderTop: '1px solid var(--theme-elevation-100, #e3e3e3)',
-                              fontWeight: 600,
-                              padding: '0.5rem 0.75rem 0.5rem 0',
-                            }}
-                          >
-                            {t(lang, 'total')}
-                          </td>
-                          <td
-                            style={{
-                              borderTop: '1px solid var(--theme-elevation-100, #e3e3e3)',
-                              fontWeight: 600,
-                              padding: '0.5rem 0',
-                            }}
-                          >
-                            {formatMoney(data.usage.totalCents, data.usage.currency)}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </>
-            ) : (
-              <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'usageEmpty')}</p>
-            )}
-          </div>
-        )}
+        <UsageMeters fmt={fmt} lang={lang} summary={summary} />
 
-        {/* Entitlements */}
-        {entitlementEntries.length > 0 && (
-          <div style={cardStyle}>
-            <h3 style={{ margin: '0 0 0.6rem' }}>{t(lang, 'entitlementsTitle')}</h3>
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {entitlementEntries.map(([key, value]) => (
-                <li
-                  key={key}
-                  style={{
-                    borderBottom: '1px solid var(--theme-elevation-50, #f3f3f3)',
-                    display: 'flex',
-                    gap: '1rem',
-                    justifyContent: 'space-between',
-                    padding: '0.4rem 0',
-                  }}
-                >
-                  <span style={mutedStyle}>{key}</span>
-                  <span style={{ fontWeight: 500 }}>{formatEntitlement(value)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        <PlanCards
+          busyCode={subscribingCode}
+          canManage={canManage}
+          currentPlanCode={summary.plan?.code ?? null}
+          fmt={fmt}
+          lang={lang}
+          onSubscribe={subscribe}
+          plans={plans}
+        />
+
+        <WalletCard
+          busy={busy === 'topup'}
+          canManage={canManage}
+          fmt={fmt}
+          lang={lang}
+          onTopup={topup}
+          transactions={transactions}
+          wallet={wallet}
+        />
+
+        <InvoicesTable
+          downloadUrlFor={downloadUrlFor}
+          fmt={fmt}
+          invoices={invoices}
+          lang={lang}
+        />
       </div>
     </div>
   )

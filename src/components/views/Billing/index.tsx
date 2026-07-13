@@ -32,6 +32,10 @@ export async function BillingView({ initPageResult, params, searchParams }: Admi
   const lang = i18n.language ?? 'en'
   const superAdmin = isSuperAdmin(user)
   const memberTenantIDs = getUserTenantIDs(user)
+  // Tenant ids the user may MUTATE billing for. Super-admins manage every
+  // tenant (handled client-side by the superAdmin flag), so this list is only
+  // meaningful for regular users; the API enforces the same rule server-side.
+  const adminTenantIds = superAdmin ? [] : getUserTenantIDs(user, 'tenant-admin').map(String)
 
   let tenantOptions: TenantOption[] = []
   if (superAdmin || memberTenantIDs.length > 0) {
@@ -69,7 +73,13 @@ export async function BillingView({ initPageResult, params, searchParams }: Admi
     >
       <Gutter>
         <h1 style={{ marginBottom: 'calc(var(--base, 20px) * 0.75)' }}>{t(lang, 'title')}</h1>
-        <BillingPanel initialTenantId={initialTenantId} lang={lang} tenantOptions={tenantOptions} />
+        <BillingPanel
+          adminTenantIds={adminTenantIds}
+          initialTenantId={initialTenantId}
+          lang={lang}
+          superAdmin={superAdmin}
+          tenantOptions={tenantOptions}
+        />
       </Gutter>
     </DefaultTemplate>
   )

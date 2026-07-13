@@ -15,7 +15,7 @@ export const Header: GlobalConfig = {
     update: ({ req }) => isSuperAdmin(req.user),
   },
   admin: {
-    group: { en: 'Marketing site', ru: 'Маркетинг-сайт' },
+    group: { de: 'Marketing-Website', en: 'Marketing site', ru: 'Маркетинг-сайт' },
     hidden: ({ user }) => !isSuperAdmin(user),
   },
   fields: [

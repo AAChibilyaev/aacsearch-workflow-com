@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { isSuperAdmin, isSuperAdminAccess } from '@/access/isSuperAdmin'
+import { readTenantScoped } from '@/access/tenantScopedAccess'
 import { getUserTenantIDs } from '@/utilities/getUserTenantIDs'
 
 /**
@@ -26,9 +27,10 @@ export const Integrations: CollectionConfig = {
       if (adminTenants.length === 0) return false
       return { tenant: { in: adminTenants } }
     },
-    // Any authenticated principal — multiTenantPlugin AND-merges the tenant
-    // Where clause, so users only ever see their own tenants' connections.
-    read: ({ req }) => Boolean(req.user),
+    // multiTenantPlugin only scopes `users` principals; readTenantScoped
+    // additionally constrains api-key principals to their own tenant (else a
+    // tenant key could read every tenant's connections). Denies user:null.
+    read: readTenantScoped,
     update: isSuperAdminAccess,
   },
   admin: {

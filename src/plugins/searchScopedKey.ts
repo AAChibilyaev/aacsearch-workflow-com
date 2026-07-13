@@ -1,8 +1,15 @@
 import type { Config, Plugin } from 'payload'
 
 import { isSuperAdmin } from '@/access/isSuperAdmin'
+import { isApiKeyPrincipalValid } from '@/collections/ApiKeys'
 import { getPrincipalTenantIDs } from '@/lib/principal'
-import { GATEWAY_ERRORS, buildScopedKeyParams, generateScopedKey } from '@/lib/search/client'
+import {
+  GATEWAY_ERRORS,
+  buildScopedKeyParams,
+  generateScopedKey,
+  hasScope,
+  isSearchLocale,
+} from '@/lib/search/client'
 
 /**
  * Issues per-tenant SCOPED search keys: the tenant (and optional locale)
@@ -37,15 +44,30 @@ export const searchScopedKeyPlugin =
           method: 'get',
           handler: async (req) => {
             if (!req.user) return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+            // useAPIKey auth ignores our revokedAt/expiresAt — enforce it here.
+            if (!isApiKeyPrincipalValid(req.user)) {
+              return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+            }
             const tenant = typeof req.query?.tenant === 'string' ? req.query.tenant : ''
-            const locale = typeof req.query?.locale === 'string' ? req.query.locale : undefined
+            const localeRaw =
+              typeof req.query?.locale === 'string' && req.query.locale !== ''
+                ? req.query.locale
+                : undefined
             if (!tenant) return Response.json(GATEWAY_ERRORS.tenantRequired, { status: 400 })
             if (!canAccessTenant(req.user, tenant)) {
               return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
             }
+            if (!hasScope(req.user, 'search:read')) {
+              return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
+            }
+            // Reject an out-of-allowlist locale before it reaches the raw
+            // interpolation in buildScopedKeyParams (filter-injection surface).
+            if (localeRaw !== undefined && !isSearchLocale(localeRaw)) {
+              return Response.json(GATEWAY_ERRORS.invalidLocale, { status: 400 })
+            }
 
             try {
-              const params = buildScopedKeyParams(tenant, locale)
+              const params = buildScopedKeyParams(tenant, localeRaw)
               const scopedKey = await generateScopedKey(opts.searchOnlyKey as string, params)
               return Response.json({
                 expiresAt: new Date(params.expires_at * 1000).toISOString(),

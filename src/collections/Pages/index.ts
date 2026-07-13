@@ -1,5 +1,10 @@
 import type { CollectionConfig } from 'payload'
 
+import {
+  enforceTenantWriteScope,
+  readTenantScoped,
+  writeTenantScoped,
+} from '@/access/tenantScopedAccess'
 import { CallToAction } from '@/blocks/CallToAction'
 import { Content } from '@/blocks/Content'
 import { Hero } from '@/blocks/Hero'
@@ -42,12 +47,43 @@ import { TeamGrid } from '../../blocks/TeamGrid/config'
 import { LogoCloudMarquee } from '../../blocks/LogoCloudMarquee/config'
 import { IntegrationMarquee } from '../../blocks/IntegrationMarquee/config'
 import { CallToActionSignup } from '../../blocks/CallToActionSignup/config'
+import { ComparatorGrid } from '../../blocks/ComparatorGrid/config'
+import { ComparatorStack } from '../../blocks/ComparatorStack/config'
+import { ComparatorTable } from '../../blocks/ComparatorTable/config'
+import { FaqAccordion } from '../../blocks/FaqAccordion/config'
+import { FaqCard } from '../../blocks/FaqCard/config'
+import { FaqGrid } from '../../blocks/FaqGrid/config'
+import { FaqGrouped } from '../../blocks/FaqGrouped/config'
+import { FaqIcons } from '../../blocks/FaqIcons/config'
+import { FaqSplit } from '../../blocks/FaqSplit/config'
+import { PricingCards } from '../../blocks/PricingCards/config'
+import { PricingCardsCta } from '../../blocks/PricingCardsCta/config'
+import { PricingCardsMuted } from '../../blocks/PricingCardsMuted/config'
+import { PricingEnterprise } from '../../blocks/PricingEnterprise/config'
+import { PricingSplit } from '../../blocks/PricingSplit/config'
+import { TestimonialsBento } from '../../blocks/TestimonialsBento/config'
+import { TestimonialsGrid } from '../../blocks/TestimonialsGrid/config'
+import { TestimonialsQuote } from '../../blocks/TestimonialsQuote/config'
+import { TestimonialsRating } from '../../blocks/TestimonialsRating/config'
+import { TestimonialsSpotlight } from '../../blocks/TestimonialsSpotlight/config'
+import { TestimonialsWall } from '../../blocks/TestimonialsWall/config'
 export const Pages: CollectionConfig = {
   slug: 'pages',
+  // Tenant isolation for api-key principals (the multi-tenant plugin only
+  // scopes `users`); the beforeValidate hook blocks cross-tenant writes.
+  access: {
+    create: writeTenantScoped,
+    delete: writeTenantScoped,
+    read: readTenantScoped,
+    update: writeTenantScoped,
+  },
   admin: {
     // Live preview is configured once at the root config (admin.livePreview);
     // a second per-collection url here would silently shadow it
     useAsTitle: 'title',
+  },
+  hooks: {
+    beforeValidate: [enforceTenantWriteScope],
   },
   fields: [
     {
@@ -66,7 +102,7 @@ export const Pages: CollectionConfig = {
       // full layout (docs/fields/blocks — nested fields need no `localized`)
       name: 'layout',
       type: 'blocks',
-      blocks: [Hero, Content, CallToAction, HeroBasic, FeatureGridBasic, CallToActionCentered, ContentStats, IntegrationOrbit, FeatureSplit, FeatureBento, FeatureSteps, EmbedBasic, ContentColumns, ContentImageLead, ContentFeatureMedia, ContentFeatureSplit, ContentShowcase, ContentQuote, ContentCommunity, ContentSplitRows, ContentRows, ContentImageFrame, ContentList, ContentListColumns, ContentListIcons, LogoCloudGrid, LogoCloudHover, LogoCloudInline, LogoCloudInlineWrap, IntegrationGrid, IntegrationCluster, IntegrationSplit, IntegrationConnect, IntegrationList, IntegrationTestimonial, CallToActionBoxed, TeamRoster, TeamGrid, LogoCloudMarquee, IntegrationMarquee, CallToActionSignup],
+      blocks: [Hero, Content, CallToAction, HeroBasic, FeatureGridBasic, CallToActionCentered, ContentStats, IntegrationOrbit, FeatureSplit, FeatureBento, FeatureSteps, EmbedBasic, ContentColumns, ContentImageLead, ContentFeatureMedia, ContentFeatureSplit, ContentShowcase, ContentQuote, ContentCommunity, ContentSplitRows, ContentRows, ContentImageFrame, ContentList, ContentListColumns, ContentListIcons, LogoCloudGrid, LogoCloudHover, LogoCloudInline, LogoCloudInlineWrap, IntegrationGrid, IntegrationCluster, IntegrationSplit, IntegrationConnect, IntegrationList, IntegrationTestimonial, CallToActionBoxed, TeamRoster, TeamGrid, LogoCloudMarquee, IntegrationMarquee, CallToActionSignup, ComparatorGrid, ComparatorStack, ComparatorTable, FaqAccordion, FaqCard, FaqGrid, FaqGrouped, FaqIcons, FaqSplit, PricingCards, PricingCardsCta, PricingCardsMuted, PricingEnterprise, PricingSplit, TestimonialsBento, TestimonialsGrid, TestimonialsQuote, TestimonialsRating, TestimonialsSpotlight, TestimonialsWall],
       localized: true,
       admin: {
         initCollapsed: true,

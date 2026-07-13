@@ -27,6 +27,7 @@ export type IngestIntegrationRecordsInput = {
   model: string
   providerConfigKey: string
   syncName?: string
+  syncVariant?: string
 }
 
 type IngestIO = {
@@ -35,17 +36,31 @@ type IngestIO = {
 }
 
 export type IngestClientOptions = {
+  /** Nango environment API key; preferred by @nangohq/node */
+  apiKey?: string
   /** self-hosted integrations-backend URL; omit for the cloud default */
   host?: string
+  /** @deprecated Use apiKey. Kept for older deployments/env names. */
   secretKey?: string
 }
+
+const safeSlugSegment = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80) || 'default'
+
+const cursorKeyFor = (model: string, variant?: string): string =>
+  variant ? `${model}::${variant}` : model
 
 export const createIngestIntegrationRecordsTask = (
   opts: IngestClientOptions,
 ): TaskConfig<IngestIO> => ({
   slug: INGEST_TASK_SLUG,
   handler: async ({ input, req }) => {
-    const { connectionId, model, providerConfigKey } = input
+    const { connectionId, model, providerConfigKey, syncVariant } = input
     const { payload } = req
 
     // Generated types for `integrations` don't exist until the orchestrator
@@ -73,7 +88,14 @@ export const createIngestIntegrationRecordsTask = (
 
     // 2. Ensure the virtual collection definition for (integration, model).
     //    System context: query MUST be tenant-constrained by hand here.
-    const definitionSlug = `integration_${integration.integrationKey}_${model}`
+    const definitionSlug = [
+      'integration',
+      safeSlugSegment(integration.integrationKey),
+      safeSlugSegment(model),
+      syncVariant ? safeSlugSegment(syncVariant) : null,
+    ]
+      .filter(Boolean)
+      .join('_')
     const definitions = await payload.find({
       collection: 'collection-definitions',
       depth: 0,
@@ -103,10 +125,13 @@ export const createIngestIntegrationRecordsTask = (
     // 3. Drain the records feed, following next_cursor to completion.
     //    Heavy SDK stays out of the worker's cold path (lazy import).
     const { Nango } = await import('@nangohq/node')
-    const nango = new Nango({ host: opts.host, secretKey: opts.secretKey as string })
+    const nango = opts.apiKey
+      ? new Nango({ apiKey: opts.apiKey, host: opts.host })
+      : new Nango({ host: opts.host, secretKey: opts.secretKey as string })
 
     const cursorMap = parseCursorMap(integration.syncCursor)
-    let cursor: null | string | undefined = cursorMap[model] || undefined
+    const cursorKey = cursorKeyFor(model, syncVariant)
+    let cursor: null | string | undefined = cursorMap[cursorKey] || undefined
     let lastCursor: string | undefined
     let processed = 0
     let upserted = 0
@@ -122,6 +147,7 @@ export const createIngestIntegrationRecordsTask = (
           limit: 100,
           model,
           providerConfigKey,
+          variant: syncVariant || undefined,
         })
       } catch (err) {
         // A stored cursor can go stale (pruned upstream). Restart the drain
@@ -164,10 +190,21 @@ export const createIngestIntegrationRecordsTask = (
             title: deriveRecordTitle(record, model),
           }
           if (existing.docs[0]) {
-            await payload.update({ collection: 'documents', data, id: existing.docs[0].id, req })
+            await payload.update({
+              collection: 'documents',
+              // System ingestion path: the auto-created definition starts with
+              // fields:[] so the Documents beforeValidate validator would reject
+              // every ingested key. Bypass it (docs arrive faster than the
+              // customer's definition evolves); Typesense sync still fires.
+              context: { skipDocumentValidation: true },
+              data,
+              id: existing.docs[0].id,
+              req,
+            })
           } else {
             await payload.create({
               collection: 'documents',
+              context: { skipDocumentValidation: true },
               data: { ...data, tenant: tenantID as number },
               req,
             })
@@ -184,7 +221,7 @@ export const createIngestIntegrationRecordsTask = (
     }
 
     // 4. Persist drain position + freshness on the integration doc.
-    if (lastCursor) cursorMap[model] = lastCursor
+    if (lastCursor) cursorMap[cursorKey] = lastCursor
     await integrationsAPI.update({
       collection: 'integrations',
       data: {
@@ -223,6 +260,7 @@ export const createIngestIntegrationRecordsTask = (
     { name: 'providerConfigKey', type: 'text', required: true },
     { name: 'model', type: 'text', required: true },
     { name: 'syncName', type: 'text' },
+    { name: 'syncVariant', type: 'text' },
   ],
   interfaceName: 'TaskIngestIntegrationRecords',
   label: 'Ingest integration records',

@@ -1,9 +1,12 @@
 import type {
+  ChargeObject,
   CustomerUsageObject,
   PlanEntitlement,
   PlanEntitlementObject,
   PlanObject,
   SubscriptionEntitlementObject,
+  WalletObject,
+  WalletTransactionObject,
 } from 'lago-javascript-client'
 
 /**
@@ -26,17 +29,64 @@ export const BILLING_STATUSES: readonly BillingStatus[] = [
   'canceled',
 ]
 
+/**
+ * A usage-based charge attached to a plan, white-label. Only customer-safe,
+ * self-descriptive fields — never the billing backend's charge/metric ids.
+ *  - `unit`   : the billable-metric code being metered (e.g. `search_requests`)
+ *  - `pricingType`: the neutral pricing model (`standard` | `package` | ...)
+ */
+export type PlanChargeDTO = {
+  code: string
+  name: string
+  pricingType: string
+  unit: string
+}
+
 export type PlanDTO = {
   amountCents: number
+  charges: PlanChargeDTO[]
   code: string
   currency: string
   description: string
   entitlements: EntitlementsRecord
   interval: string
   name: string
+  trialPeriodDays: number
 }
 
 export type PlansDTO = { plans: PlanDTO[] }
+
+/** Prepaid wallet snapshot — no backend ids, provider names or URLs. */
+export type WalletDTO = {
+  balanceCents: number
+  creditsBalance: number
+  currency: string
+  name: string
+  status: string
+}
+
+export type WalletBalanceDTO = { wallet: null | WalletDTO }
+
+/** A single wallet ledger entry (top-up, grant, consumption), white-label. */
+export type WalletTransactionDTO = {
+  amountCents: number
+  createdAt: string
+  credits: number
+  id: string
+  settledAt: null | string
+  status: string
+  type: string
+}
+
+export type WalletTransactionsDTO = { transactions: WalletTransactionDTO[] }
+
+/**
+ * Result of a payment-initiating action (wallet top-up / subscribe). When the
+ * customer must complete payment on the provider's hosted page, `checkoutUrl`
+ * carries the provider (Stripe) URL — the payment surface, never the billing
+ * vendor's domain.
+ */
+export type CheckoutDTO = { checkoutUrl: string }
 
 export type UsageItemDTO = {
   amountCents: number
@@ -60,6 +110,22 @@ export type BillingSummaryDTO = {
   trialEndsAt: null | string
   usage: null | UsageDTO
 }
+
+export type InvoiceDTO = {
+  currency: string
+  /** OUR proxy endpoint (`/api/billing/invoices/:id/download`) — never a vendor URL. */
+  downloadUrl: string
+  id: string
+  /** Retained for existing consumers; identical to `issuingDate`. */
+  issuedAt: null | string
+  issuingDate: null | string
+  number: string
+  paymentStatus: string
+  status: string
+  totalCents: number
+}
+
+export type InvoicesDTO = { invoices: InvoiceDTO[] }
 
 /** Shape of the `billing` group mirrored on the tenant document. */
 export type TenantBillingMirror = {
@@ -126,18 +192,60 @@ export const flattenEntitlements = (entitlements: unknown): EntitlementsRecord =
 }
 
 /**
+ * Map a billing-backend usage charge to a white-label PlanChargeDTO. Only the
+ * self-descriptive, customer-safe fields survive — the backend `lago_id` /
+ * `lago_billable_metric_id` are dropped by building the object field-by-field.
+ */
+export const toPlanChargeDTO = (charge: ChargeObject): PlanChargeDTO => ({
+  code: charge.code || charge.billable_metric_code,
+  name: charge.invoice_display_name || charge.billable_metric_code,
+  pricingType: charge.charge_model,
+  unit: charge.billable_metric_code,
+})
+
+/**
  * Map a billing-backend plan object to the public PlanDTO.
  * Entitlements resolved separately (list responses may omit them) win over
  * whatever is inlined on the plan object.
  */
 export const toPlanDTO = (plan: PlanObject, entitlements?: EntitlementsRecord): PlanDTO => ({
   amountCents: plan.amount_cents,
+  charges: (plan.charges ?? []).map(toPlanChargeDTO),
   code: plan.code,
   currency: plan.amount_currency,
   description: plan.description ?? '',
   entitlements: entitlements ?? flattenEntitlements(plan.entitlements),
   interval: plan.interval,
   name: plan.name,
+  trialPeriodDays: plan.trial_period ?? 0,
+})
+
+/**
+ * Map a prepaid wallet to the public WalletDTO. Credits are numeric in the DTO
+ * (the backend returns them as decimal strings). No wallet/customer ids leak.
+ */
+export const toWalletDTO = (wallet: WalletObject): WalletDTO => ({
+  balanceCents: wallet.balance_cents ?? wallet.ongoing_balance_cents ?? 0,
+  creditsBalance: Number(wallet.credits_balance) || 0,
+  currency: wallet.currency ?? 'USD',
+  name: wallet.name ?? '',
+  status: wallet.status ?? 'active',
+})
+
+/**
+ * Map a wallet ledger entry to the public WalletTransactionDTO. `amount` is the
+ * monetary value expressed in the wallet currency (decimal string) — converted
+ * to integer cents here. `id` is the backend's opaque uuid (carries no vendor
+ * name); every other backend field (`lago_wallet_id`, invoice ids, ...) drops.
+ */
+export const toWalletTransactionDTO = (tx: WalletTransactionObject): WalletTransactionDTO => ({
+  amountCents: Math.round((Number(tx.amount) || 0) * 100),
+  createdAt: tx.created_at,
+  credits: Number(tx.credit_amount) || 0,
+  id: tx.lago_id,
+  settledAt: tx.settled_at ?? null,
+  status: tx.status ?? 'pending',
+  type: tx.transaction_type ?? 'inbound',
 })
 
 export const toPlansDTO = (plans: PlanDTO[]): PlansDTO => ({ plans })
@@ -155,6 +263,45 @@ export const toUsageDTO = (usage: CustomerUsageObject): UsageDTO => ({
   toDate: usage.to_datetime,
   totalCents: usage.total_amount_cents,
 })
+
+/**
+ * Map a billing-backend invoice to a white-label DTO. Only the customer-safe
+ * fields are copied — no `lago_id`, `external_customer_id`, or vendor URLs —
+ * so the invoices list can never leak the billing provider.
+ *
+ * `downloadUrl` points at OUR proxy endpoint (never the backend `file_url`).
+ * It is built only when `tenant` is supplied and an id could be derived.
+ */
+export const toInvoiceDTO = (
+  invoice: {
+    currency?: null | string
+    invoice_type?: null | string
+    issuing_date?: null | string
+    number?: null | string
+    payment_status?: null | string
+    sequential_id?: null | number | string
+    status?: null | string
+    total_amount_cents?: null | number
+  },
+  tenant?: null | number | string,
+): InvoiceDTO => {
+  const id = String(invoice.sequential_id ?? invoice.number ?? '')
+  const downloadUrl =
+    id.length > 0 && tenant !== undefined && tenant !== null && String(tenant).length > 0
+      ? `/api/billing/invoices/${encodeURIComponent(id)}/download?tenant=${encodeURIComponent(String(tenant))}`
+      : ''
+  return {
+    currency: invoice.currency ?? 'USD',
+    downloadUrl,
+    id,
+    issuedAt: invoice.issuing_date ?? null,
+    issuingDate: invoice.issuing_date ?? null,
+    number: invoice.number ?? '',
+    paymentStatus: invoice.payment_status ?? 'pending',
+    status: invoice.status ?? 'finalized',
+    totalCents: invoice.total_amount_cents ?? 0,
+  }
+}
 
 export const normalizeBillingStatus = (value: unknown): BillingStatus =>
   typeof value === 'string' && (BILLING_STATUSES as string[]).includes(value)

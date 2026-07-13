@@ -6,7 +6,7 @@ import type { Header } from '@/payload-types'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
 
-export const SiteHeader: React.FC<{ header: Header }> = ({ header }) => {
+export const SiteHeader: React.FC<{ header: Header; children?: React.ReactNode }> = ({ header, children }) => {
   const navItems = header?.navItems ?? []
   const cta = header?.cta
 
@@ -32,6 +32,7 @@ export const SiteHeader: React.FC<{ header: Header }> = ({ header }) => {
             </Button>
           ) : null}
           <ThemeToggle />
+          {children}
         </nav>
       </div>
     </header>

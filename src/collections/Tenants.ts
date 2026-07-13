@@ -2,6 +2,7 @@ import type { CollectionConfig, FieldAccess } from 'payload'
 
 import { isSuperAdmin, isSuperAdminAccess } from '@/access/isSuperAdmin'
 import { updateAndDeleteTenantAccess } from '@/access/tenants'
+import { readTenantsCollection } from '@/access/tenantScopedAccess'
 
 /**
  * Billing mirror fields are written exclusively by the billing backend
@@ -15,10 +16,18 @@ export const Tenants: CollectionConfig = {
   access: {
     create: isSuperAdminAccess,
     delete: updateAndDeleteTenantAccess,
-    read: ({ req }) => Boolean(req.user),
+    // Boolean(req.user) let ANY api-key read every tenant's registry + billing
+    // mirror (plan/status/entitlements). Scope api-key principals to their own
+    // tenant id; `users` stay `true` so the multi-tenant plugin scopes them.
+    read: readTenantsCollection,
     update: updateAndDeleteTenantAccess,
   },
   admin: {
+    // Tenant/plan management is platform-only. Data is already row-scoped by the
+    // multi-tenant plugin, but hide the collection from the customer nav so their
+    // panel shows only their own surfaces (they see plan/usage via the Billing view).
+    group: { en: 'Platform', ru: 'Платформа' },
+    hidden: ({ user }) => !isSuperAdmin(user),
     useAsTitle: 'name',
   },
   fields: [
@@ -106,6 +115,28 @@ export const Tenants: CollectionConfig = {
           name: 'syncedAt',
           type: 'date',
           label: { en: 'Last billing sync', ru: 'Последняя синхронизация' },
+        },
+        {
+          // Lago wallet UUID — created automatically on first top-up
+          name: 'walletId',
+          type: 'text',
+          access: { update: superAdminFieldAccess },
+          admin: { hidden: true },
+        },
+        {
+          // Mirrored from Lago wallet.ongoing_balance_cents via webhook
+          name: 'walletBalanceCents',
+          type: 'number',
+          defaultValue: 0,
+          access: { update: superAdminFieldAccess },
+          label: { en: 'Wallet balance (cents)', ru: 'Баланс кошелька (центы)' },
+        },
+        {
+          name: 'walletCurrency',
+          type: 'text',
+          defaultValue: 'USD',
+          access: { update: superAdminFieldAccess },
+          label: { en: 'Wallet currency', ru: 'Валюта кошелька' },
         },
       ],
     },
