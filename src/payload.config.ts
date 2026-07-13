@@ -66,6 +66,9 @@ const isCLI = process.argv.some((value) =>
   realpath(value)?.endsWith(path.join('payload', 'bin.js')),
 )
 const isProduction = process.env.NODE_ENV === 'production'
+// True inside `next build` (Next sets NEXT_PHASE in the build process and its
+// page-data/static workers inherit it via process.env).
+const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build'
 
 /**
  * Wraps openAIResolver so the OpenAI client is constructed at GENERATION
@@ -118,8 +121,30 @@ const cloudflareLogger = {
   silent: () => {},
 } as unknown as PayloadLogger // structural JSON logger; narrower than pino's full surface
 
-const cloudflare =
-  isCLI || !isProduction
+/**
+ * Inert stand-in for Cloudflare bindings during `next build`. A recursive
+ * no-op callable proxy survives any property access / call chain
+ * (`binding.prepare().bind().run()`), so adapters can hold a "binding"
+ * without a real runtime behind it. Nothing may actually USE a binding at
+ * build time — every route is force-dynamic — the stub only lets the config
+ * construct. This deliberately avoids getPlatformProxy on the build host:
+ * remote mode demands a wrangler login and local mode needs to spawn the
+ * workerd sandbox, and CI build containers reliably provide neither.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const buildStubBinding: any = new Proxy(function stub() {}, {
+  apply: () => buildStubBinding,
+  get: (_target, prop) =>
+    prop === Symbol.toPrimitive ? () => 'build-stub' : buildStubBinding,
+})
+
+const cloudflare = isBuildPhase
+  ? ({
+      cf: {},
+      ctx: { passThroughOnException: () => {}, waitUntil: () => {} },
+      env: new Proxy({}, { get: () => buildStubBinding }),
+    } as unknown as CloudflareContext)
+  : isCLI || !isProduction
     ? await getCloudflareContextFromWrangler()
     : await getCloudflareContext({ async: true })
 
@@ -254,26 +279,34 @@ export default buildConfig({
       { label: 'Deutsch', code: 'de' },
     ],
   },
-  secret: process.env.PAYLOAD_SECRET || '',
+  // The build phase never serves requests — a placeholder keeps `next build`
+  // independent of deploy-time secrets (runtime still requires the real one).
+  secret: process.env.PAYLOAD_SECRET || (isBuildPhase ? 'build-phase-placeholder' : ''),
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
   db: sqliteD1Adapter({ binding: cloudflare.env.D1 }),
   // Transactional email (password reset, email verification) via Cloudflare's
-  // native `send_email` Workers binding — no SMTP, no API token. Requires the
-  // sender domain to be onboarded for Cloudflare Email Sending (see
-  // wrangler.jsonc `send_email` binding comment) before this can send.
-  email: cloudflareEmailAdapter({
-    // wrangler's generated `SendEmail.send()` is overloaded (raw EmailMessage
-    // | declarative builder object); TS's structural check against the
-    // adapter's single-signature CloudflareEmailBinding fails on the first
-    // overload even though the adapter (verified in its dist/index.js) only
-    // ever calls .send() with the builder-object shape, which env.EMAIL
-    // supports natively. Safe, narrow cast — not `as any`.
-    binding: cloudflare.env.EMAIL as unknown as CloudflareEmailBinding,
-    defaultFromAddress: process.env.EMAIL_FROM_ADDRESS || 'noreply@REPLACE_WITH_YOUR_DOMAIN',
-    defaultFromName: process.env.EMAIL_FROM_NAME || 'AACSearch',
-  }),
+  // native `send_email` Workers binding — no SMTP, no API token. OPTIONAL:
+  // the binding only exists once the sender domain is onboarded and the
+  // send_email block in wrangler.jsonc is uncommented; without it Payload
+  // falls back to its default console-log email adapter (flows keep working,
+  // messages are logged instead of sent).
+  ...(cloudflare.env.EMAIL
+    ? {
+        email: cloudflareEmailAdapter({
+          // wrangler's generated `SendEmail.send()` is overloaded (raw
+          // EmailMessage | declarative builder object); TS's structural check
+          // against the adapter's single-signature CloudflareEmailBinding
+          // fails on the first overload even though the adapter (verified in
+          // its dist/index.js) only ever calls .send() with the builder-object
+          // shape, which env.EMAIL supports natively. Safe, narrow cast.
+          binding: cloudflare.env.EMAIL as unknown as CloudflareEmailBinding,
+          defaultFromAddress: process.env.EMAIL_FROM_ADDRESS || 'noreply@aacsearch.com',
+          defaultFromName: process.env.EMAIL_FROM_NAME || 'AACSearch',
+        }),
+      }
+    : {}),
   // Jobs (ingestion etc.) don't self-run on Workers: a Cloudflare Cron Trigger
   // or external cron must hit GET /api/payload-jobs/run with the Bearer secret.
   // Default access.run allows ANY logged-in user and jobs execute with
@@ -699,7 +732,9 @@ export default buildConfig({
 })
 
 // Adapted from https://github.com/opennextjs/opennextjs-cloudflare/blob/d00b3a13e42e65aad76fba41774815726422cc39/packages/cloudflare/src/api/cloudflare-context.ts#L328C36-L328C46
-function getCloudflareContextFromWrangler(): Promise<CloudflareContext> {
+function getCloudflareContextFromWrangler(
+  overrides?: Partial<GetPlatformProxyOptions>,
+): Promise<CloudflareContext> {
   return import(/* webpackIgnore: true */ `${'__wrangler'.replaceAll('_', '')}`).then(
     ({ getPlatformProxy }) =>
       getPlatformProxy({
@@ -710,6 +745,7 @@ function getCloudflareContextFromWrangler(): Promise<CloudflareContext> {
           ? { path: process.env.WRANGLER_PERSIST_PATH }
           : undefined,
         remoteBindings: isProduction,
+        ...overrides,
       } satisfies GetPlatformProxyOptions),
   )
 }
