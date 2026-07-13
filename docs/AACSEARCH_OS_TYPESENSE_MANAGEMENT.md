@@ -83,3 +83,15 @@ Schema: words string[] ("running→run", "swimming→swim")
 ---
 
 Typesense API v31 — Management APIs. Complete reference.
+
+
+---
+
+## 📚 Навигация по документации
+
+| [← TYPESENSE_COLLECTIONS_DOCS](./AACSEARCH_OS_TYPESENSE_COLLECTIONS_DOCS.md) | [🏠 Главная](./README.md) | [TYPESENSE_ADVANCED →](./AACSEARCH_OS_TYPESENSE_ADVANCED.md) |
+|:---:|:---:|:---:|
+
+> **Связанные документы:**
+> - [TYPESENSE V31](./AACSEARCH_OS_TYPESENSE_V31.md) — обзор всех возможностей Typesense
+> - [ENHANCED](./AACSEARCH_OS_ENHANCED.md) — InstantSearch виджеты и примеры

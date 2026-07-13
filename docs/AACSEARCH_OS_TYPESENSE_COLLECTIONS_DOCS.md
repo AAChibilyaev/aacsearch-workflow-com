@@ -232,3 +232,15 @@ Params: filter_by, include_fields, exclude_fields, flatten_embeddings. JSONL str
 ---
 
 Typesense API v31 — Collections & Documents. Complete reference.
+
+
+---
+
+## 📚 Навигация по документации
+
+| [← TYPESENSE_V31](./AACSEARCH_OS_TYPESENSE_V31.md) | [🏠 Главная](./README.md) | [TYPESENSE_MANAGEMENT →](./AACSEARCH_OS_TYPESENSE_MANAGEMENT.md) |
+|:---:|:---:|:---:|
+
+> **Связанные документы:**
+> - [TYPESENSE V31](./AACSEARCH_OS_TYPESENSE_V31.md) — обзор всех возможностей Typesense
+> - [ENHANCED](./AACSEARCH_OS_ENHANCED.md) — InstantSearch виджеты и примеры

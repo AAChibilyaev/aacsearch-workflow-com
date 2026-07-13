@@ -47,12 +47,15 @@
 |---|----------|----------|:---:|
 | 1 | [ARCHITECTURE](./AACSEARCH_OS_ARCHITECTURE.md) | Все | 15 мин |
 | 2 | [COMPLETE REFERENCE](./AACSEARCH_OS_COMPLETE_REFERENCE.md) | Разработчики | 45 мин |
-| 3 | [TYPESENSE V31](./AACSEARCH_OS_TYPESENSE_V31.md) | Разработчики | 35 мин |
-| 4 | [ENHANCED](./AACSEARCH_OS_ENHANCED.md) | Frontend-разработчики | 25 мин |
-| 5 | [ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) | Архитекторы | 25 мин |
-| 6 | [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) | Техлид / Архитектор | 35 мин |
-| 7 | [PRODUCTION](./AACSEARCH_OS_PRODUCTION.md) | DevOps / SRE | 25 мин |
-| 8 | [MASTER](./AACSEARCH_OS_MASTER.md) | Быстрый конспект | 10 мин |
+| 3 | [TYPESENSE V31](./AACSEARCH_OS_TYPESENSE_V31.md) | Все | 35 мин |
+| 4 | [TYPESENSE Collections & Docs](./AACSEARCH_OS_TYPESENSE_COLLECTIONS_DOCS.md) | Backend | 20 мин |
+| 5 | [TYPESENSE Management](./AACSEARCH_OS_TYPESENSE_MANAGEMENT.md) | Backend | 10 мин |
+| 6 | [TYPESENSE Advanced](./AACSEARCH_OS_TYPESENSE_ADVANCED.md) | Fullstack | 10 мин |
+| 7 | [ENHANCED](./AACSEARCH_OS_ENHANCED.md) | Frontend | 25 мин |
+| 8 | [ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) | Архитекторы | 25 мин |
+| 9 | [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) | Техлид | 35 мин |
+| 10 | [PRODUCTION](./AACSEARCH_OS_PRODUCTION.md) | DevOps/SRE | 25 мин |
+| 11 | [MASTER](./AACSEARCH_OS_MASTER.md) | Быстрый конспект | 10 мин |
 
 ## 📚 Описание документов
 
@@ -74,16 +77,37 @@
 
 > 📎 См. также: [TYPESENSE V31](./AACSEARCH_OS_TYPESENSE_V31.md) для полного Typesense API
 
-### 3. [TYPESENSE V31](./AACSEARCH_OS_TYPESENSE_V31.md) — Полный Typesense API
-**Все эндпоинты Typesense v31, все 80+ параметров, все AI-возможности.** 797 строк.
-- 24 категории возможностей
-- 15 типов API эндпоинтов (Collections, Documents, Synonyms, Curation, ...)
-- 80+ search параметров (базовые, AI, ранжирование, опечатки, группировка, ...)
-- 6 AI-возможностей: Semantic, Hybrid, RAG, NL Search, Image, Voice
-- Рекомендательная система (similar items, trending, personalization)
-- Полные примеры кода
+### 3. [TYPESENSE V31](./AACSEARCH_OS_TYPESENSE_V31.md) — Обзор Typesense API
+**Обзор всех возможностей Typesense v31: 24 категории, AI, примеры.** 797 строк.
+- 24 категории возможностей со статусом в AACSearch OS
+- Полные примеры кода (e-commerce, geo, semantic, RAG)
+- AI: Semantic, Hybrid, RAG, NL Search, Image, Voice
+- Рекомендации по внедрению
 
-> 📎 См. также: [ENHANCED](./AACSEARCH_OS_ENHANCED.md) для InstantSearch виджетов
+> 📎 Детальные справочники: [Collections & Docs](./AACSEARCH_OS_TYPESENSE_COLLECTIONS_DOCS.md), [Management](./AACSEARCH_OS_TYPESENSE_MANAGEMENT.md), [Advanced](./AACSEARCH_OS_TYPESENSE_ADVANCED.md)
+
+### 4. [TYPESENSE Collections & Docs](./AACSEARCH_OS_TYPESENSE_COLLECTIONS_DOCS.md) — Collections & Documents API
+**Каждый эндпоинт, каждое поле, каждый параметр.** 234 строки.
+- 14 типов полей с матрицей возможностей (поиск, фасет, сорт, инфикс, стем, эмбед)
+- 5 коллекционных + 9 документных эндпоинтов
+- **81 search параметр** в 11 категориях с типами, значениями по умолчанию и описанием
+- Import/Export, Update/Delete by Query
+
+### 5. [TYPESENSE Management](./AACSEARCH_OS_TYPESENSE_MANAGEMENT.md) — Управление
+**Synonyms, Curation, Keys, Presets, Stopwords, Stemming.** 85 строк.
+- 7 категорий, 34 эндпоинта
+- Synonym types: multi-way, one-way, locale, alternatives
+- Curation override: полная схема из 15 полей
+- API Keys: scoped key HMAC-алгоритм, все actions
+- Presets: 20+ настраиваемых параметров
+
+### 6. [TYPESENSE Advanced](./AACSEARCH_OS_TYPESENSE_ADVANCED.md) — Продвинутые возможности
+**Analytics, RAG, Multi-Search, System, Recommendations.** 71 строка.
+- 6 категорий, 32 эндпоинта
+- Analytics: правила (popular, nohits, counters) + события (search, click, conversion, visit)
+- RAG/Conversations: модели, история, интеграция в поиск
+- Recommendation system: 6 стратегий (similar items, content-based, collaborative, trending, auto-complete, personalized)
+- System: health, metrics, stats, snapshot, cache, compact
 **Каждый API-эндпоинт, каждая страница, каждый метод SDK.** 974 строки.
 - Все 50+ API эндпоинтов с методами и описанием
 - Все 12 Admin UI страниц с компонентами
@@ -93,7 +117,7 @@
 
 > 📎 См. также: [ENHANCED](./AACSEARCH_OS_ENHANCED.md) для InstantSearch виджетов
 
-### 4. [ENHANCED](./AACSEARCH_OS_ENHANCED.md) — Расширенные возможности
+### 7. [ENHANCED](./AACSEARCH_OS_ENHANCED.md) — Расширенные возможности
 **InstantSearch.js, Typesense Dashboard, showcase-приложения.** 559 строк.
 - 25+ InstantSearch виджетов с примерами кода
 - 3 уровня поискового UI (CDN Widget → InstantSearch → SDK)
@@ -102,7 +126,7 @@
 
 > 📎 См. также: [ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) для полной экосистемы Typesense
 
-### 5. [ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) — Экосистема Typesense
+### 8. [ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) — Экосистема Typesense
 **Все 50+ репозиториев Typesense на GitHub.** 514 строк.
 - DocSearch (5 фреймворков)
 - Showcase (15+ фреймворков)
@@ -112,7 +136,7 @@
 
 > 📎 См. также: [ENHANCED](./AACSEARCH_OS_ENHANCED.md) для практических примеров
 
-### 6. [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) — Архитектурный анализ
+### 9. [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) — Архитектурный анализ
 **Ограничения платформы и интеграций.** 748 строк.
 - Cloudflare Workers: bundle limit, no sharp, isolates, D1
 - Payload CMS: версионирование, build-time vs runtime, access control
@@ -123,7 +147,7 @@
 
 > 📎 См. также: [PRODUCTION](./AACSEARCH_OS_PRODUCTION.md) для практического деплоя
 
-### 7. [PRODUCTION](./AACSEARCH_OS_PRODUCTION.md) — Production-анализ
+### 10. [PRODUCTION](./AACSEARCH_OS_PRODUCTION.md) — Production-анализ
 **Практическое руководство по запуску.** 489 строк.
 - Матрица ВСЕХ 25+ env переменных с взаимозависимостями
 - CI/CD pipeline
@@ -134,7 +158,7 @@
 
 > 📎 См. также: [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) для теоретического обоснования
 
-### 8. [MASTER](./AACSEARCH_OS_MASTER.md) — Технический конспект
+### 11. [MASTER](./AACSEARCH_OS_MASTER.md) — Технический конспект
 **Сжатый конспект всего репозитория.** 194 строки.
 - Payload CMS internals
 - Access control 4-layer
@@ -156,6 +180,9 @@
 | **Коллекции** | [COMPLETE REFERENCE, Часть V](./AACSEARCH_OS_COMPLETE_REFERENCE.md) |
 | **Поисковые фичи** | [ENHANCED, Часть I](./AACSEARCH_OS_ENHANCED.md) |
 | **Typesense экосистема** | [ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) |
+| **Typesense Collections API** | [TYPESENSE_COLLECTIONS_DOCS](./AACSEARCH_OS_TYPESENSE_COLLECTIONS_DOCS.md) |
+| **Typesense Management API** | [TYPESENSE_MANAGEMENT](./AACSEARCH_OS_TYPESENSE_MANAGEMENT.md) |
+| **Typesense Advanced API** | [TYPESENSE_ADVANCED](./AACSEARCH_OS_TYPESENSE_ADVANCED.md) |
 | **Ограничения платформы** | [DEFINITIVE, Часть 0](./AACSEARCH_OS_DEFINITIVE.md) |
 | **Access Control** | [MASTER, Часть II](./AACSEARCH_OS_MASTER.md) или [DEFINITIVE, Часть I-3](./AACSEARCH_OS_DEFINITIVE.md) |
 | **Lago биллинг** | [DEFINITIVE, Часть III](./AACSEARCH_OS_DEFINITIVE.md) |

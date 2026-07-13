@@ -779,6 +779,20 @@ POST /api/v1/search
 
 ---
 
+
+
+---
+
+## 📖 Детальные справочники Typesense API
+
+Для полной справки по каждому эндпоинту смотрите отдельные документы:
+
+| Документ | Эндпоинтов | Параметров |
+|----------|:---:|:---:|
+| [Collections & Documents](./AACSEARCH_OS_TYPESENSE_COLLECTIONS_DOCS.md) | 14 | **81** search параметр |
+| [Management APIs](./AACSEARCH_OS_TYPESENSE_MANAGEMENT.md) | 34 | Все схемы (Synonyms, Curation, Keys, Presets) |
+| [Advanced Features](./AACSEARCH_OS_TYPESENSE_ADVANCED.md) | 32 | Analytics, RAG, Recommendations |
+
 ## 📚 Навигация по документации
 
 | [← Ultimate](./AACSEARCH_OS_ULTIMATE.md) | [🏠 Главная](./README.md) | [Architecture →](./AACSEARCH_OS_ARCHITECTURE.md) |

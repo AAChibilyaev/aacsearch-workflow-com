@@ -69,3 +69,15 @@ Schema: model_name, api_key, system_prompt, max_tokens
 ---
 
 Typesense API v31 — Advanced Features. Complete reference.
+
+
+---
+
+## 📚 Навигация по документации
+
+| [← TYPESENSE_MANAGEMENT](./AACSEARCH_OS_TYPESENSE_MANAGEMENT.md) | [🏠 Главная](./README.md) | [ENHANCED →](./AACSEARCH_OS_ENHANCED.md) |
+|:---:|:---:|:---:|
+
+> **Связанные документы:**
+> - [TYPESENSE V31](./AACSEARCH_OS_TYPESENSE_V31.md) — обзор всех возможностей Typesense
+> - [ENHANCED](./AACSEARCH_OS_ENHANCED.md) — InstantSearch виджеты и примеры
