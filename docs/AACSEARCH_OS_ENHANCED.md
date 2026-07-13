@@ -557,3 +557,15 @@ Analytics → Query Suggestions (автодополнение)
 возможностями (мульти-тенантность, биллинг, интеграции, white-label).
 
 *Built with Payload CMS 3.86 on Cloudflare Workers. MIT licensed.*
+
+
+---
+
+## 📚 Навигация по документации
+
+| [← Complete Reference](./AACSEARCH_OS_COMPLETE_REFERENCE.md) | [🏠 Главная](./README.md) | [Ultimate →](./AACSEARCH_OS_ULTIMATE.md) |
+|:---:|:---:|:---:|
+
+> **Связанные документы:**
+> - [ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) — полная экосистема Typesense (50+ репо)
+> - [COMPLETE REFERENCE](./AACSEARCH_OS_COMPLETE_REFERENCE.md) — все API эндпоинты

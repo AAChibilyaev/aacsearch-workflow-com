@@ -318,3 +318,16 @@ Typesense + Lago + Nango + Airbyte + Payload CMS.
 Лучше Algolia. Лучше CocoIndex. Open-source powered.
 
 *Built with Payload CMS 3.86 on Cloudflare Workers. MIT licensed.*
+
+
+---
+
+## 📚 Навигация по документации
+
+| ← | [🏠 Главная](./README.md) | [📖 Complete Reference →](./AACSEARCH_OS_COMPLETE_REFERENCE.md) |
+|:---:|:---:|:---:|
+
+> **Что дальше?** 
+> - [COMPLETE REFERENCE](./AACSEARCH_OS_COMPLETE_REFERENCE.md) — все API эндпоинты и страницы
+> - [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) — глубокий анализ ограничений платформы
+> - [PRODUCTION](./AACSEARCH_OS_PRODUCTION.md) — практическое руководство по деплою

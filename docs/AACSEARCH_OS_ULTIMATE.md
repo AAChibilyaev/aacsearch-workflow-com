@@ -512,3 +512,15 @@ LLM (через @ai-stack/payloadcms):
 50+ репозиториев, 25+ NPM пакетов, 15+ фреймворков, DocSearch, RAG, AI поиск.
 
 *Built with Payload CMS 3.86 on Cloudflare Workers. MIT licensed.*
+
+
+---
+
+## 📚 Навигация по документации
+
+| [← Enhanced](./AACSEARCH_OS_ENHANCED.md) | [🏠 Главная](./README.md) | [Definitive →](./AACSEARCH_OS_DEFINITIVE.md) |
+|:---:|:---:|:---:|
+
+> **Связанные документы:**
+> - [ENHANCED](./AACSEARCH_OS_ENHANCED.md) — практические примеры InstantSearch
+> - [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) — архитектурный анализ

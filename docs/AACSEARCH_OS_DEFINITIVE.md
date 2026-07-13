@@ -746,3 +746,16 @@ Cloudflare Workers, Payload CMS, Typesense, Lago, Nango и Airbyte.
 
 *Built on real production experience. 430+ source files, 42K+ lines of TypeScript.
 16 integration tests, 2 E2E tests. MIT licensed.*
+
+
+---
+
+## 📚 Навигация по документации
+
+| [← Architecture](./AACSEARCH_OS_ARCHITECTURE.md) | [🏠 Главная](./README.md) | [Production →](./AACSEARCH_OS_PRODUCTION.md) |
+|:---:|:---:|:---:|
+
+> **Связанные документы:**
+> - [MASTER](./AACSEARCH_OS_MASTER.md) — сжатый конспект (быстрый поиск)
+> - [PRODUCTION](./AACSEARCH_OS_PRODUCTION.md) — практическое руководство по деплою
+> - [COMPLETE REFERENCE](./AACSEARCH_OS_COMPLETE_REFERENCE.md) — все API и страницы

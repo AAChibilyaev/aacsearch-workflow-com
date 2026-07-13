@@ -192,3 +192,17 @@ nodejs_compat + global_fetch_strictly_public. D1: aacsearch-com-workflow. R2: aa
 ---
 
 **AACSearch OS** — полный технический разбор. 430+ файлов прочитано, 42K строк проанализировано.
+
+
+---
+
+## 📚 Навигация по документации
+
+| [← Production](./AACSEARCH_OS_PRODUCTION.md) | [🏠 Главная](./README.md) | |
+|:---:|:---:|:---:|
+
+> **Это конспект. Подробности в:**
+> - [ARCHITECTURE](./AACSEARCH_OS_ARCHITECTURE.md) — общая архитектура
+> - [COMPLETE REFERENCE](./AACSEARCH_OS_COMPLETE_REFERENCE.md) — все API и страницы
+> - [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) — все ограничения
+> - [PRODUCTION](./AACSEARCH_OS_PRODUCTION.md) — деплой и CI/CD

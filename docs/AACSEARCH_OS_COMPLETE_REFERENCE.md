@@ -972,3 +972,16 @@ media ────────► tenant ──► R2
 **AACSearch OS** — полная документация. Каждый метод, каждая страница, каждая коллекция.
 
 *Built with Payload CMS 3.86 on Cloudflare Workers. MIT licensed.*
+
+
+---
+
+## 📚 Навигация по документации
+
+| [← Architecture](./AACSEARCH_OS_ARCHITECTURE.md) | [🏠 Главная](./README.md) | [Enhanced →](./AACSEARCH_OS_ENHANCED.md) |
+|:---:|:---:|:---:|
+
+> **Связанные документы:**
+> - [ARCHITECTURE](./AACSEARCH_OS_ARCHITECTURE.md) — общий обзор системы
+> - [ENHANCED](./AACSEARCH_OS_ENHANCED.md) — поисковые фичи и виджеты
+> - [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) — ограничения и интеграции

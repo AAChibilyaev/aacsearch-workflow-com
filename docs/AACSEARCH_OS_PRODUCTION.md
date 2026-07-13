@@ -487,3 +487,16 @@ Nango Cloud: от $0/мес (бесплатный тир)
 **AACSearch OS** — готов к production. 749 строк глубинного анализа.
 
 *Built from real codebase study (430+ files, 42K+ LOC, 16 int tests, 2 E2E tests).*
+
+
+---
+
+## 📚 Навигация по документации
+
+| [← Definitive](./AACSEARCH_OS_DEFINITIVE.md) | [🏠 Главная](./README.md) | [Master →](./AACSEARCH_OS_MASTER.md) |
+|:---:|:---:|:---:|
+
+> **Связанные документы:**
+> - [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) — теоретическое обоснование ограничений
+> - [MASTER](./AACSEARCH_OS_MASTER.md) — сжатый конспект + production checklist
+> - [COMPLETE REFERENCE](./AACSEARCH_OS_COMPLETE_REFERENCE.md) — все API
