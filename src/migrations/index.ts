@@ -8,6 +8,7 @@ import * as migration_20260713_125137_search_os_core from './20260713_125137_sea
 import * as migration_20260713_141541_media_multitenant from './20260713_141541_media_multitenant';
 import * as migration_20260713_142500_wallet_invoices_search_fields from './20260713_142500_wallet_invoices_search_fields';
 import * as migration_20260713_143841_search_designer_capabilities from './20260713_143841_search_designer_capabilities';
+import * as migration_20260713_145957_faq_pricing_testimonials_comparator_blocks from './20260713_145957_faq_pricing_testimonials_comparator_blocks';
 
 export const migrations = [
   {
@@ -59,5 +60,10 @@ export const migrations = [
     up: migration_20260713_143841_search_designer_capabilities.up,
     down: migration_20260713_143841_search_designer_capabilities.down,
     name: '20260713_143841_search_designer_capabilities',
+  },
+  {
+    up: migration_20260713_145957_faq_pricing_testimonials_comparator_blocks.up,
+    down: migration_20260713_145957_faq_pricing_testimonials_comparator_blocks.down,
+    name: '20260713_145957_faq_pricing_testimonials_comparator_blocks'
   },
 ];

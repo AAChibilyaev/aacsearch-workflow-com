@@ -103,6 +103,29 @@ $aac->integrations->disconnect('conn-123');
 $aac->integrations->catalog('other-workspace');
 ```
 
+### Локализация (en / ru / de)
+
+API поддерживает 3 языка. Передавайте `locale` в опциях:
+
+```php
+// Получить русскую версию документа
+$aac->collections('pages')->documents->retrieve(1, ['locale' => 'ru']);
+
+// Создать с переводами
+$aac->collections('products')->documents->create([
+    'title' => 'Laptop',
+    'description' => 'High-performance laptop',
+    'locale' => 'en',
+]);
+$aac->collections('products')->documents->update(1, [
+    'title' => 'Ноутбук',
+    'description' => 'Высокопроизводительный ноутбук',
+], ['locale' => 'ru']);
+
+// Поиск по русскому контенту
+$aac->collections('products')->documents->search(['q' => 'ноутбук', 'query_by' => 'title,description']);
+```
+
 ### Биллинг
 
 ```php

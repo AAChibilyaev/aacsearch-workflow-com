@@ -45,10 +45,10 @@
 }
 
 html {
-  font-size: 18px;
-  line-height: 32px;
-
-  background: rgb(0, 0, 0);
+  /* Template leftovers removed: a hardcoded `background: rgb(0,0,0)` forced a
+   * black page in light mode, and `font-size: 18px` skewed every rem-based
+   * size. Colors come from the theme (body `@apply bg-background`); base size
+   * stays the browser default 16px so shadcn/Tailwind scales are correct. */
   -webkit-font-smoothing: antialiased;
 }
 
@@ -69,8 +69,14 @@ svg {
 }
 
 @theme inline {
+  /* Real font stack — the template left `--font-sans: var(--font-sans)` (self-
+   * referential → empty), so `@apply font-sans` fell back to the browser serif
+   * ("кривой шрифт"). A system sans-serif stack renders crisp everywhere with
+   * no webfont fetch. Swap for a next/font var (e.g. Inter) if a brand font is wanted. */
   --font-heading: var(--font-sans);
-  --font-sans: var(--font-sans);
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
   --radius-frame: 2rem;
   --radius-panel: 1.25rem;
   --tracking-eyebrow: 0.18em;

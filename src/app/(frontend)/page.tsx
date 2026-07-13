@@ -4,57 +4,71 @@ import React from 'react'
 
 import config from '@payload-config'
 import { RenderBlocks } from '@/blocks/RenderBlocks'
+import { getLocale, type Locale } from '@/lib/locale'
 
-const LOCALES = ['en', 'ru', 'de'] as const
-type Locale = (typeof LOCALES)[number]
+const LOCALE_LABELS: Record<string, Locale> = { en: 'en', ru: 'ru', de: 'de' }
 
-// Reads pages from D1 per-request — never prerender at build (unmigrated DB).
 export const dynamic = 'force-dynamic'
 
-/**
- * Marketing home page. Renders the `home`-slug Page's blocks when an editor has
- * created one; otherwise shows a minimal built-in hero so the site is never
- * blank. Edit content in the admin → Pages → slug "home".
- */
-export default async function HomePage(props: { searchParams: Promise<{ locale?: string }> }) {
-  const { locale } = await props.searchParams
-  const payload = await getPayload({ config })
+const HERO: Record<Locale, { heading: string; sub: string; cta1: string; cta2: string }> = {
+    en: {
+        heading: 'Search that understands your data',
+        sub: 'AACSearch is a multi-tenant search SaaS — typo-tolerant search, AI answers, and connectors, managed from one panel.',
+        cta1: 'Open admin',
+        cta2: 'API docs',
+    },
+    ru: {
+        heading: 'Поиск, который понимает ваши данные',
+        sub: 'AACSearch — SaaS для мультиарендного поиска: устойчивый к опечаткам поиск, AI-ответы и коннекторы — всё из одной панели.',
+        cta1: 'Админка',
+        cta2: 'API-документация',
+    },
+    de: {
+        heading: 'Suche, die Ihre Daten versteht',
+        sub: 'AACSearch ist eine mandantenfähige Such-SaaS — typo-tolerante Suche, KI-Antworten und Konnektoren, verwaltet von einer Oberfläche.',
+        cta1: 'Admin öffnen',
+        cta2: 'API-Dokumentation',
+    },
+}
 
-  const { docs } = await payload.find({
-    collection: 'pages',
-    where: { slug: { equals: 'home' } },
-    limit: 1,
-    locale: LOCALES.includes(locale as Locale) ? (locale as Locale) : 'en',
-  })
+export default async function HomePage() {
+    const locale = await getLocale()
+    const payload = await getPayload({ config })
 
-  const page = docs[0]
+    const { docs } = await payload.find({
+        collection: 'pages',
+        where: { slug: { equals: 'home' } },
+        limit: 1,
+        locale: locale as never,
+    })
 
-  if (page?.layout?.length) {
+    const page = docs[0]
+
+    if (page?.layout?.length) {
+        return (
+            <article className="py-16">
+                <RenderBlocks blocks={page.layout} />
+            </article>
+        )
+    }
+
+    const t = HERO[locale] || HERO.en
+
     return (
-      <article className="py-16">
-        <RenderBlocks blocks={page.layout} />
-      </article>
+        <section className="mx-auto max-w-3xl px-6 py-24 text-center">
+            <h1 className="text-4xl font-semibold tracking-tight">{t.heading}</h1>
+            <p className="mt-4 text-lg text-muted-foreground">{t.sub}</p>
+            <div className="mt-8 flex items-center justify-center gap-4">
+                <Link
+                    className="rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground"
+                    href="/admin"
+                >
+                    {t.cta1}
+                </Link>
+                <Link className="rounded-full border border-border px-5 py-2.5 text-sm font-medium" href="/api/docs">
+                    {t.cta2}
+                </Link>
+            </div>
+        </section>
     )
-  }
-
-  return (
-    <section className="mx-auto max-w-3xl px-6 py-24 text-center">
-      <h1 className="text-4xl font-semibold tracking-tight">Search that understands your data</h1>
-      <p className="mt-4 text-lg text-muted-foreground">
-        AACSearch is a multi-tenant search SaaS — typo-tolerant search, AI answers, and connectors,
-        managed from one panel.
-      </p>
-      <div className="mt-8 flex items-center justify-center gap-4">
-        <Link
-          className="rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground"
-          href="/admin"
-        >
-          Open admin
-        </Link>
-        <Link className="rounded-full border border-border px-5 py-2.5 text-sm font-medium" href="/api/docs">
-          API docs
-        </Link>
-      </div>
-    </section>
-  )
 }

@@ -40,6 +40,26 @@ import { TeamGridBlock } from '@/blocks/TeamGrid/Component'
 import { LogoCloudMarqueeBlock } from '@/blocks/LogoCloudMarquee/Component'
 import { IntegrationMarqueeBlock } from '@/blocks/IntegrationMarquee/Component'
 import { CallToActionSignupBlock } from '@/blocks/CallToActionSignup/Component'
+import { ComparatorGridBlock } from '@/blocks/ComparatorGrid/Component'
+import { ComparatorStackBlock } from '@/blocks/ComparatorStack/Component'
+import { ComparatorTableBlock } from '@/blocks/ComparatorTable/Component'
+import { FaqAccordionBlock } from '@/blocks/FaqAccordion/Component'
+import { FaqCardBlock } from '@/blocks/FaqCard/Component'
+import { FaqGridBlock } from '@/blocks/FaqGrid/Component'
+import { FaqGroupedBlock } from '@/blocks/FaqGrouped/Component'
+import { FaqIconsBlock } from '@/blocks/FaqIcons/Component'
+import { FaqSplitBlock } from '@/blocks/FaqSplit/Component'
+import { PricingCardsBlock } from '@/blocks/PricingCards/Component'
+import { PricingCardsCtaBlock } from '@/blocks/PricingCardsCta/Component'
+import { PricingCardsMutedBlock } from '@/blocks/PricingCardsMuted/Component'
+import { PricingEnterpriseBlock } from '@/blocks/PricingEnterprise/Component'
+import { PricingSplitBlock } from '@/blocks/PricingSplit/Component'
+import { TestimonialsBentoBlock } from '@/blocks/TestimonialsBento/Component'
+import { TestimonialsGridBlock } from '@/blocks/TestimonialsGrid/Component'
+import { TestimonialsQuoteBlock } from '@/blocks/TestimonialsQuote/Component'
+import { TestimonialsRatingBlock } from '@/blocks/TestimonialsRating/Component'
+import { TestimonialsSpotlightBlock } from '@/blocks/TestimonialsSpotlight/Component'
+import { TestimonialsWallBlock } from '@/blocks/TestimonialsWall/Component'
 const blockComponents = {
   heroBasic: HeroBasicBlock,
   featureGridBasic: FeatureGridBasicBlock,
@@ -79,6 +99,26 @@ const blockComponents = {
   logoCloudMarquee: LogoCloudMarqueeBlock,
   integrationMarquee: IntegrationMarqueeBlock,
   callToActionSignup: CallToActionSignupBlock,
+  comparatorGrid: ComparatorGridBlock,
+  comparatorStack: ComparatorStackBlock,
+  comparatorTable: ComparatorTableBlock,
+  faqAccordion: FaqAccordionBlock,
+  faqCard: FaqCardBlock,
+  faqGrid: FaqGridBlock,
+  faqGrouped: FaqGroupedBlock,
+  faqIcons: FaqIconsBlock,
+  faqSplit: FaqSplitBlock,
+  pricingCards: PricingCardsBlock,
+  pricingCardsCta: PricingCardsCtaBlock,
+  pricingCardsMuted: PricingCardsMutedBlock,
+  pricingEnterprise: PricingEnterpriseBlock,
+  pricingSplit: PricingSplitBlock,
+  testimonialsBento: TestimonialsBentoBlock,
+  testimonialsGrid: TestimonialsGridBlock,
+  testimonialsQuote: TestimonialsQuoteBlock,
+  testimonialsRating: TestimonialsRatingBlock,
+  testimonialsSpotlight: TestimonialsSpotlightBlock,
+  testimonialsWall: TestimonialsWallBlock,
 }
 
 export const RenderBlocks: React.FC<{

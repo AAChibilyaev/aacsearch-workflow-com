@@ -36,6 +36,10 @@ const CUSTOMER_ITEMS: NavItem[] = [
 // Super-admin only — platform surfaces with no sidebar entry.
 const PLATFORM_ITEMS: NavItem[] = [
   {
+    label: { de: 'Suchmaschine', en: 'Search engine', ru: 'Поисковый движок' },
+    path: '/engine',
+  },
+  {
     external: true,
     label: { de: 'API-Dokumente', en: 'API docs', ru: 'API-документация' },
     path: '/api/docs',

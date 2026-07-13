@@ -87,6 +87,51 @@ const RESERVED_COMMON_PARAMS = new Set([
   'x-typesense-user-id',
 ])
 
+/**
+ * Engine collections that are NOT tenant-relative (fixed platform schemas,
+ * tenant-isolated via a `tenant` facet instead of name-prefixing). Every other
+ * collection name a caller passes is a customer's own PART V slug (from
+ * `collection-definitions`) and must be translated to its physical, per-tenant
+ * engine name — customers only ever know their own friendly slug, never the
+ * internal `t<tenant>_<slug>` naming convention.
+ */
+const RESERVED_ENGINE_COLLECTIONS = new Set(['products'])
+
+/**
+ * Resolve a caller-supplied collection name to the physical engine collection.
+ * Idempotent (a name already carrying this tenant's prefix passes through
+ * unchanged), so it is safe to apply even if a caller already knows the
+ * physical name. Pure — exported for unit tests.
+ */
+export const resolveTenantCollectionName = (
+  tenant: number | string,
+  collection: string,
+): string => {
+  if (RESERVED_ENGINE_COLLECTIONS.has(collection)) return collection
+  if (collection.startsWith(`t${tenant}_`)) return collection
+  return engineCollectionName(tenant, collection)
+}
+
+/**
+ * Rewrite the `/collections/<name>/...` segment of a raw engine REST path to
+ * the physical, tenant-scoped collection name. Any other path is returned
+ * unchanged. Pure — exported for unit tests.
+ */
+export const resolveProxyCollectionPath = (enginePath: string, tenant: number | string): string =>
+  enginePath.replace(/^(\/collections\/)([^/?]+)/, (full, prefix: string, rawName: string) => {
+    let name = rawName
+    try {
+      name = decodeURIComponent(rawName)
+    } catch {
+      return full
+    }
+    return `${prefix}${encodeURIComponent(resolveTenantCollectionName(tenant, name))}`
+  })
+
+/** True for a path that is top-level collection lifecycle (schema create/alter/delete). */
+const isCollectionLifecyclePath = (enginePath: string): boolean =>
+  enginePath === '/collections' || /^\/collections\/[^/]+\/?$/.test(enginePath)
+
 /** Loose, cast-once view of the engine's heavily generic multiSearch.perform */
 type PerformMultiSearch = (
   requests: { searches: GatewaySearchEntry[]; union?: true },
@@ -171,6 +216,15 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
         return Response.json(GATEWAY_ERRORS.collectionRequired, { status: 400 })
       }
     }
+
+    // Callers only ever know their OWN collection slug (e.g. "products" the
+    // customer defined) — translate it to the physical, tenant-scoped engine
+    // collection now, before anything is forwarded upstream.
+    entries = entries.map((entry) =>
+      typeof entry.collection === 'string'
+        ? { ...entry, collection: resolveTenantCollectionName(tenant, entry.collection) }
+        : entry,
+    )
 
     // Common (request-level) params arrive as query params, SDK-style.
     const commonParams: Record<string, unknown> = {}
@@ -363,7 +417,7 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
           return Response.json(GATEWAY_ERRORS.invalidBody, { status: 400 })
         }
 
-        const enginePath = proxyBody.path.startsWith('/')
+        const rawEnginePath = proxyBody.path.startsWith('/')
           ? proxyBody.path
           : '/' + proxyBody.path
         const engineMethod = (typeof proxyBody.method === 'string'
@@ -383,6 +437,12 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
             ? String(proxyBody.tenant)
             : '')
 
+        // Callers only know their OWN collection slug — translate the
+        // `/collections/<slug>/...` segment to the physical engine collection
+        // once a tenant is known. Without a tenant (cluster-wide super-admin
+        // browsing) the path is left exactly as given.
+        const enginePath = tenant ? resolveProxyCollectionPath(rawEnginePath, tenant) : rawEnginePath
+
         // Write operations require tenant-scoped admin access
         const isWrite = ['post', 'put', 'patch', 'delete'].includes(engineMethod.toLowerCase())
 
@@ -395,6 +455,13 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
             }
             if (!hasScope(req.user, 'documents:write')) {
               return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
+            }
+            // Collection schema lifecycle (create/alter/drop) must go through
+            // the collection designer (collection-definitions), which injects
+            // the tenant/locale facets and validates the definition — never
+            // allow a customer to create/alter/drop a raw engine collection.
+            if (isCollectionLifecyclePath(enginePath)) {
+              return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
             }
           }
         }
@@ -410,9 +477,12 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
             if (!hasScope(req.user, 'search:read')) {
               return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
             }
-          }
-          // Non-search reads (collections, synonyms, etc.) require tenant access
-          if (tenant && !canAccessTenant(req.user, tenant)) {
+          } else if (!tenant || !canAccessTenant(req.user, tenant)) {
+            // Every other read (collection schema, synonyms, keys, cluster ops,
+            // ...) is CLUSTER-LEVEL by default. A missing tenant must DENY, not
+            // silently pass through — otherwise any authenticated tenant user
+            // could read platform-wide, cross-tenant state (e.g. every engine
+            // API key) simply by omitting `tenant` from the request.
             return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
           }
         }
@@ -534,6 +604,58 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
           req.payload.logger.error({ err, msg: 'search analytics read failed' })
           // best-effort: never surface an engine failure to the customer
           return Response.json(emptyAnalytics())
+        }
+      },
+    },
+    {
+      // Tenant's own searchable collections (the built-in "products" schema
+      // plus every customer-defined PART V collection), for populating a
+      // collection picker without the caller ever learning the physical,
+      // tenant-prefixed engine name.
+      path: '/search/collections',
+      method: 'get',
+      handler: async (req) => {
+        if (!req.user) return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+        if (!isApiKeyPrincipalValid(req.user)) {
+          return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+        }
+        const tenant = typeof req.query?.tenant === 'string' ? req.query.tenant : ''
+        if (!tenant) return Response.json(GATEWAY_ERRORS.tenantRequired, { status: 400 })
+        if (!canAccessTenant(req.user, tenant)) {
+          return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
+        }
+        if (!hasScope(req.user, 'search:read')) {
+          return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
+        }
+
+        try {
+          // Acting on behalf of the caller: user + overrideAccess:false — the
+          // explicit tenant filter is redundant with the collection's own
+          // access control but keeps this endpoint's result independent of
+          // the admin UI's `payload-tenant` cookie (the caller's own tenant
+          // dropdown may point at a different membership than the cookie).
+          const { docs } = await req.payload.find({
+            collection: 'collection-definitions',
+            depth: 0,
+            limit: 200,
+            overrideAccess: false,
+            sort: 'name',
+            user: req.user,
+            where: { tenant: { equals: tenant } },
+          })
+          const custom = docs
+            .map((doc) => ({
+              label: typeof doc.name === 'string' && doc.name ? doc.name : String(doc.slug ?? ''),
+              slug: typeof doc.slug === 'string' ? doc.slug : '',
+            }))
+            .filter((entry) => entry.slug.length > 0)
+
+          return Response.json({
+            collections: [{ label: 'Products', slug: 'products' }, ...custom],
+          })
+        } catch (err) {
+          req.payload.logger.error({ err, msg: 'tenant collections list failed' })
+          return Response.json({ collections: [{ label: 'Products', slug: 'products' }] })
         }
       },
     },

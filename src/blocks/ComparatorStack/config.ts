@@ -5,6 +5,7 @@ import { linkGroup } from '@/fields/linkGroup'
 
 export const ComparatorStack: Block = {
   slug: 'comparatorStack',
+  dbName: 'cmp_stack',
   interfaceName: 'ComparatorStackBlock',
   fields: [
     // Shared comparator header (title, description). Variant-specific fields

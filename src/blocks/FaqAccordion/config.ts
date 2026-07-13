@@ -5,6 +5,7 @@ import { linkGroup } from '@/fields/linkGroup'
 
 export const FaqAccordion: Block = {
   slug: 'faqAccordion',
+  dbName: 'faq_accordion',
   interfaceName: 'FaqAccordionBlock',
   fields: [
     // Shared FAQ core (eyebrow, title, description). Variant-specific fields

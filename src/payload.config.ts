@@ -97,6 +97,12 @@ export default buildConfig({
           meta: { title: 'Billing' },
           path: '/billing',
         },
+        engine: {
+          Component: '/components/views/Engine#EngineView',
+          exact: true,
+          meta: { title: 'Search engine' },
+          path: '/engine',
+        },
         integrations: {
           Component: '/components/views/Integrations#IntegrationsView',
           exact: true,
@@ -278,7 +284,11 @@ export default buildConfig({
       },
     }),
     importExportPlugin({
-      collections: [{ slug: 'pages' }],
+      // `documents` (tenant-scoped) gets bulk JSON/CSV import & export in the
+      // admin UI for free — each row still runs through the collection's own
+      // access control + validation/index hooks, so tenant isolation and the
+      // definition schema check both still apply on every imported row.
+      collections: [{ slug: 'pages' }, { slug: 'documents' }],
     }),
     mcpPlugin({
       collections: {

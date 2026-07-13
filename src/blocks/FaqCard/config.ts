@@ -5,6 +5,7 @@ import { linkGroup } from '@/fields/linkGroup'
 
 export const FaqCard: Block = {
   slug: 'faqCard',
+  dbName: 'faq_card',
   interfaceName: 'FaqCardBlock',
   fields: [
     // Shared FAQ core (eyebrow, title, description). Variant-specific fields

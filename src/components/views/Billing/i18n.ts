@@ -110,10 +110,13 @@ const dict = {
 export type BillingMessageKey = keyof typeof dict
 
 const isRu = (lang: string): boolean => lang.toLowerCase().startsWith('ru')
+const isDe = (lang: string): boolean => lang.toLowerCase().startsWith('de')
 
 export const t = (lang: string, key: BillingMessageKey): string => {
   const entry = dict[key]
-  return isRu(lang) ? entry.ru : entry.en
+  if (isRu(lang)) return entry.ru
+  if (isDe(lang) && 'de' in entry) return (entry as Record<string, string>).de
+  return entry.en
 }
 
 /** Billing interval suffix (needs the raw interval value, so not in the flat dict). */

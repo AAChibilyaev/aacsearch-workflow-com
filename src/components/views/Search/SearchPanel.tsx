@@ -51,8 +51,9 @@ type SearchState =
   | { kind: 'idle' }
   | { kind: 'loading' }
 
-/** Collections a customer can preview in the playground (engine collections). */
-const COLLECTION_OPTIONS = ['products', 'documents'] as const
+/** Shared endpoint contract: GET /api/search/collections?tenant=ID */
+export type CollectionOption = { label: string; slug: string }
+
 /** Fields we never surface as a hit "preview" line (internal / already shown). */
 const INTERNAL_HIT_FIELDS = new Set(['id', 'locale', 'sort', 'tenant', 'text', 'title'])
 
@@ -162,7 +163,10 @@ export const SearchPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpti
   const [keyState, setKeyState] = React.useState<KeyState>({ kind: 'loading' })
 
   // Playground inputs
-  const [collection, setCollection] = React.useState<string>(COLLECTION_OPTIONS[0])
+  const [collections, setCollections] = React.useState<CollectionOption[]>([
+    { label: 'Products', slug: 'products' },
+  ])
+  const [collection, setCollection] = React.useState<string>('products')
   const [queryBy, setQueryBy] = React.useState('title')
   const [query, setQuery] = React.useState('')
   const [searchState, setSearchState] = React.useState<SearchState>({ kind: 'idle' })
@@ -195,6 +199,30 @@ export const SearchPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpti
       cancelled = true
     }
   }, [apiURL, stamp, tenant])
+
+  // ── Collections (built-in + this tenant's own, by friendly slug) ───────────
+  React.useEffect(() => {
+    if (!tenant) return
+    let cancelled = false
+    const run = async () => {
+      try {
+        const url = `${apiURL('/search/collections')}?tenant=${encodeURIComponent(tenant)}`
+        const res = await fetch(url, { credentials: 'include' })
+        if (!res.ok) throw new Error(String(res.status))
+        const data = (await res.json()) as { collections?: CollectionOption[] }
+        const list = Array.isArray(data.collections) ? data.collections : []
+        if (cancelled || list.length === 0) return
+        setCollections(list)
+        setCollection((current) => (list.some((entry) => entry.slug === current) ? current : list[0].slug))
+      } catch {
+        // keep the built-in "products" fallback already in state
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [apiURL, tenant])
 
   // ── Scoped key bootstrap (integration helper) ──────────────────────────────
   React.useEffect(() => {
@@ -507,9 +535,9 @@ export const SearchPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpti
                 style={inputStyle}
                 value={collection}
               >
-                {COLLECTION_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
+                {collections.map((option) => (
+                  <option key={option.slug} value={option.slug}>
+                    {option.label}
                   </option>
                 ))}
               </select>

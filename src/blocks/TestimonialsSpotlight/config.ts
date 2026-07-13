@@ -4,6 +4,7 @@ import { testimonialItemFields } from '@/blocks/shared/testimonialFields'
 
 export const TestimonialsSpotlight: Block = {
   slug: 'testimonialsSpotlight',
+  dbName: 'tst_spot',
   interfaceName: 'TestimonialsSpotlightBlock',
   fields: [
     // A single centered testimonial — the shared one-quote shape (quote, author,

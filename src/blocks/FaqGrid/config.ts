@@ -4,6 +4,7 @@ import { faqFields, faqItemsField } from '@/blocks/shared/faqFields'
 
 export const FaqGrid: Block = {
   slug: 'faqGrid',
+  dbName: 'faq_grid',
   interfaceName: 'FaqGridBlock',
   fields: [
     // Shared FAQ core (eyebrow, title, description). Variant-specific fields
