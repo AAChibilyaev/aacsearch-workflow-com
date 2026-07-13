@@ -37,6 +37,210 @@ white-label границей:
 
 ---
 
+# Все плагины Payload (в порядке подключения в `payload.config.ts`)
+
+Все плагины подключаются ТОЛЬКО в массиве `plugins: []` (неизвестный
+верхнеуровневый ключ конфига с функцией сериализуется в клиент админки и
+роняет RSC — это уже ломало репозиторий).
+
+## Адаптеры (не в plugins, но часть конфига)
+
+| Пакет | Назначение |
+|---|---|
+| `@payloadcms/db-d1-sqlite` (`sqliteD1Adapter`) | Адаптер БД — Cloudflare D1 (SQLite). Биндинг берётся из Cloudflare-контекста (`getCloudflareContext` в рантайме, `getPlatformProxy` в dev/CLI) |
+| `@payloadcms/storage-r2` (`r2Storage`) | Хранение загрузок коллекции `media` в Cloudflare R2 |
+| `@payloadcms/richtext-lexical` (`lexicalEditor`) | Rich-text редактор (Lexical) |
+| `payload-cloudflare-email-adapter` | Отправка почты через Cloudflare Email Routing (биндинг `SEB`); письма приглашений/сброса пароля |
+| `@payloadcms/translations` (en/ru/de) | Переводы админки |
+
+## Официальные плагины `@payloadcms/*` (все версии 3.86.0)
+
+| Плагин | Настройка в проекте |
+|---|---|
+| `plugin-multi-tenant` | ЯДРО изоляции: скоупит `pages`, `products`, `documents`, `integrations`, `invoices`, `collection-definitions`, `golden-queries`, `api-keys`, `media`, `tenant-settings` (как «глобал» на тенант). Супер-админ обходит через `userHasAccessToAllTenants`; `cleanupAfterTenantDelete` подчищает данные удалённого тенанта |
+| `plugin-seo` | SEO-поля (title/description/preview) для `pages`, генерация URL, вкладка Tabbed UI |
+| `plugin-nested-docs` | Иерархия страниц (breadcrumbs, вложенные URL) |
+| `plugin-redirects` | Редиректы для `pages`; коллекция закрыта: управление — супер-админ, скрыта у кастомеров |
+| `plugin-search` | Поисковый индекс по `pages` (маркетинговый сайт, НЕ клиентский поиск); чтение и вкладка — только супер-админ |
+| `plugin-form-builder` | Конструктор форм для маркетингового сайта (поле payment отключено); коллекции `forms`/`form-submissions`: публика может читать формы и отправлять, управление и чтение сабмишенов — супер-админ, скрыты у кастомеров |
+| `plugin-import-export` | Массовый импорт/экспорт JSON/CSV для `documents` прямо из админки; каждая строка проходит через access-контроль и валидацию, изоляция сохраняется |
+| `plugin-mcp` | MCP-сервер поверх Payload (для AI-агентов); коллекция ключей `payload-mcp-api-keys` — только супер-админ, скрыта у остальных |
+| `plugin-stripe` | Карточные платежи + вебхуки. Ленивая загрузка, активируется только при `STRIPE_SECRET_KEY` |
+| `plugin-sentry` | Отчёты об ошибках в Sentry (`@sentry/nextjs`). Активируется при наличии Sentry DSN |
+| `plugin-ecommerce` | Установлен, но НАМЕРЕННО не подключён (заметка в конфиге — его коллекции не тенант-скоупятся из коробки) |
+
+## Сторонние (community) плагины
+
+| Плагин | Настройка в проекте |
+|---|---|
+| `payload-oapi` (`openapi` + `scalar`) | OpenAPI-спека `/api/openapi.json` + интерактивные доки `/api/docs` (Scalar UI) |
+| `payload-better-preview` | Улучшенное живое превью документов в админке |
+| `@veiag/payload-cmdk` | Командная палитра (Cmd+K) в админке |
+| `@elghaied/payload-plugin-notifications` | In-app уведомления в админке (тенант-скоуп, дефолты проверены на безопасность: create:false, только свои строки) |
+| `@jhb.software/payload-alt-text-plugin` | Обязательный alt-текст для `media` + кнопка AI-генерации (OpenAI resolver, нужен `OPENAI_API_KEY` и публичный `NEXT_PUBLIC_SERVER_URL`) |
+| `payload-auditor` | Аудит-лог всех операций (коллекция `Audit-log`): чтение — только супер-админ, скрыт у остальных, авто-очистка по расписанию |
+| `payload-totp` | Двухфакторная аутентификация (TOTP). Подключён ПОСЛЕДНИМ в списке — задокументированное требование плагина |
+| `@rubixstudios/payload-typesense` (`typesenseSearch`) | Синхронизация Payload-коллекций в поисковый движок. Ленивая загрузка, активируется только при `TYPESENSE_HOST`. Peer-требование: payload ≥3.86 |
+| `@ai-stack/payloadcms` (`payloadAiPlugin`) | AI-композиция контента в админке (Anthropic/OpenAI). Активируется при `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`; его коллекция `plugin-ai-instructions` регистрируется ТОЛЬКО при ключе — генерировать типы/миграции строго с ключом в env |
+
+## Наши SaaS-плагины (`src/plugins/`, описаны детально ниже)
+
+| Плагин | Одной строкой |
+|---|---|
+| `lagoPlugin` | White-label биллинг: `/api/billing/*`, подписанные вебхуки, зеркало на тенанте |
+| `nangoPlugin` | White-label интеграции: `/api/integrations/*`, connect/reconnect/sync, вебхуки |
+| `airbytePlugin` | Пайплайны данных: `/api/pipelines/*` (супер-админ), OAuth-токены, санитизация |
+| `searchGatewayPlugin` | Публичный шлюз поиска `/api/v1/*` + провижининг коллекций движка |
+| `searchScopedKeyPlugin` | Выдача scoped-ключей поиска для сессии админки |
+| `teamInvitePlugin` | Приглашения в команду тенанта |
+| `reindexJobsPlugin` | Запуск чанковой переиндексации (супер-админ) |
+| `localeAwareDocsPlugin` | OpenAPI-доки с учётом локали |
+| `entitlementsPlugin` (`src/lib/billing/entitlements.ts`) | Квоты тарифа: хуки лимитов (`max_*`, места в команде) на коллекции |
+
+---
+
+# package.json — все зависимости с пояснениями
+
+## Скрипты (корень)
+
+| Скрипт | Что делает |
+|---|---|
+| `dev` / `devsafe` | Dev-сервер Next.js (devsafe — с очисткой `.next`/`.open-next`) |
+| `build` | `build:widget` (сборка виджета + копия в `public/widget/`) → `next build` |
+| `deploy` | `deploy:database` (миграции удалённой D1 + `PRAGMA optimize`) → `deploy:app` (OpenNext build + deploy) |
+| `generate:types` | `wrangler types` (cloudflare-env.d.ts) + `payload generate:types` (payload-types.ts) |
+| `generate:importmap` | Перегенерация importMap admin-компонентов |
+| `payload` | Прямой вызов CLI Payload |
+| `test` / `test:int` / `test:e2e` | Все тесты / vitest / playwright |
+| `lint` | ESLint |
+| `ii` | `pnpm install --ignore-workspace` (установка только корня) |
+| `preview` | Локальный предпросмотр прод-сборки через OpenNext |
+
+## dependencies (корень)
+
+### Ядро Payload (всё строго 3.86.0)
+
+| Пакет | Назначение |
+|---|---|
+| `payload` | Ядро CMS |
+| `@payloadcms/next` | Интеграция с Next.js (админка, API-роуты) |
+| `@payloadcms/db-d1-sqlite` | Адаптер Cloudflare D1 |
+| `@payloadcms/storage-r2` | Адаптер Cloudflare R2 для загрузок |
+| `@payloadcms/richtext-lexical` | Rich-text редактор |
+| `@payloadcms/ui` | UI-компоненты админки (для кастомных view) |
+| `@payloadcms/translations` | Переводы админки (en/ru/de) |
+| `@payloadcms/live-preview-react` | Live-preview страниц на фронте |
+| `@payloadcms/sdk` | Типизированный REST-клиент Payload (используется в тестах) |
+| `@payloadcms/plugin-multi-tenant` | Мультитенантность (изоляция) |
+| `@payloadcms/plugin-seo` | SEO-поля |
+| `@payloadcms/plugin-nested-docs` | Иерархия документов |
+| `@payloadcms/plugin-redirects` | Редиректы |
+| `@payloadcms/plugin-search` | Поиск по страницам сайта |
+| `@payloadcms/plugin-form-builder` | Конструктор форм |
+| `@payloadcms/plugin-import-export` | Импорт/экспорт данных |
+| `@payloadcms/plugin-mcp` | MCP-сервер |
+| `@payloadcms/plugin-stripe` | Stripe-платежи (активация по env) |
+| `@payloadcms/plugin-sentry` | Sentry-репорты |
+| `@payloadcms/plugin-ecommerce` | Установлен, не подключён (см. выше) |
+
+### Вендорные SDK (белые адаптеры поверх них)
+
+| Пакет | Назначение |
+|---|---|
+| `lago-javascript-client` | Официальный клиент биллинга Lago (только внутри `src/lib/billing` / `src/plugins/lago.ts`) |
+| `@nangohq/node` | Официальный серверный SDK Nango (только внутри `src/plugins/nango.ts`) |
+| `@nangohq/frontend` | Официальный браузерный Connect SDK Nango (headless-подключение из панели) |
+| `typesense` | Официальный JS-клиент поискового движка (ТОЛЬКО серверные модули `src/lib/search/*`) |
+
+### Cloudflare / Next.js
+
+| Пакет | Назначение |
+|---|---|
+| `next` | Next.js 15 (App Router) |
+| `@opennextjs/cloudflare` | Сборка/деплой Next.js на Workers + `getCloudflareContext` |
+| `react`, `react-dom` | React 19 |
+| `@sentry/nextjs` | Клиент Sentry |
+| `graphql` | Peer-зависимость GraphQL API Payload |
+
+### Community-плагины Payload
+
+| Пакет | Назначение |
+|---|---|
+| `payload-oapi` | OpenAPI-спека + Scalar-доки |
+| `payload-better-preview` | Улучшенное превью |
+| `@veiag/payload-cmdk` | Командная палитра Cmd+K |
+| `@elghaied/payload-plugin-notifications` | Уведомления в админке |
+| `@jhb.software/payload-alt-text-plugin` | Alt-тексты с AI-генерацией |
+| `payload-auditor` | Аудит-лог |
+| `payload-totp` | Двухфакторка TOTP |
+| `payload-cloudflare-email-adapter` | Почта через Cloudflare Email Routing |
+| `@rubixstudios/payload-typesense` | Синхронизация коллекций в движок |
+| `@ai-stack/payloadcms` | AI-композиция контента |
+
+### UI-библиотеки (админ-views и маркетинговый сайт)
+
+| Пакет | Назначение |
+|---|---|
+| `radix-ui`, `@radix-ui/react-slot` | Примитивы Radix UI |
+| `shadcn` | Генератор компонентов shadcn/ui (стиль radix-nova, см. `components.json`) |
+| `class-variance-authority`, `clsx`, `tailwind-merge` | Утилиты классов (cva/cn) |
+| `lucide-react` | Иконки |
+| `motion` | Анимации (Framer Motion v12) |
+| `tw-animate-css` | Анимации Tailwind |
+
+### Прочее
+
+| Пакет | Назначение |
+|---|---|
+| `cross-env` | Кроссплатформенные env в npm-скриптах |
+| `dotenv` | Загрузка `.env` |
+
+## devDependencies (корень)
+
+| Пакет | Назначение |
+|---|---|
+| `typescript` | Компилятор TS |
+| `wrangler` | CLI Cloudflare (типы, D1, локальные биндинги miniflare) |
+| `vitest`, `@vitejs/plugin-react`, `vite-tsconfig-paths`, `jsdom`, `@testing-library/react` | Интеграционные тесты |
+| `@playwright/test` | E2E-тесты |
+| `eslint`, `eslint-config-next` | Линтер |
+| `prettier` | Форматирование |
+| `tailwindcss`, `@tailwindcss/postcss`, `postcss` | Стили |
+| `tsx` | Запуск TS-скриптов (нужен playwright-конфигу) |
+| `@types/node`, `@types/react`, `@types/react-dom` | Типы |
+
+## Служебные секции
+
+| Секция | Значение |
+|---|---|
+| `engines` | node ≥ 24.15, pnpm 9–11 |
+| `pnpm.onlyBuiltDependencies` | Разрешённые постинсталл-сборки: `sharp`, `esbuild`, `unrs-resolver` (правило pnpm 11; дополнительно `allowBuilds` в `pnpm-workspace.yaml`) |
+| `cloudflare.bindings` | Декларация секрета `PAYLOAD_SECRET` для деплой-кнопки Cloudflare |
+
+## package.json workspace-пакетов
+
+### `packages/aacsearch-ui` (`@aacsearch/ui`)
+
+Zero-config поисковый виджет для CDN. Сборка `tsup` → IIFE-бандл.
+**dependencies**: `typesense` (браузерный клиент 1.8 — ходит только на наш
+шлюз), `typesense-instantsearch-adapter` + `instantsearch.js` (движок
+UI-виджетов: searchbox, hits, фасеты, пагинация).
+**devDependencies**: `tsup`, `typescript`.
+
+### `packages/sdk` (`@aacsearch/sdk`)
+
+TypeScript/JS клиент нативного API AACSearch (v31), ESM+CJS, node ≥18.
+**dependencies**: `axios` (HTTP-слой). **devDependencies**: `tsup`,
+`typescript`, `vitest`.
+
+### `packages/sdk-php` (composer: `aacsearch/sdk`)
+
+PHP-клиент (PSR-4 `AACSearch\SDK\`), PHP ≥ 8.1.
+**require**: `guzzlehttp/guzzle` ^7 (HTTP-клиент), `ext-json`.
+**require-dev**: `phpunit/phpunit` ^10. Скрипты: `composer test`, `composer check`.
+
+---
+
 # Полная структура репозитория
 
 ## Корневые файлы
