@@ -41,21 +41,34 @@ import { getPrincipalCollection, getPrincipalTenantIDs } from '@/lib/principal'
  * signature-verified webhook), so reads never fan out to the vendor API.
  */
 export type NangoPluginOptions = {
+  /** Nango environment API key; preferred by @nangohq/node */
+  apiKey?: string
   /** self-hosted URL; omit for the cloud default */
   host?: string
+  /** @deprecated Use apiKey. Kept for older deployments/env names. */
   secretKey?: string
-  /** HMAC key for inbound webhook verification (falls back to secretKey) */
+  /** HMAC key for inbound webhook verification (required with apiKey; falls back to secretKey) */
   webhookSigningKey?: string
 }
 
 const getClient = async (opts: NangoPluginOptions) => {
   const { Nango } = await import('@nangohq/node')
+  if (opts.apiKey) {
+    return new Nango({
+      apiKey: opts.apiKey,
+      host: opts.host,
+      webhookSigningKey: opts.webhookSigningKey,
+    })
+  }
   return new Nango({
     host: opts.host,
     secretKey: opts.secretKey as string,
     webhookSigningKey: opts.webhookSigningKey,
   })
 }
+
+const hasNangoCredentials = (opts: NangoPluginOptions): boolean =>
+  Boolean(opts.apiKey || opts.secretKey)
 
 /**
  * Tenant guard for BOTH principal shapes: `users` (tenants membership array)
@@ -244,7 +257,30 @@ const handleAuthWebhook = async (
   })
 }
 
-/** `type: 'sync'` webhook — enqueue the drain and ack immediately. */
+const markIntegrationStatus = async (
+  req: PayloadRequest,
+  connectionId: string,
+  status: NonNullable<IntegrationDoc['status']>,
+): Promise<void> => {
+  const integrationsAPI = req.payload as unknown as IntegrationsLocalAPI
+  const existing = await integrationsAPI.find({
+    collection: 'integrations',
+    depth: 0,
+    limit: 1,
+    req,
+    where: { connectionId: { equals: connectionId } },
+  })
+  const doc = existing.docs[0]
+  if (!doc) return
+  await integrationsAPI.update({
+    collection: 'integrations',
+    data: { status },
+    id: doc.id,
+    req,
+  })
+}
+
+/** `type: 'sync'` webhook — mirror state, enqueue the drain and ack immediately. */
 const queueIngestion = async (
   req: PayloadRequest,
   body: NangoSyncWebhookBodySuccess,
@@ -254,6 +290,7 @@ const queueIngestion = async (
     model: body.model,
     providerConfigKey: body.providerConfigKey,
     syncName: body.syncName,
+    syncVariant: body.syncVariant,
   }
   // The task slug is typed against generated TypedJobs only after the
   // orchestrator regenerates payload-types — queue through a narrow signature.
@@ -523,8 +560,11 @@ const integrationEndpoints = (opts: NangoPluginOptions): Endpoint[] => [
       if (body.type === 'auth') {
         await handleAuthWebhook(req, opts, body)
       } else if (body.type === 'sync' && body.success) {
+        await markIntegrationStatus(req, body.connectionId, 'connected')
         // Heavy ingestion belongs to the jobs queue — ack fast
         await queueIngestion(req, body)
+      } else if (body.type === 'sync' && !body.success) {
+        await markIntegrationStatus(req, body.connectionId, 'error')
       }
 
       return Response.json({ received: true })
@@ -535,7 +575,7 @@ const integrationEndpoints = (opts: NangoPluginOptions): Endpoint[] => [
 export const nangoPlugin =
   (opts: NangoPluginOptions): Plugin =>
   (config: Config): Config => {
-    if (!opts.secretKey) return config
+    if (!hasNangoCredentials(opts)) return config
 
     return {
       ...config,
@@ -548,6 +588,7 @@ export const nangoPlugin =
           // orchestrator regenerates payload-types this structural task
           // narrows through the base TaskConfig shape.
           createIngestIntegrationRecordsTask({
+            apiKey: opts.apiKey,
             host: opts.host,
             secretKey: opts.secretKey,
           }) as unknown as TaskConfig,

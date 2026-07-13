@@ -22,6 +22,17 @@ export const getLagoClient = async (opts: LagoClientOptions) => {
   })
 }
 
+const canonicalize = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(canonicalize)
+  if (!value || typeof value !== 'object') return value
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+    const v = (value as Record<string, unknown>)[key]
+    if (v !== undefined) out[key] = canonicalize(v)
+  }
+  return out
+}
+
 /**
  * Deterministic transaction id: hash(tenant, metric code, properties, period).
  * Retries of the same usage event never double-bill — Lago dedupes on it.
@@ -32,7 +43,7 @@ export const deterministicTransactionId = async (
   properties: Record<string, unknown> | undefined,
   period: string,
 ): Promise<string> => {
-  const input = JSON.stringify([tenant, code, properties ?? {}, period])
+  const input = JSON.stringify([tenant, code, canonicalize(properties ?? {}), period])
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, '0'))

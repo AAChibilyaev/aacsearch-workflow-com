@@ -11,6 +11,7 @@ import * as migration_20260713_143841_search_designer_capabilities from './20260
 import * as migration_20260713_145957_faq_pricing_testimonials_comparator_blocks from './20260713_145957_faq_pricing_testimonials_comparator_blocks';
 import * as migration_20260713_154608_reindex_jobs from './20260713_154608_reindex_jobs';
 import * as migration_20260713_155649_golden_queries from './20260713_155649_golden_queries';
+import * as migration_20260713_162253_concurrency_control from './20260713_162253_concurrency_control';
 
 export const migrations = [
   {
@@ -76,6 +77,11 @@ export const migrations = [
   {
     up: migration_20260713_155649_golden_queries.up,
     down: migration_20260713_155649_golden_queries.down,
-    name: '20260713_155649_golden_queries'
+    name: '20260713_155649_golden_queries',
+  },
+  {
+    up: migration_20260713_162253_concurrency_control.up,
+    down: migration_20260713_162253_concurrency_control.down,
+    name: '20260713_162253_concurrency_control'
   },
 ];

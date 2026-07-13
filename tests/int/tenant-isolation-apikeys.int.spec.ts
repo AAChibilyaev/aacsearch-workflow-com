@@ -150,9 +150,13 @@ describe('enforceTenantWriteScope (cross-tenant write hard stop)', () => {
 // ---------------------------------------------------------------------------
 
 type ProductDoc = { id: number | string; tenant?: null | number | string | { id: number | string } }
+type DefinitionDoc = { id: number | string; tenant?: null | number | string | { id: number | string } }
+type DocumentDoc = { id: number | string; tenant?: null | number | string | { id: number | string } }
 type TenantScopedUser = { collection: 'api-keys'; id: string; tenant: number | string }
 
-const tenantIDOf = (value: ProductDoc['tenant']): null | number | string => {
+const tenantIDOf = (
+  value: DefinitionDoc['tenant'] | DocumentDoc['tenant'] | ProductDoc['tenant'],
+): null | number | string => {
   if (value === null || value === undefined) return null
   if (typeof value === 'object') return value.id
   return value
@@ -164,6 +168,9 @@ describe('api-key principals over the wired Local API', () => {
   let tenantB: Tenant
   let productA: ProductDoc
   let productB: ProductDoc
+  let definitionA: DefinitionDoc
+  let definitionB: DefinitionDoc
+  let documentA: DocumentDoc
   let keyA: TenantScopedUser
 
   const asUser = (u: TenantScopedUser) => u as unknown as Parameters<Payload['find']>[0]['user']
@@ -191,9 +198,41 @@ describe('api-key principals over the wired Local API', () => {
       collection: 'products',
       data: { title: 'B', slug: `${uid}-b`, tenant: tenantB.id },
     })) as ProductDoc
+    definitionA = (await payload.create({
+      collection: 'collection-definitions',
+      data: {
+        name: `Definition A ${uid}`,
+        slug: `${uid}-def-a`,
+        tenant: tenantA.id,
+        fields: [{ name: 'question', fieldType: 'text', required: true }],
+      },
+    })) as DefinitionDoc
+    definitionB = (await payload.create({
+      collection: 'collection-definitions',
+      data: {
+        name: `Definition B ${uid}`,
+        slug: `${uid}-def-b`,
+        tenant: tenantB.id,
+        fields: [{ name: 'question', fieldType: 'text', required: true }],
+      },
+    })) as DefinitionDoc
+    documentA = (await payload.create({
+      collection: 'documents',
+      data: {
+        title: `Doc A ${uid}`,
+        definition: definitionA.id,
+        tenant: tenantA.id,
+        data: { question: 'Tenant A question' },
+      },
+    })) as DocumentDoc
   })
 
   afterAll(async () => {
+    await payload.delete({ collection: 'documents', where: { title: { contains: uid } } })
+    await payload.delete({
+      collection: 'collection-definitions',
+      where: { slug: { contains: uid } },
+    })
     await payload.delete({ collection: 'products', where: { slug: { contains: uid } } })
     await payload.delete({ collection: 'tenants', where: { slug: { contains: uid } } })
   })
@@ -252,6 +291,49 @@ describe('api-key principals over the wired Local API', () => {
         user: asUser(keyA),
       }),
     ).rejects.toThrow(/forbidden/i)
+  })
+
+  it('documents: api-key A cannot create with tenant B definition', async () => {
+    await expect(
+      payload.create({
+        collection: 'documents',
+        data: {
+          title: `Cross definition ${uid}`,
+          definition: definitionB.id,
+          tenant: tenantA.id,
+          data: { question: 'Wrong definition' },
+        },
+        overrideAccess: false,
+        user: asUser(keyA),
+      }),
+    ).rejects.toThrow(/forbidden/i)
+  })
+
+  it('documents: api-key A cannot update its doc to tenant B definition without data changes', async () => {
+    await expect(
+      payload.update({
+        collection: 'documents',
+        id: documentA.id,
+        data: { definition: definitionB.id },
+        overrideAccess: false,
+        user: asUser(keyA),
+      }),
+    ).rejects.toThrow(/forbidden/i)
+  })
+
+  it('documents: api-key A can create with its own definition when using Local API user context', async () => {
+    const doc = (await payload.create({
+      collection: 'documents',
+      data: {
+        title: `Own definition ${uid}`,
+        definition: definitionA.id,
+        data: { question: 'Allowed definition' },
+      },
+      overrideAccess: false,
+      user: asUser(keyA),
+    })) as DocumentDoc
+
+    expect(String(tenantIDOf(doc.tenant))).toBe(String(tenantA.id))
   })
 
   it('tenants: api-key A reads only its own tenant record', async () => {

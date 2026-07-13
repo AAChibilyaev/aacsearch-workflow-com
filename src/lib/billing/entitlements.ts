@@ -194,24 +194,96 @@ const enforcePlanQuota =
   }
 
 /**
+ * Team-seat quota. `users` isn't in QUOTA_COLLECTIONS: it has no flat `tenant`
+ * field to count by (`enforcePlanQuota` can't cover it), and a membership is
+ * added via `create` (brand-new user) or `update` (existing platform user
+ * joining another tenant) rather than a single collection create. This hook
+ * instead diffs `data.tenants` against `originalDoc.tenants` to find the
+ * tenant ids being newly joined, and gates each one on `max_team_members`.
+ */
+const enforceTeamMemberQuota: CollectionBeforeChangeHook = async ({
+  data,
+  operation,
+  originalDoc,
+  req,
+}) => {
+  if (!data || (operation !== 'create' && operation !== 'update')) return data
+  if (!Array.isArray(data.tenants)) return data
+
+  const priorTenantIds = new Set(
+    (Array.isArray((originalDoc as { tenants?: unknown[] } | undefined)?.tenants)
+      ? (originalDoc as { tenants: Record<string, unknown>[] }).tenants
+      : []
+    )
+      .map(resolveTenantID)
+      .filter((id): id is number | string => id !== null)
+      .map(String),
+  )
+
+  const newTenantIds: (number | string)[] = []
+  const seenInThisWrite = new Set<string>()
+  for (const row of data.tenants as Record<string, unknown>[]) {
+    const tenantID = resolveTenantID(row)
+    if (tenantID === null) continue
+    const key = String(tenantID)
+    if (priorTenantIds.has(key) || seenInThisWrite.has(key)) continue
+    seenInThisWrite.add(key)
+    newTenantIds.push(tenantID)
+  }
+
+  for (const tenantID of newTenantIds) {
+    const entitlements = await getTenantEntitlements(req.payload, tenantID, req)
+    const limit = entitlements.max_team_members
+    if (typeof limit !== 'number') continue
+
+    const { totalDocs } = await req.payload.count({
+      collection: 'users',
+      req, // same transaction — sees pending writes, matches enforcePlanQuota
+      where: { 'tenants.tenant': { equals: tenantID } },
+    })
+
+    if (totalDocs >= limit) {
+      throw new APIError(
+        `Your current plan allows up to ${limit} team members. Upgrade your plan to add more.`,
+        403,
+        { code: 'PLAN_LIMIT', collection: 'team-members', limit },
+      )
+    }
+  }
+
+  return data
+}
+
+/**
  * Pure config transformer: appends the plan-quota hook to every capped
- * tenant collection present in the config. Always on — with no billing
- * mirror the hook is a no-op, so disabling billing never breaks writes.
+ * tenant collection present in the config, plus the team-seat quota on
+ * `users`. Always on — with no billing mirror the hooks are no-ops, so
+ * disabling billing never breaks writes.
  */
 export const entitlementsPlugin: Plugin = (config: Config): Config => ({
   ...config,
-  collections: (config.collections ?? []).map((collection) =>
-    (QUOTA_COLLECTIONS as readonly string[]).includes(collection.slug)
-      ? {
-          ...collection,
-          hooks: {
-            ...collection.hooks,
-            beforeChange: [
-              ...(collection.hooks?.beforeChange ?? []),
-              enforcePlanQuota(collection.slug),
-            ],
-          },
-        }
-      : collection,
-  ),
+  collections: (config.collections ?? []).map((collection) => {
+    if ((QUOTA_COLLECTIONS as readonly string[]).includes(collection.slug)) {
+      return {
+        ...collection,
+        hooks: {
+          ...collection.hooks,
+          beforeChange: [
+            ...(collection.hooks?.beforeChange ?? []),
+            enforcePlanQuota(collection.slug),
+          ],
+        },
+      }
+    }
+    if (collection.slug === 'users') {
+      return {
+        ...collection,
+        hooks: {
+          ...collection.hooks,
+          beforeChange: [...(collection.hooks?.beforeChange ?? []), enforceTeamMemberQuota],
+        },
+      }
+    }
+    return collection
+  }),
 })

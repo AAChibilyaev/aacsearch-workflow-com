@@ -12,7 +12,7 @@ import config from '@/payload.config'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import type { Tenant, User } from '@/payload-types'
+import type { Tenant } from '@/payload-types'
 
 import {
   flattenEntitlements,
@@ -30,6 +30,7 @@ import {
   getTenantEntitlements,
   requireFeature,
 } from '@/lib/billing/entitlements'
+import { deterministicTransactionId as usageTransactionId } from '@/lib/billing/usage'
 import { billingEndpoints, verifyBillingWebhook, WEBHOOK_MAX_AGE_SECONDS } from '@/plugins/lago'
 
 import type { Endpoint, PayloadRequest } from 'payload'
@@ -467,6 +468,28 @@ describe('billing webhook verification', () => {
     ).rejects.toThrow(/not configured/)
   })
 
+  it('accepts lowercase hex HMAC signatures from webhook providers', async () => {
+    const hmacKey = `test-hmac-hex-${uid}`
+    const key = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(hmacKey),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    )
+    const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(rawBody)))
+    const signature = Buffer.from(mac).toString('hex')
+
+    const payload = (await verifyBillingWebhook({
+      algorithm: 'hmac',
+      hmacKey,
+      issuer,
+      rawBody,
+      signature,
+    })) as { webhook_type?: string }
+    expect(payload.webhook_type).toBe('subscription.started')
+  })
+
   it('rejects an expired JWT (exp in the past)', async () => {
     const now = Date.now()
     const nowSec = Math.floor(now / 1000)
@@ -521,6 +544,25 @@ describe('billing webhook verification', () => {
       signature: token,
     })) as { webhook_type?: string }
     expect(payload.webhook_type).toBe('subscription.started')
+  })
+})
+
+describe('billing deterministic usage metering', () => {
+  it('derives the same transaction id for semantically identical properties', async () => {
+    const a = await usageTransactionId(
+      'tenant-1',
+      'search_requests',
+      { filters: { color: 'red', size: 'm' }, page: 1 },
+      '2026-07-13T10',
+    )
+    const b = await usageTransactionId(
+      'tenant-1',
+      'search_requests',
+      { page: 1, filters: { size: 'm', color: 'red' } },
+      '2026-07-13T10',
+    )
+
+    expect(a).toBe(b)
   })
 })
 
@@ -667,6 +709,119 @@ describe('billing endpoint auth guards', () => {
   })
 })
 
+describe('billing webhook endpoint effects', () => {
+  const hmacKey = `endpoint-hmac-${uid}`
+  const endpoints = billingEndpoints({ webhookHmacKey: hmacKey })
+  const webhook = endpoints.find((e) => e.path === '/billing/webhook')
+  if (!webhook) throw new Error('webhook endpoint not registered')
+
+  const loggerStub = { error: () => {}, info: () => {}, warn: () => {} }
+  const enc = new TextEncoder()
+
+  const signBody = async (rawBody: string): Promise<string> => {
+    const key = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(hmacKey),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    )
+    const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(rawBody)))
+    return Buffer.from(mac).toString('base64')
+  }
+
+  const callWebhook = async (
+    event: Record<string, unknown>,
+    payloadOverrides: Partial<PayloadRequest['payload']> = {},
+  ): Promise<{ res: Response; updates: Array<Record<string, unknown>> }> => {
+    const rawBody = JSON.stringify(event)
+    const updates: Array<Record<string, unknown>> = []
+    const req = {
+      headers: new Headers({
+        'X-Lago-Signature': await signBody(rawBody),
+        'X-Lago-Signature-Algorithm': 'hmac',
+      }),
+      payload: {
+        findByID: async () => ({
+          billing: {
+            entitlements: { ai_search: true },
+            plan: 'pro',
+            planName: 'Pro',
+            status: 'active',
+            trialEndsAt: null,
+          },
+          id: 1,
+        }),
+        logger: loggerStub,
+        update: async (args: Record<string, unknown>) => {
+          updates.push(args)
+          return { id: args.id }
+        },
+        ...payloadOverrides,
+      },
+      text: async () => rawBody,
+    } as unknown as PayloadRequest
+    const res = await (webhook.handler as (req: PayloadRequest) => Promise<Response>)(req)
+    return { res, updates }
+  }
+
+  it('uses system Local API options for subscription mirror updates', async () => {
+    const { res, updates } = await callWebhook({
+      subscription: {
+        external_customer_id: '1',
+        external_id: `sub-${uid}`,
+        plan: { name: 'Pro' },
+        plan_code: 'pro',
+        status: 'active',
+      },
+      webhook_type: 'subscription.updated',
+    })
+
+    expect(res.status).toBe(200)
+    expect(updates).toHaveLength(1)
+    expect(updates[0]).toMatchObject({
+      collection: 'tenants',
+      context: { billingWebhookSync: true },
+      id: 1,
+      overrideAccess: true,
+    })
+  })
+
+  it('preserves existing billing mirror fields when wallet webhooks update balance', async () => {
+    const { res, updates } = await callWebhook({
+      wallet_transaction: {
+        wallet: {
+          currency: 'EUR',
+          external_customer_id: '1',
+          lago_id: `wallet-${uid}`,
+          ongoing_balance_cents: 1234,
+        },
+      },
+      webhook_type: 'wallet_transaction.updated',
+    })
+
+    expect(res.status).toBe(200)
+    expect(updates).toHaveLength(1)
+    expect(updates[0]).toMatchObject({
+      collection: 'tenants',
+      context: { billingWebhookSync: true },
+      id: 1,
+      overrideAccess: true,
+    })
+    expect(updates[0].data).toMatchObject({
+      billing: {
+        entitlements: { ai_search: true },
+        plan: 'pro',
+        planName: 'Pro',
+        status: 'active',
+        walletBalanceCents: 1234,
+        walletCurrency: 'EUR',
+        walletId: `wallet-${uid}`,
+      },
+    })
+  })
+})
+
 // --------------------------------------------------------------------------
 // (c) Plan quota enforcement — entitlements mirror drives PLAN_LIMIT
 // --------------------------------------------------------------------------
@@ -674,7 +829,6 @@ describe('billing endpoint auth guards', () => {
 describe('plan quota enforcement', () => {
   let payload: Payload
   let tenant: Tenant
-  let user: User
 
   const email = `billing-user-${uid}@test.local`
   const password = 'test-password-123'
@@ -687,7 +841,7 @@ describe('plan quota enforcement', () => {
       data: { name: `Billing Tenant ${uid}`, slug: `billing-${uid}` },
     })
 
-    user = await payload.create({
+    await payload.create({
       collection: 'users',
       data: {
         email,

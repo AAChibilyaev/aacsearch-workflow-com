@@ -42,25 +42,56 @@ const validateDataAgainstDefinition: CollectionBeforeValidateHook<Document> = as
   if (req.context?.skipDocumentValidation === true) return data
   if (!data) return data
 
-  // Updates that don't touch the json payload don't need re-validation
-  if (operation === 'update' && !('data' in data)) return data
+  // Updates that touch neither the JSON payload nor the linked definition do
+  // not need re-validation.
+  if (operation === 'update' && !('data' in data) && !('definition' in data)) return data
 
   const definitionRef = data.definition ?? originalDoc?.definition
   if (definitionRef === undefined || definitionRef === null) return data
 
-  // Thread req: joins the current transaction. disableErrors: a missing/
-  // inaccessible definition falls through to Payload's own relationship
-  // validation instead of a hook-level 404.
+  const documentTenantRef = data.tenant ?? originalDoc?.tenant
+
+  // Thread req: joins the current transaction. When acting as a user/API-key,
+  // keep access enabled; Payload Local API defaults overrideAccess to true.
   const definition = await req.payload.findByID({
     id: extractID(definitionRef),
     collection: 'collection-definitions',
     depth: 0,
     disableErrors: true,
+    overrideAccess: !req.user,
     req,
+    user: req.user,
   })
-  if (!definition) return data
+  if (!definition) {
+    if (req.user) {
+      throw new APIError(
+        'Forbidden collection definition',
+        403,
+        { code: 'FORBIDDEN_COLLECTION_DEFINITION' },
+        true,
+      )
+    }
+    return data
+  }
 
-  const result = validateDocumentData(definition, data.data ?? {})
+  const definitionTenant = extractID(definition.tenant as never)
+  const documentTenant = extractID(documentTenantRef as never)
+  if (
+    definitionTenant !== undefined &&
+    definitionTenant !== null &&
+    documentTenant !== undefined &&
+    documentTenant !== null &&
+    String(definitionTenant) !== String(documentTenant)
+  ) {
+    throw new APIError(
+      'Forbidden collection definition',
+      403,
+      { code: 'FORBIDDEN_COLLECTION_DEFINITION' },
+      true,
+    )
+  }
+
+  const result = validateDocumentData(definition, data.data ?? originalDoc?.data ?? {})
   // `=== false` (not `!result.ok`): this repo compiles with strictNullChecks
   // off, where only equality checks narrow the discriminated union
   if (result.ok === false) {

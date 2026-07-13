@@ -1,5 +1,7 @@
 import type { Client, DocumentSchema, GenerateScopedSearchKeyParams } from 'typesense'
 
+import { createHmac, timingSafeEqual } from 'node:crypto'
+
 import { isSuperAdmin } from '@/access/isSuperAdmin'
 import { getPrincipalCollection } from '@/lib/principal'
 
@@ -116,6 +118,11 @@ export type ScopedKeyParams = ScopedKeyExtraParams & {
   synonym_sets: string[]
 }
 
+export type VerifiedScopedKey = {
+  params: ScopedKeyParams
+  tenant: string
+}
+
 /**
  * Pure builder for scoped-search-key params. The tenant filter is ALWAYS the
  * first clause of filter_by and cannot be overridden by any option — a scoped
@@ -155,6 +162,66 @@ export const buildScopedKeyParams = (
     filter_by: filterBy,
     limit_multi_searches: limit,
     synonym_sets: mergeTenantSynonymSets(tenant, opts.synonymSets),
+  }
+}
+
+const extractTenantFromFilter = (filterBy: string): null | string => {
+  const match = /^tenant:=([^&)\s]+)/.exec(filterBy.trim())
+  return match?.[1] ?? null
+}
+
+export const verifyScopedKeyParams = (
+  searchOnlyKey: string | undefined,
+  scopedKey: string | undefined,
+): null | VerifiedScopedKey => {
+  if (!searchOnlyKey || !scopedKey) return null
+  try {
+    const raw = Buffer.from(scopedKey, 'base64').toString('utf8')
+    const digest = raw.slice(0, 44)
+    const keyPrefix = raw.slice(44, 48)
+    const paramsJSON = raw.slice(48)
+    if (keyPrefix !== searchOnlyKey.slice(0, 4) || !paramsJSON) return null
+
+    const expected = createHmac('sha256', searchOnlyKey).update(paramsJSON).digest('base64')
+    const expectedBytes = Buffer.from(expected)
+    const actualBytes = Buffer.from(digest)
+    if (expectedBytes.length !== actualBytes.length || !timingSafeEqual(expectedBytes, actualBytes)) {
+      return null
+    }
+
+    const params = JSON.parse(paramsJSON) as Partial<ScopedKeyParams>
+    const synonymSets =
+      typeof params.synonym_sets === 'string'
+        ? [params.synonym_sets]
+        : Array.isArray(params.synonym_sets)
+          ? params.synonym_sets.filter((entry): entry is string => typeof entry === 'string')
+          : null
+
+    if (
+      typeof params.filter_by !== 'string' ||
+      typeof params.expires_at !== 'number' ||
+      typeof params.limit_multi_searches !== 'number' ||
+      !synonymSets
+    ) {
+      return null
+    }
+    if (params.expires_at <= Math.floor(Date.now() / 1000)) return null
+
+    const tenant = extractTenantFromFilter(params.filter_by)
+    if (!tenant) return null
+
+    return {
+      params: {
+        ...(params as ScopedKeyExtraParams),
+        expires_at: params.expires_at,
+        filter_by: params.filter_by,
+        limit_multi_searches: params.limit_multi_searches,
+        synonym_sets: synonymSets,
+      },
+      tenant,
+    }
+  } catch {
+    return null
   }
 }
 

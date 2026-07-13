@@ -88,6 +88,21 @@ const textEncoder = new TextEncoder()
 const base64ToBytes = (b64: string): Uint8Array<ArrayBuffer> =>
   Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)) as Uint8Array<ArrayBuffer>
 
+const hexToBytes = (hex: string): Uint8Array<ArrayBuffer> => {
+  if (!/^[\da-f]+$/i.test(hex) || hex.length % 2 !== 0) throw new Error('malformed signature')
+  const out = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < hex.length; i += 2) out[i / 2] = Number.parseInt(hex.slice(i, i + 2), 16)
+  return out as Uint8Array<ArrayBuffer>
+}
+
+const hmacSignatureToBytes = (signature: string): Uint8Array<ArrayBuffer> => {
+  const trimmed = signature.trim()
+  if (/^(?:sha256=)?[\da-f]{64}$/i.test(trimmed)) {
+    return hexToBytes(trimmed.replace(/^sha256=/i, ''))
+  }
+  return base64ToBytes(trimmed)
+}
+
 const base64urlToBytes = (s: string): Uint8Array<ArrayBuffer> =>
   base64ToBytes(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4))
 
@@ -148,7 +163,7 @@ export const verifyBillingWebhook = async (args: BillingWebhookVerifyArgs): Prom
     )
     let given: Uint8Array
     try {
-      given = base64ToBytes(signature)
+      given = hmacSignatureToBytes(signature)
     } catch {
       throw new Error('malformed signature')
     }
@@ -272,8 +287,8 @@ const markWebhookSeen = (key: string): boolean => {
 
 type BillingPatch = {
   entitlements?: EntitlementsRecord
-  plan?: string
-  planName?: string
+  plan?: null | string
+  planName?: null | string
   status: BillingStatus
   trialEndsAt?: null | string
 }
@@ -299,7 +314,7 @@ const updateTenantBilling = async (
   }
 
   const existing = await req.payload
-    .findByID({ id, collection: 'tenants', depth: 0, req })
+    .findByID({ id, collection: 'tenants', depth: 0, overrideAccess: true, req })
     .catch((): null => null)
   if (!existing) {
     req.payload.logger.warn({ id, event, msg: 'billing webhook: unknown tenant, skipping' })
@@ -313,7 +328,14 @@ const updateTenantBilling = async (
     collection: 'tenants',
     // Guards the tenants afterChange sync hook against a needless round-trip
     context: { billingWebhookSync: true },
-    data: { billing: { ...patch, syncedAt: new Date().toISOString() } },
+    data: {
+      billing: {
+        ...((existing as { billing?: TenantBillingMirror }).billing ?? {}),
+        ...patch,
+        syncedAt: new Date().toISOString(),
+      },
+    },
+    overrideAccess: true,
     req,
   })
   clearEntitlementsCache()
@@ -455,41 +477,60 @@ const mirrorInvoiceToCollection = async (req: PayloadRequest, invoiceRaw: unknow
 
 /** Shape of a Lago wallet object from webhooks. */
 type W = {
-    external_customer_id?: string | null
-    external_id?: string | null
-    lago_id?: string
-    ongoing_balance_cents?: number
-    ongoing_current_usage_balance_cents?: number
+  currency?: string | null
+  external_customer_id?: string | null
+  external_id?: string | null
+  lago_id?: string
+  balance_cents?: number
+  ongoing_balance_cents?: number
+  ongoing_current_usage_balance_cents?: number
+}
+
+type TenantBillingMirrorWithWallet = TenantBillingMirror & {
+  walletBalanceCents?: number
+  walletCurrency?: null | string
+  walletId?: null | string
 }
 
 /** Mirror Lago wallet balance to tenants.billing. Called by webhook handlers. */
 const mirrorWalletBalance = async (req: PayloadRequest, wallet: W): Promise<void> => {
-    const externalId = wallet.external_customer_id ?? wallet.external_id
-    if (!externalId) return
-    const id = Number(externalId)
-    if (!Number.isFinite(id)) return
+  const externalId = wallet.external_customer_id ?? wallet.external_id
+  if (!externalId) return
+  const id = Number(externalId)
+  if (!Number.isFinite(id)) return
 
-    const balance = typeof wallet.ongoing_balance_cents === 'number'
-        ? wallet.ongoing_balance_cents
+  const balance =
+    typeof wallet.ongoing_balance_cents === 'number'
+      ? wallet.ongoing_balance_cents
+      : typeof wallet.balance_cents === 'number'
+        ? wallet.balance_cents
         : 0
 
-    try {
-        await req.payload.update({
-            id,
-            collection: 'tenants',
-            context: { billingWebhookSync: true },
-            data: {
-                billing: {
-                    walletId: wallet.lago_id || undefined,
-                    walletBalanceCents: balance,
-                },
-            },
-            overrideAccess: true,
-            req,
-        })
-    } catch (err) {
-        req.payload.logger.error({ err, msg: 'wallet balance mirror update failed' })
-    }
+  try {
+    const existing = await req.payload
+      .findByID({ id, collection: 'tenants', depth: 0, overrideAccess: true, req })
+      .catch((): null => null)
+    const previousBilling =
+      (existing as { billing?: TenantBillingMirrorWithWallet } | null)?.billing ?? {}
+    await req.payload.update({
+      id,
+      collection: 'tenants',
+      context: { billingWebhookSync: true },
+      data: {
+        billing: {
+          ...previousBilling,
+          walletId: wallet.lago_id || undefined,
+          walletBalanceCents: balance,
+          walletCurrency: wallet.currency || previousBilling.walletCurrency || 'USD',
+          syncedAt: new Date().toISOString(),
+        },
+      },
+      overrideAccess: true,
+      req,
+    })
+  } catch (err) {
+    req.payload.logger.error({ err, msg: 'wallet balance mirror update failed' })
+  }
 }
 
 const applyBillingWebhook = async (
@@ -507,7 +548,7 @@ const applyBillingWebhook = async (
       await updateTenantBilling(
         req,
         sub.external_customer_id,
-        { status: 'canceled', trialEndsAt: null },
+        { entitlements: {}, plan: null, planName: null, status: 'canceled', trialEndsAt: null },
         type,
       )
     }
@@ -1030,7 +1071,7 @@ export const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
         await updateTenantBilling(
           req,
           String(tenant),
-          { entitlements: {}, status: 'canceled' },
+          { entitlements: {}, plan: null, planName: null, status: 'canceled', trialEndsAt: null },
           'cancel',
         ).catch((err) =>
           req.payload.logger.warn({ err, msg: 'cancel: optimistic mirror update failed' }),

@@ -32,6 +32,45 @@ security rules, anti-patterns, verification tests. Read it before non-trivial Pa
 - Cloudflare context comes from wrangler `getPlatformProxy` in dev/CLI;
   `WRANGLER_PERSIST_PATH` env isolates state (tests use `.wrangler/test-state/<worker>`)
 
+## AACSearch SaaS boundary
+
+- Customers use AACSearch UI, SDKs, admin views, and `/api/v1/*` only. Never expose
+  raw Typesense, Nango, Lago, Airbyte, or provider URLs/IDs in customer JSON, snippets,
+  SDK defaults, docs, or UI copy. Use DTO mappers/proxy endpoints for every vendor boundary.
+- TypeScript SDK default contract: base path `/api/v1`, auth header
+  `Authorization: api-keys API-Key <key>`, gateway-native endpoints direct
+  (`/multi_search`, `/keys/scoped`, `/analytics/events`, `/health`), engine-like
+  paths wrapped through `POST /api/v1/proxy { path, method, body }`.
+- Typesense is the hidden search engine. All tenant search must force the `tenant`
+  filter server-side; customer collection slugs are translated to physical names by
+  `resolveProxyCollectionPath` / `engineCollectionName`. Generic proxy writes for
+  non-super-admins stay documents-only; schema, aliases, keys, synonyms, curation,
+  analytics rules, AI models, and cluster ops are super-admin/platform surfaces.
+- Use the installed Typesense SDK only inside server-side engine modules. Do not put
+  `X-TYPESENSE-API-KEY`, engine hostnames, physical collection names, or admin keys in
+  browser code. Widget snippets must call the AACSearch UI global and same-origin host.
+- Nango integration uses official `@nangohq/node` and `@nangohq/frontend`; customers see
+  AACSearch connection DTOs and same-origin logo/auth flows only. Persist connection state
+  in our `integrations` collection via signature-verified webhooks; never return raw
+  `connect_link`, provider tokens, or vendor CDN URLs.
+- Airbyte has no official TypeScript SDK here; use its REST API only in
+  `src/plugins/airbyte.ts`. Pipeline management is platform/super-admin only. Tenant
+  ingestion must flow through integrations -> `ingestIntegrationRecords` -> Payload
+  documents/collection definitions -> Typesense sync -> Lago usage, not through direct
+  customer-visible Airbyte jobs.
+- Lago billing uses `lago-javascript-client` via `getLagoClient`. Customer billing
+  responses must pass through `@/lib/billing/dto`; invoice downloads use our proxy URL.
+  Verify webhook signatures, mirror only safe read-only state into `tenants.billing.*`,
+  and emit usage server-side with deterministic transaction IDs.
+- PayloadCMS v3 is the application/source-of-truth layer. Use Local API with `req`;
+  when acting for a user pass `user` and `overrideAccess: false`. Use `overrideAccess:
+  true` only for migrations, seeds, internal webhook/system writes, and test setup.
+  API-key principals (`collection === 'api-keys'`) need explicit tenant guards because
+  the multi-tenant plugin's user membership helpers do not apply to them.
+- KISS/DRY rule: share tenant guards, principal helpers, DTO mappers, engine-name
+  translation, and body parsing; do not create broad abstractions that mix billing,
+  integrations, indexing, and search. Each vendor boundary owns its small adapter.
+
 ## Hard-won gotchas (violating these has already broken this repo once)
 
 1. Plugins go in `plugins: []` ONLY. An unknown top-level config key holding a function

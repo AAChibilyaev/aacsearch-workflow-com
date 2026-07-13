@@ -4,10 +4,20 @@ const DEFAULT_CONNECTION_TIMEOUT_SECONDS = 10;
 const DEFAULT_HEALTHCHECK_INTERVAL_SECONDS = 15;
 const DEFAULT_NUM_RETRIES = 3;
 const DEFAULT_RETRY_INTERVAL_SECONDS = 1;
+const DEFAULT_API_BASE_PATH = '/api/v1';
+const DEFAULT_API_KEY_AUTH_COLLECTION = 'api-keys';
+
+const normalizeApiPath = (path: string): string => {
+  if (!path || path === '/') return '';
+  const prefixed = path.startsWith('/') ? path : `/${path}`;
+  return prefixed.endsWith('/') ? prefixed.slice(0, -1) : prefixed;
+};
 
 export default class Configuration {
   readonly apiKey: string;
   readonly nodes: Node[];
+  readonly apiKeyAuthCollection: string;
+  readonly useGatewayProxy: boolean;
   readonly nearestNode?: Node;
   readonly connectionTimeoutSeconds: number;
   readonly healthcheckIntervalSeconds: number;
@@ -27,11 +37,12 @@ export default class Configuration {
       throw new Error('AACSearch API key is required');
     }
 
+    const apiBasePath = normalizeApiPath(options.apiBasePath ?? DEFAULT_API_BASE_PATH);
     this.nodes = options.nodes.map((node) => ({
       ...node,
       protocol: node.protocol || 'https',
       port: node.port || 443,
-      path: node.path || '',
+      path: normalizeApiPath(node.path ?? apiBasePath),
     }));
     if (this.nodes.length === 0) {
       throw new Error('At least one AACSearch node is required');
@@ -45,6 +56,9 @@ export default class Configuration {
     this.numRetries = options.numRetries ?? DEFAULT_NUM_RETRIES;
     this.retryIntervalSeconds =
       options.retryIntervalSeconds ?? DEFAULT_RETRY_INTERVAL_SECONDS;
+    this.apiKeyAuthCollection =
+      options.apiKeyAuthCollection || DEFAULT_API_KEY_AUTH_COLLECTION;
+    this.useGatewayProxy = options.useGatewayProxy ?? true;
     this.sendApiKeyAsQueryParam = options.sendApiKeyAsQueryParam ?? false;
     this.cacheSearchResultsForSeconds = options.cacheSearchResultsForSeconds ?? 0;
     this.useServerSideSearchCache = options.useServerSideSearchCache ?? false;

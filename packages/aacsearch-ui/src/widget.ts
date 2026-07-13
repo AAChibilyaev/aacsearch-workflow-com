@@ -1,9 +1,20 @@
 const DEFAULT_HOST = 'api.aacsearch.ru'
+const GATEWAY_PATH = '/api/v1/scoped'
 
 function buildClient(cfg: AACSearchConfig) {
-    const host = (cfg.host || DEFAULT_HOST).replace(/^https?:\/\//, '')
-    const port = host.includes(':') ? Number(host.split(':')[1]) : 443
-    return { apiKey: cfg.scopedKey, nodes: [{ host: host.split(':')[0], port, protocol: 'https' as const }], connectionTimeoutSeconds: 10 }
+    const rawHost = cfg.host || DEFAULT_HOST
+    const url = new URL(rawHost.startsWith('http') ? rawHost : `https://${rawHost}`)
+    const port = url.port ? Number(url.port) : url.protocol === 'http:' ? 80 : 443
+    return {
+        apiKey: cfg.scopedKey,
+        connectionTimeoutSeconds: 10,
+        nodes: [{
+            host: url.hostname,
+            path: GATEWAY_PATH,
+            port,
+            protocol: url.protocol.replace(':', '') as 'http' | 'https',
+        }],
+    }
 }
 
 const CSS_ID = 'aacsearch-theme'
@@ -85,15 +96,16 @@ function injectTheme(cfg: AACSearchConfig): HTMLStyleElement {
     return styleEl
 }
 
-type EventMap = {
-    search: { query: string }
-    click: { hit: Record<string, unknown>; position: number }
-    error: { message: string }
-    ready: void
-}
-
 const fire = (el: HTMLElement, name: string, detail: unknown) => {
     el.dispatchEvent(new CustomEvent(`aacsearch:${name}`, { bubbles: true, detail }))
+}
+
+type QueryRoot = { querySelector: (selector: string) => Element | null }
+
+const getElement = <T extends HTMLElement = HTMLElement>(root: QueryRoot, selector: string): T => {
+    const node = root.querySelector(selector)
+    if (!(node instanceof HTMLElement)) throw new Error(`AACSearch: missing widget element ${selector}`)
+    return node as T
 }
 
 import type { AACSearchConfig, AACSearchWidget } from './types'
@@ -111,7 +123,7 @@ export async function search(
     const el = typeof container === 'string' ? document.querySelector(container) as HTMLElement : container
     if (!el) throw new Error(`AACSearch: container not found: ${String(container)}`)
 
-    const themeStyle = injectTheme(cfg)
+    injectTheme(cfg)
     const [ec, ac, ui] = await Promise.all([import('typesense'), import('typesense-instantsearch-adapter'), import('instantsearch.js')])
 
     const engine = new ec.default.Client(buildClient(cfg))
@@ -155,10 +167,10 @@ export async function search(
         </div>
     `
 
-    const root = el.querySelector('[data-aac-root]')!
-    const hitsContainer = root.querySelector('.aac-hits') as HTMLElement
-    const statsContainer = root.querySelector('.aac-stats') as HTMLElement
-    const facetsContainer = root.querySelector('.aac-facets')! as HTMLElement
+    const root = getElement(el, '[data-aac-root]')
+    const hitsContainer = getElement(root, '.aac-hits')
+    const statsContainer = getElement(root, '.aac-stats')
+    const facetsContainer = getElement(root, '.aac-facets')
 
     const widgetList: ReturnType<typeof widgets.searchBox>[] = []
 
@@ -183,41 +195,40 @@ export async function search(
     }))
 
     widgetList.push(widgets.searchBox({
-        container: root.querySelector('.aac-searchbox input') as HTMLInputElement,
+        container: getElement<HTMLInputElement>(root, '.aac-searchbox input'),
         placeholder: cfg.placeholder || 'Search...',
         showSubmit: false, showReset: true, showLoadingIndicator: true,
     }))
 
     // Autocomplete fallback — show overlay while typing
     if (cfg.autocomplete) {
-        const autoEl = root.querySelector('.aac-autocomplete') as HTMLElement
-        const emptyEl = root.querySelector('.aac-empty') as HTMLElement
+        const autoEl = getElement(root, '.aac-autocomplete')
+        const emptyEl = getElement(root, '.aac-empty')
         hitsContainer.style.display = 'none'
-        const orig = hitsContainer.cloneNode(true)
         autoEl.appendChild(hitsContainer)
         widgetList.push(widgets.hits({
             container: hitsContainer,
             templates: { item: cfg.renderHit || ((hit: Record<string, unknown>) =>
                 `<div class="aac-autocomplete-item aac-hit-title">${hit.title || hit.name || hit.id || ''}</div>`) },
         }))
-        const searchInput = root.querySelector('.aac-searchbox input') as HTMLInputElement
+        const searchInput = getElement<HTMLInputElement>(root, '.aac-searchbox input')
         searchInput.addEventListener('focus', () => { autoEl.hidden = false; emptyEl.hidden = true })
         searchInput.addEventListener('blur', () => setTimeout(() => { autoEl.hidden = true }, 200))
     }
 
     widgetList.push(widgets.stats({ container: statsContainer }))
-    widgetList.push(widgets.pagination({ container: root.querySelector('.aac-pages')!, showFirst: false, showLast: false, padding: 2 }))
+    widgetList.push(widgets.pagination({ container: getElement(root, '.aac-pages'), showFirst: false, showLast: false, padding: 2 }))
     widgetList.push(widgets.configure({ hitsPerPage: cfg.perPage || 20 }))
-    widgetList.push(widgets.currentRefinements({ container: root.querySelector('.aac-current')! }))
+    widgetList.push(widgets.currentRefinements({ container: getElement(root, '.aac-current') }))
     widgetList.push(widgets.clearRefinements({
-        container: root.querySelector('.aac-current')!,
+        container: getElement(root, '.aac-current'),
         templates: { resetLabel: '✕ Clear all' },
     }))
 
     // Sort
     if (cfg.sortOptions?.length) {
         widgetList.push(widgets.sortBy({
-            container: root.querySelector('.aac-sort')!,
+            container: getElement(root, '.aac-sort'),
             items: [
                 { label: 'Sort by', value: cfg.collection || 'default' },
                 ...cfg.sortOptions.map(o => ({ label: o.label, value: `${cfg.collection || 'default'}/sort/${o.value}` })),
@@ -228,7 +239,7 @@ export async function search(
     // Hits per page
     const pp = cfg.perPage || 20
     widgetList.push(widgets.hitsPerPage({
-        container: root.querySelector('.aac-perpage')!,
+        container: getElement(root, '.aac-perpage'),
         items: [
             { label: '10', value: 10, default: pp === 10 },
             { label: '20', value: 20, default: pp === 20 },
@@ -291,10 +302,11 @@ export async function search(
             container: w.lastElementChild! as HTMLElement, attribute: nm.attribute, items: nm.items,
         }))
     }
-    if (cfg.voiceSearch) widgetList.push(widgets.voiceSearch({ container: root.querySelector('.aac-searchbox')!, searchAsYouSpeak: true }))
+    if (cfg.voiceSearch) widgetList.push(widgets.voiceSearch({ container: getElement(root, '.aac-searchbox'), searchAsYouSpeak: true }))
     if (cfg.breadcrumb) {
         const w = document.createElement('div'); w.className = 'aac-breadcrumb'
-        ;(root.querySelector('.aac-layout')!.parentNode?.insertBefore(w, root.querySelector('.aac-layout')!.firstChild))
+        const layout = getElement(root, '.aac-layout')
+        layout.parentNode?.insertBefore(w, layout.firstChild)
         widgetList.push(widgets.breadcrumb({ container: w, attributes: cfg.breadcrumb.attributes, rootPath: cfg.breadcrumb.rootPath }))
     }
     if (cfg.queryRuleContexts) widgetList.push(widgets.queryRuleContext({ trackedFilters: { values: cfg.queryRuleContexts } }))

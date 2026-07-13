@@ -39,7 +39,7 @@ const widget = await search('#search', {
 | Параметр | Тип | По умолчанию | Описание |
 |----------|-----|-------------|----------|
 | `scopedKey` | string | **required** | Scoped API ключ (`GET /v1/keys/scoped`) |
-| `host` | string | `api.aacsearch.ru` | URL инстанса PayloadCMS |
+| `host` | string | `api.aacsearch.ru` | URL инстанса AACSearch |
 | `collection` | string | — | Коллекция для поиска |
 | `searchFields` | string | `title` | Поля для поиска (через запятую) |
 | `theme` | `light`/`dark`/`auto` | `light` | Тема |
@@ -52,7 +52,7 @@ const widget = await search('#search', {
 - **Pagination** — постраничная навигация
 - **Stats** — количество найденных
 
-Работает на AACSearch Engine через scoped API ключ.
+Работает через AACSearch scoped gateway (`/api/v1/scoped/*`) и scoped API ключ.
 Виджет **white-label** — никаких упоминаний сторонних сервисов в UI.
 
 ## API

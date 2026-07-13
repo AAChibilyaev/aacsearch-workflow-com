@@ -75,6 +75,7 @@ import { AiSearchView as AiSearchView_137f4c26e962ef8542c8d6826941dc59 } from '.
 import { BillingView as BillingView_e5ae7e3966f5465c4344dac4dd93dbf9 } from '../../../components/views/Billing'
 import { EngineView as EngineView_3e4c1795292b42b2063bc0fc36051845 } from '../../../components/views/Engine'
 import { IntegrationsView as IntegrationsView_9e1735bac833ebc9ae622ee38570363b } from '../../../components/views/Integrations'
+import { GoldenQueriesView as GoldenQueriesView_a70af4e2e09bdc41d2c3429e51eea6fe } from '../../../components/views/GoldenQueries'
 import { QuerySuggestionsView as QuerySuggestionsView_b76bf11f0016581aa3081571b6b18219 } from '../../../components/views/QuerySuggestions'
 import { RelevanceView as RelevanceView_1b935389e81c6be1c3f65ee70ceddf3c } from '../../../components/views/Relevance'
 import { SearchView as SearchView_835c202eebadc702ec7d12e425f24683 } from '../../../components/views/Search'
@@ -164,6 +165,7 @@ export const importMap = {
   "/components/views/Billing#BillingView": BillingView_e5ae7e3966f5465c4344dac4dd93dbf9,
   "/components/views/Engine#EngineView": EngineView_3e4c1795292b42b2063bc0fc36051845,
   "/components/views/Integrations#IntegrationsView": IntegrationsView_9e1735bac833ebc9ae622ee38570363b,
+  "/components/views/GoldenQueries#GoldenQueriesView": GoldenQueriesView_a70af4e2e09bdc41d2c3429e51eea6fe,
   "/components/views/QuerySuggestions#QuerySuggestionsView": QuerySuggestionsView_b76bf11f0016581aa3081571b6b18219,
   "/components/views/Relevance#RelevanceView": RelevanceView_1b935389e81c6be1c3f65ee70ceddf3c,
   "/components/views/Search#SearchView": SearchView_835c202eebadc702ec7d12e425f24683,

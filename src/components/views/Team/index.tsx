@@ -135,6 +135,7 @@ export async function TeamView({ initPageResult, params, searchParams }: AdminVi
       <Gutter>
         <h1 style={{ marginBottom: 'calc(var(--base, 20px) * 0.75)' }}>{t(lang, 'title')}</h1>
         <TeamPanel
+          currentUserId={String(user.id)}
           initialTenantId={initialTenantId}
           lang={lang}
           members={members}

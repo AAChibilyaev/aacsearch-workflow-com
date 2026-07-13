@@ -1,6 +1,6 @@
 'use client'
 
-import { useConfig } from '@payloadcms/ui'
+import { Button, SelectInput, useConfig } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
 import React from 'react'
 
@@ -25,10 +25,23 @@ type AnalyticsResponse = {
   updatedAt?: null | string
 }
 
+/** White-label response shape of GET /api/search/conversions?tenant=ID. */
+type ConversionResponse = {
+  clicks?: null | number
+  conversions?: null | number
+  updatedAt?: null | string
+}
+
 /** Latest load, stamped with the request it belongs to — loading is derived
  * (stamp mismatch) rather than reset in the effect. */
 type LoadResult =
   | { data: AnalyticsResponse; kind: 'ready'; stamp: string }
+  | { kind: 'error'; stamp: string }
+
+/** Conversions load result, stamped independently — it must never block the
+ * (higher-value) query analytics above it from rendering. */
+type ConversionLoadResult =
+  | { data: ConversionResponse; kind: 'ready'; stamp: string }
   | { kind: 'error'; stamp: string }
 
 // ---------------------------------------------------------------------------
@@ -46,24 +59,6 @@ const mutedStyle: React.CSSProperties = { color: 'var(--theme-elevation-600, #6b
 
 const sectionHeadingStyle: React.CSSProperties = { margin: '0 0 0.6rem' }
 
-const inputStyle: React.CSSProperties = {
-  background: 'var(--theme-input-bg, var(--theme-elevation-0, #fff))',
-  border: '1px solid var(--theme-elevation-150, #ccc)',
-  borderRadius: 4,
-  color: 'var(--theme-text, inherit)',
-  padding: '0.45rem 0.6rem',
-}
-
-const neutralButtonStyle: React.CSSProperties = {
-  background: 'var(--theme-elevation-100, #ededed)',
-  border: '1px solid var(--theme-elevation-150, #ccc)',
-  borderRadius: 4,
-  color: 'var(--theme-text, inherit)',
-  cursor: 'pointer',
-  fontSize: '0.85rem',
-  padding: '0.4rem 0.9rem',
-}
-
 const thStyle: React.CSSProperties = {
   ...mutedStyle,
   borderBottom: '1px solid var(--theme-elevation-100, #e3e3e3)',
@@ -77,6 +72,14 @@ const columnStackStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 'calc(var(--base, 20px) * 0.75)',
+}
+
+const selectedValue = (value: unknown): string => {
+  const opt = Array.isArray(value) ? value[0] : value
+  if (opt && typeof opt === 'object' && 'value' in opt) {
+    return String((opt as { value: unknown }).value)
+  }
+  return typeof opt === 'string' ? opt : ''
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +205,7 @@ export const AnalyticsPanel: React.FC<Props> = ({ initialTenantId, lang, tenantO
   const [tenant, setTenant] = React.useState<null | string>(initialTenantId)
   const [reloadKey, setReloadKey] = React.useState(0)
   const [result, setResult] = React.useState<LoadResult | null>(null)
+  const [conversionResult, setConversionResult] = React.useState<ConversionLoadResult | null>(null)
 
   const stamp = `${tenant}:${reloadKey}`
 
@@ -226,6 +230,30 @@ export const AnalyticsPanel: React.FC<Props> = ({ initialTenantId, lang, tenantO
     }
   }, [apiRoute, stamp, tenant])
 
+  // Conversion analytics (clicks/conversions fed by POST /v1/analytics/events)
+  // — a separate endpoint from /search/analytics, loaded independently so a
+  // conversions outage never blocks the query-analytics tiles/tables above.
+  React.useEffect(() => {
+    if (!tenant) return
+    let cancelled = false
+
+    const run = async (): Promise<void> => {
+      const url = `${formatAdminURL({ apiRoute, path: '/search/conversions' })}?tenant=${encodeURIComponent(tenant)}`
+      const data = await loadJson<ConversionResponse>(url)
+      if (cancelled) return
+      if (data === null) {
+        setConversionResult({ kind: 'error', stamp })
+        return
+      }
+      setConversionResult({ data, kind: 'ready', stamp })
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [apiRoute, stamp, tenant])
+
   const refresh = React.useCallback(() => setReloadKey((key) => key + 1), [])
 
   if (!tenant) {
@@ -238,21 +266,19 @@ export const AnalyticsPanel: React.FC<Props> = ({ initialTenantId, lang, tenantO
 
   const tenantSelect =
     tenantOptions.length > 1 ? (
-      <div style={{ marginBottom: 'calc(var(--base, 20px) * 0.75)' }}>
-        <label style={{ ...mutedStyle, display: 'block', fontSize: '0.85rem', marginBottom: 4 }}>
-          {t(lang, 'workspace')}
-        </label>
-        <select
-          onChange={(event) => setTenant(event.target.value)}
-          style={{ ...inputStyle, maxWidth: 320, width: '100%' }}
+      <div style={{ marginBottom: 'calc(var(--base, 20px) * 0.75)', maxWidth: 320 }}>
+        <SelectInput
+          isClearable={false}
+          label={t(lang, 'workspace')}
+          name="workspace"
+          onChange={(value) => {
+            const next = selectedValue(value)
+            if (next) setTenant(next)
+          }}
+          options={tenantOptions.map((option) => ({ label: option.label, value: option.id }))}
+          path="workspace"
           value={tenant}
-        >
-          {tenantOptions.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        />
       </div>
     ) : null
 
@@ -276,9 +302,9 @@ export const AnalyticsPanel: React.FC<Props> = ({ initialTenantId, lang, tenantO
         <div style={cardStyle}>
           <h3 style={{ margin: '0 0 0.35rem' }}>{t(lang, 'errorTitle')}</h3>
           <p style={{ ...mutedStyle, margin: '0 0 0.75rem' }}>{t(lang, 'errorHint')}</p>
-          <button onClick={refresh} style={neutralButtonStyle} type="button">
+          <Button buttonStyle="secondary" onClick={refresh} type="button">
             {t(lang, 'retry')}
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -290,6 +316,13 @@ export const AnalyticsPanel: React.FC<Props> = ({ initialTenantId, lang, tenantO
   const totalSearches = typeof data.totalSearches === 'number' ? data.totalSearches : 0
   const updatedAt = data.updatedAt ?? null
 
+  const conversionsReady =
+    conversionResult !== null && conversionResult.stamp === stamp && conversionResult.kind === 'ready'
+      ? conversionResult.data
+      : null
+  const clicks = typeof conversionsReady?.clicks === 'number' ? conversionsReady.clicks : 0
+  const conversions = typeof conversionsReady?.conversions === 'number' ? conversionsReady.conversions : 0
+
   return (
     <div>
       {tenantSelect}
@@ -298,6 +331,12 @@ export const AnalyticsPanel: React.FC<Props> = ({ initialTenantId, lang, tenantO
           <Tile label={t(lang, 'totalSearches')} value={formatNumber(lang, totalSearches)} />
           <Tile label={t(lang, 'distinctQueries')} value={formatNumber(lang, popularQueries.length)} />
           <Tile label={t(lang, 'zeroResults')} value={formatNumber(lang, noHitsQueries.length)} />
+          {conversionsReady !== null && (
+            <>
+              <Tile label={t(lang, 'clicksLabel')} value={formatNumber(lang, clicks)} />
+              <Tile label={t(lang, 'conversionsLabel')} value={formatNumber(lang, conversions)} />
+            </>
+          )}
         </div>
 
         {updatedAt !== null && (

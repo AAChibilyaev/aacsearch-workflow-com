@@ -40,6 +40,7 @@ import { entitlementsPlugin } from './lib/billing/entitlements'
 import { ApiKeys } from './collections/ApiKeys'
 import { Integrations } from './collections/Integrations'
 import { CollectionDefinitions } from './collections/CollectionDefinitions'
+import { GoldenQueries } from './collections/GoldenQueries'
 import { ReindexJobs } from './collections/ReindexJobs'
 import { TenantSettings } from './collections/TenantSettings'
 import { Users } from './collections/Users'
@@ -191,6 +192,7 @@ export default buildConfig({
     Integrations,
     Invoices,
     CollectionDefinitions,
+    GoldenQueries,
     ReindexJobs,
     TenantSettings,
     ApiKeys,
@@ -240,6 +242,11 @@ export default buildConfig({
   // Default access.run allows ANY logged-in user and jobs execute with
   // overrideAccess internally — restrict to super-admin + CRON_SECRET.
   jobs: {
+    // The reindex task keys `concurrency` on its jobId to serialize a job's own
+    // self-chained chunks (see createReindexCollectionTask); Payload requires
+    // this flag to be on before any task may declare concurrency controls. It
+    // adds one indexed field to the payload-jobs collection.
+    enableConcurrencyControl: true,
     access: {
       run: async ({ req }) => {
         if (isSuperAdmin(req.user)) return true
@@ -292,6 +299,8 @@ export default buildConfig({
         // read-only invoice projection — system-managed by billing webhooks
         invoices: {},
         'collection-definitions': {},
+        // tenant-pinned search regression cases (Search OS golden queries)
+        'golden-queries': {},
         // tenant service API keys — scoped so a tenant-admin manages only their own
         'api-keys': {},
         // uploads are tenant-scoped so customers never see each other's media
@@ -398,6 +407,7 @@ export default buildConfig({
     entitlementsPlugin,
     // Per-tenant third-party integrations (OAuth) via Nango
     nangoPlugin({
+      apiKey: process.env.NANGO_API_KEY,
       host: process.env.NANGO_HOST,
       secretKey: process.env.NANGO_SECRET_KEY,
       webhookSigningKey: process.env.NANGO_WEBHOOK_KEY,

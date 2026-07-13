@@ -1,22 +1,14 @@
 'use client'
 
-import { useConfig } from '@payloadcms/ui'
+import {
+  Button as PayloadButton,
+  Pill,
+  TextareaInput,
+  TextInput,
+  useConfig,
+} from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
 import React from 'react'
-
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { t, type ProxyResult } from './shared'
 
@@ -55,6 +47,158 @@ type ReindexJobEntry = {
   status?: string
   targetCollection?: string
   totalDocuments?: number
+}
+
+const cardStyle: React.CSSProperties = {
+  background: 'var(--theme-elevation-25, transparent)',
+  border: '1px solid var(--theme-elevation-100, #e3e3e3)',
+  borderRadius: 6,
+  padding: 'calc(var(--base, 20px) * 0.9)',
+}
+
+const mutedStyle: React.CSSProperties = { color: 'var(--theme-elevation-600, #6b6b6b)' }
+
+const thStyle: React.CSSProperties = {
+  ...mutedStyle,
+  borderBottom: '1px solid var(--theme-elevation-100, #e3e3e3)',
+  fontSize: '0.8rem',
+  fontWeight: 500,
+  padding: '0.4rem 0.75rem 0.4rem 0',
+  textAlign: 'left',
+}
+
+const tdStyle: React.CSSProperties = {
+  borderBottom: '1px solid var(--theme-elevation-50, #f0f0f0)',
+  padding: '0.5rem 0.75rem 0.5rem 0',
+  verticalAlign: 'middle',
+}
+
+const Card: React.FC<React.PropsWithChildren> = ({ children }) => <div style={cardStyle}>{children}</div>
+
+const CardHeader: React.FC<React.PropsWithChildren> = ({ children }) => (
+  <div style={{ alignItems: 'flex-start', display: 'flex', gap: '0.75rem', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+    {children}
+  </div>
+)
+
+const CardTitle: React.FC<React.PropsWithChildren> = ({ children }) => (
+  <h3 style={{ margin: 0 }}>{children}</h3>
+)
+
+const CardDescription: React.FC<React.PropsWithChildren> = ({ children }) => (
+  <p style={{ ...mutedStyle, fontSize: '0.85rem', margin: '0.35rem 0 0' }}>{children}</p>
+)
+
+const CardAction: React.FC<React.PropsWithChildren> = ({ children }) => <div>{children}</div>
+
+const CardContent: React.FC<React.PropsWithChildren<{ className?: string }>> = ({ children }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>{children}</div>
+)
+
+type ButtonCompatProps = React.PropsWithChildren<{
+  className?: string
+  disabled?: boolean
+  onClick?: React.MouseEventHandler
+  size?: 'sm'
+  type?: 'button' | 'submit'
+  variant?: 'destructive' | 'outline'
+}>
+
+const Button: React.FC<ButtonCompatProps> = ({ children, disabled, onClick, size, type = 'button', variant }) => (
+  <PayloadButton
+    buttonStyle={variant === 'destructive' ? 'error' : variant === 'outline' ? 'secondary' : 'primary'}
+    disabled={disabled}
+    onClick={onClick}
+    size={size === 'sm' ? 'small' : undefined}
+    type={type}
+  >
+    {children}
+  </PayloadButton>
+)
+
+type InputCompatProps = {
+  className?: string
+  onChange?: React.ChangeEventHandler<HTMLInputElement>
+  placeholder?: string
+  value?: string
+}
+
+const Input: React.FC<InputCompatProps> = ({ onChange, placeholder, value }) => (
+  <TextInput onChange={onChange} path={`engine.${placeholder ?? 'input'}`} placeholder={placeholder} value={value} />
+)
+
+type TextareaCompatProps = {
+  className?: string
+  onChange?: React.ChangeEventHandler<HTMLTextAreaElement>
+  placeholder?: string
+  value?: string
+}
+
+const AdminTextarea: React.FC<TextareaCompatProps> = ({ onChange, placeholder, value }) => (
+  <TextareaInput
+    onChange={onChange}
+    path={`engine.${placeholder ?? 'textarea'}`}
+    placeholder={placeholder}
+    rows={6}
+    value={value}
+  />
+)
+
+const Table: React.FC<React.PropsWithChildren> = ({ children }) => (
+  <div style={{ overflowX: 'auto' }}>
+    <table style={{ borderCollapse: 'collapse', minWidth: 520, width: '100%' }}>{children}</table>
+  </div>
+)
+const TableHeader: React.FC<React.PropsWithChildren> = ({ children }) => <thead>{children}</thead>
+const TableBody: React.FC<React.PropsWithChildren> = ({ children }) => <tbody>{children}</tbody>
+const TableRow: React.FC<React.PropsWithChildren> = ({ children }) => <tr>{children}</tr>
+const TableHead: React.FC<React.PropsWithChildren> = ({ children }) => <th style={thStyle}>{children}</th>
+const TableCell: React.FC<React.PropsWithChildren> = ({ children }) => <td style={tdStyle}>{children}</td>
+
+const Badge: React.FC<React.PropsWithChildren<{ variant?: 'default' | 'destructive' | 'outline' }>> = ({
+  children,
+  variant,
+}) => (
+  <Pill pillStyle={variant === 'destructive' ? 'error' : variant === 'outline' ? 'light-gray' : 'success'} rounded size="small">
+    {children}
+  </Pill>
+)
+
+type TabsContextValue = { setValue: (value: string) => void; value: string }
+const TabsContext = React.createContext<TabsContextValue | null>(null)
+
+const Tabs: React.FC<React.PropsWithChildren<{ onValueChange: (value: string) => void; value: string }>> = ({
+  children,
+  onValueChange,
+  value,
+}) => (
+  <TabsContext.Provider value={{ setValue: onValueChange, value }}>
+    <div>{children}</div>
+  </TabsContext.Provider>
+)
+
+const TabsList: React.FC<React.PropsWithChildren<{ className?: string }>> = ({ children }) => (
+  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: 'calc(var(--base, 20px) * 0.75)' }}>
+    {children}
+  </div>
+)
+
+const TabsTrigger: React.FC<React.PropsWithChildren<{ value: string }>> = ({ children, value }) => {
+  const ctx = React.useContext(TabsContext)
+  return (
+    <PayloadButton
+      buttonStyle={ctx?.value === value ? 'primary' : 'secondary'}
+      onClick={() => ctx?.setValue(value)}
+      type="button"
+    >
+      {children}
+    </PayloadButton>
+  )
+}
+
+const TabsContent: React.FC<React.PropsWithChildren<{ value: string }>> = ({ children, value }) => {
+  const ctx = React.useContext(TabsContext)
+  return ctx?.value === value ? <>{children}</> : null
 }
 
 /** Thin client for the generic engine proxy (`POST /api/v1/proxy`). Never
@@ -576,7 +720,7 @@ const Stemming: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string 
             placeholder={t(lang, 'stemmingId')}
             value={importId}
           />
-          <textarea
+          <AdminTextarea
             className="min-h-[120px] w-full rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             onChange={(event) => setJsonl(event.target.value)}
             placeholder={t(lang, 'stemmingImportPlaceholder')}
@@ -842,14 +986,15 @@ const Reindex: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }
         const res = await fetch(`${apiURL('/reindex-jobs')}?sort=-createdAt&limit=20`, {
           credentials: 'include',
         })
+        // Payload's REST API (this is the collection's own CRUD route, not the
+        // custom `/v1/*` gateway) formats a thrown error as
+        // `{ errors: [{ message, name, data }] }` — never a flat `{ error }`
+        // string — see `formatErrors` in `payload/dist/utilities/formatErrors.js`.
         const json = (await res.json().catch((): null => null)) as
-          | { docs?: ReindexJobEntry[]; error?: string }
+          | { docs?: ReindexJobEntry[]; errors?: { message?: string }[] }
           | null
         if (!res.ok) {
-          const message =
-            json && typeof json === 'object' && typeof json.error === 'string'
-              ? json.error
-              : String(res.status)
+          const message = json?.errors?.[0]?.message || String(res.status)
           setState({ kind: 'error', message })
           return
         }
@@ -884,13 +1029,17 @@ const Reindex: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
       })
-      const json = (await res.json().catch((): null => null)) as { error?: string } | null
+      // `/v1/reindex/start` throws Payload `APIError` on every validation/auth
+      // failure (see `reindexJobs.ts`); Payload formats that as
+      // `{ errors: [{ message, name, data }] }`, not `{ error: string }` — see
+      // `formatErrors` in `payload/dist/utilities/formatErrors.js`. Reading
+      // `json.error` here always misses, silently downgrading every specific
+      // error (e.g. "Search engine is not configured") to the generic fallback.
+      const json = (await res.json().catch((): null => null)) as
+        | { errors?: { message?: string }[] }
+        | null
       if (!res.ok) {
-        setFormError(
-          json && typeof json === 'object' && typeof json.error === 'string'
-            ? json.error
-            : t(lang, 'errorGeneric'),
-        )
+        setFormError(json?.errors?.[0]?.message || t(lang, 'errorGeneric'))
         return
       }
       setSourceCollection('')
@@ -929,7 +1078,7 @@ const Reindex: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }
               value={targetCollection}
             />
           </div>
-          <textarea
+          <AdminTextarea
             className="min-h-[80px] w-full rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             onChange={(event) => setTargetSchema(event.target.value)}
             placeholder={t(lang, 'reindexSchemaOptional')}

@@ -14,6 +14,9 @@ export type Node = {
 export interface ConfigurationOptions {
   apiKey: string;
   nodes: Node[];
+  apiBasePath?: string;
+  apiKeyAuthCollection?: string;
+  useGatewayProxy?: boolean;
   nearestNode?: Node;
   connectionTimeoutSeconds?: number;
   healthcheckIntervalSeconds?: number;
@@ -467,7 +470,7 @@ export interface AnalyticsRuleCreateSchema {
   };
 }
 
-export interface AnalyticsRuleUpsertSchema extends AnalyticsRuleCreateSchema {}
+export type AnalyticsRuleUpsertSchema = AnalyticsRuleCreateSchema;
 
 export interface AnalyticsRuleSchema {
   name: string;

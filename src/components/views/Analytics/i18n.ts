@@ -4,8 +4,10 @@
  * White-label copy only — never name the underlying search/ingest vendors.
  */
 const dict = {
+  clicksLabel: { de: 'Klicks', en: 'Clicks', ru: 'Клики' },
   colQuery: { de: 'Suchbegriff', en: 'Query', ru: 'Запрос' },
   colSearches: { de: 'Suchen', en: 'Searches', ru: 'Поисков' },
+  conversionsLabel: { de: 'Conversions', en: 'Conversions', ru: 'Конверсии' },
   distinctQueries: { de: 'Erfasste Suchbegriffe', en: 'Tracked queries', ru: 'Отслеживаемых запросов' },
   errorHint: { de: 'Bitte später erneut versuchen.', en: 'Please try again later.', ru: 'Попробуйте ещё раз позже.' },
   errorTitle: {

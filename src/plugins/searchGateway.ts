@@ -27,6 +27,7 @@ import {
   isSearchLocale,
   mergeSearchTenantFilter,
   sanitizeSearchResponse,
+  verifyScopedKeyParams,
 } from '@/lib/search/client'
 import {
   type CollectionDefinitionInput,
@@ -195,6 +196,108 @@ const hasSynonymError = (response: unknown): boolean => {
 }
 
 const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
+  const scopedSearchHandler: Endpoint['handler'] = async (req) => {
+    const scopedKey = req.headers.get('x-typesense-api-key') ?? undefined
+    const verified = verifyScopedKeyParams(opts.searchOnlyKey, scopedKey)
+    if (!verified) return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+
+    const body = await readJsonBody(req)
+    if (body === null) return Response.json(GATEWAY_ERRORS.invalidBody, { status: 400 })
+
+    let entries: GatewaySearchEntry[]
+    if (Array.isArray(body.searches)) {
+      entries = body.searches.filter(
+        (entry): entry is GatewaySearchEntry =>
+          Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry),
+      )
+      if (entries.length !== body.searches.length || entries.length === 0) {
+        return Response.json(GATEWAY_ERRORS.invalidBody, { status: 400 })
+      }
+    } else if (typeof body.q === 'string' || typeof body.collection === 'string') {
+      const { searches: _searches, tenant: _tenant, union: _union, ...single } = body
+      entries = [single]
+    } else {
+      return Response.json(GATEWAY_ERRORS.invalidBody, { status: 400 })
+    }
+
+    if (entries.length > verified.params.limit_multi_searches) {
+      return Response.json(GATEWAY_ERRORS.tooManySearches, { status: 400 })
+    }
+    for (const entry of entries) {
+      if (typeof entry.collection !== 'string' && typeof entry.preset !== 'string') {
+        return Response.json(GATEWAY_ERRORS.collectionRequired, { status: 400 })
+      }
+    }
+
+    const tenant = verified.tenant
+    const translated = entries.map((entry) =>
+      typeof entry.collection === 'string'
+        ? { ...entry, collection: resolveTenantCollectionName(tenant, entry.collection) }
+        : entry,
+    )
+
+    const commonParams: Record<string, string> = {}
+    for (const [key, value] of Object.entries(req.query ?? {})) {
+      if (RESERVED_COMMON_PARAMS.has(key) || typeof value !== 'string') continue
+      commonParams[key] = value
+    }
+    for (const pageKey of ['per_page', 'limit'] as const) {
+      if (typeof commonParams[pageKey] === 'string') {
+        const parsed = Number(commonParams[pageKey])
+        if (Number.isFinite(parsed)) {
+          commonParams[pageKey] = String(Math.min(Math.max(1, Math.floor(parsed)), MAX_PER_PAGE))
+        } else {
+          delete commonParams[pageKey]
+        }
+      }
+    }
+
+    const scoped = translated.map((entry) =>
+      mergeSearchTenantFilter(
+        entry,
+        tenant,
+        typeof req.query?.filter_by === 'string' ? req.query.filter_by : undefined,
+      ),
+    )
+    const qs = new URLSearchParams(commonParams).toString()
+    const baseUrl = `${process.env.TYPESENSE_PROTOCOL || 'https'}://${opts.host}:${process.env.TYPESENSE_PORT || 443}`
+
+    try {
+      const upstream = await fetch(`${baseUrl}/multi_search${qs ? '?' + qs : ''}`, {
+        body: JSON.stringify(body.union === true ? { searches: scoped, union: true } : { searches: scoped }),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-TYPESENSE-API-KEY': scopedKey as string,
+        },
+        method: 'POST',
+      })
+      const data = await upstream.json()
+
+      const metering = emitUsageEvent(
+        opts.billing ?? {},
+        {
+          code: 'search_requests',
+          properties: { searches: scoped.length },
+          tenant,
+          transactionId: crypto.randomUUID(),
+        },
+        req.payload.logger,
+      )
+      try {
+        const { ctx } = getCloudflareContext()
+        if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(metering)
+        else void metering
+      } catch {
+        void metering
+      }
+
+      return Response.json(sanitizeSearchResponse(data, opts.host), { status: upstream.status })
+    } catch (err) {
+      req.payload.logger.error({ err, msg: 'scoped search gateway upstream error' })
+      return Response.json(GATEWAY_ERRORS.searchUnavailable, { status: 502 })
+    }
+  }
+
   const searchHandler: Endpoint['handler'] = async (req) => {
     if (!req.user) return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
     // Payload's useAPIKey auth does NOT enforce our custom revokedAt/expiresAt —
@@ -335,6 +438,15 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
   }
 
   return [
+    {
+      // Browser/widget flow: signed search key in X-TYPESENSE-API-KEY, no
+      // Payload session. The key is verified server-side, tenant is extracted
+      // from its signed filter, and friendly collection slugs are translated
+      // before forwarding to the hidden engine.
+      handler: scopedSearchHandler,
+      method: 'post',
+      path: '/v1/scoped/multi_search',
+    },
     {
       handler: searchHandler,
       method: 'post',

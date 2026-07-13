@@ -53,6 +53,9 @@ describe('multi-tenant stack', () => {
         roles: ['super-admin'],
       },
     })
+    const onboardingMembership = superAdmin.tenants?.[0]
+    expect(onboardingMembership?.roles).toContain('tenant-admin')
+    expect(onboardingMembership?.tenant).toBeDefined()
 
     userA = await payload.create({
       collection: 'users',

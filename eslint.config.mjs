@@ -29,6 +29,7 @@ const eslintConfig = [
       '**/.open-next/',
       '.claude/',
       'packages/*/dist/',
+      'public/widget/',
       'src/payload-types.ts',
       'src/payload-generated-schema.ts',
     ],

@@ -7,7 +7,11 @@ import { Nango } from '@nangohq/node'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createBoundedTtlCache } from '@/lib/billing/entitlements'
-import { createIngestIntegrationRecordsTask } from '@/jobs/ingestIntegrationRecords'
+import {
+  createIngestIntegrationRecordsTask,
+  type IngestIntegrationRecordsInput,
+} from '@/jobs/ingestIntegrationRecords'
+import { normalizeAirbyteBaseUrl, sanitizeAirbytePayload } from '@/plugins/airbyte'
 import {
   coerceIdValue,
   createTtlCache,
@@ -270,6 +274,44 @@ describe('cursor + id helpers', () => {
   })
 })
 
+describe('Airbyte REST proxy helpers', () => {
+  it('normalizes base URLs without changing the public API version path', () => {
+    expect(normalizeAirbyteBaseUrl('https://api.airbyte.com/v1/')).toBe(
+      'https://api.airbyte.com/v1',
+    )
+    expect(normalizeAirbyteBaseUrl('https://airbyte.example.com/api/public/v1///')).toBe(
+      'https://airbyte.example.com/api/public/v1',
+    )
+  })
+
+  it('redacts vendor URLs and secrets from proxied responses', () => {
+    const sanitized = sanitizeAirbytePayload({
+      connections: [
+        {
+          apiToken: 'airbyte-token',
+          connectionId: 'conn-1',
+          logUrl: 'https://api.airbyte.com/jobs/1/logs',
+          nested: { password: 'pw', sourceUri: 'https://internal.example/source' },
+          status: 'running',
+        },
+      ],
+    })
+
+    expect(sanitized).toEqual({
+      connections: [
+        {
+          apiToken: '[redacted]',
+          connectionId: 'conn-1',
+          logUrl: '[redacted-url]',
+          nested: { password: '[redacted]', sourceUri: '[redacted-url]' },
+          status: 'running',
+        },
+      ],
+    })
+    expect(JSON.stringify(sanitized)).not.toMatch(/airbyte\.com|airbyte-token|internal\.example|pw/)
+  })
+})
+
 describe('ingest task bypasses document validation on the system path', () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -297,20 +339,25 @@ describe('ingest task bypasses document validation on the system path', () => {
       { _nango_metadata: { cursor: 'c2', last_action: 'ADDED' }, id: 'rec-old', title: 'Existing' },
       { _nango_metadata: { cursor: 'c3', last_action: 'DELETED' }, id: 'rec-gone', title: 'Gone' },
     ]
-    vi.spyOn(Nango.prototype, 'listRecords').mockResolvedValue({
+    const listRecords = vi.spyOn(Nango.prototype, 'listRecords').mockResolvedValue({
       next_cursor: null,
       records,
     } as unknown as ListRecordsResult)
 
+    const definitionCreates: WriteArgs[] = []
     const documentCreates: WriteArgs[] = []
     const documentUpdates: WriteArgs[] = []
     const documentDeletes: FindArgs[] = []
+    const integrationUpdates: WriteArgs[] = []
     let documentFindCount = 0
 
     const payload = {
       create: async (args: WriteArgs) => {
         if (args.collection === 'documents') documentCreates.push(args)
-        if (args.collection === 'collection-definitions') return { id: 99 }
+        if (args.collection === 'collection-definitions') {
+          definitionCreates.push(args)
+          return { id: 99 }
+        }
         return { id: 1000 }
       },
       delete: async (args: FindArgs) => {
@@ -345,6 +392,7 @@ describe('ingest task bypasses document validation on the system path', () => {
       logger: { error: () => {}, info: () => {}, warn: () => {} },
       update: async (args: WriteArgs) => {
         if (args.collection === 'documents') documentUpdates.push(args)
+        if (args.collection === 'integrations') integrationUpdates.push(args)
         return { id: args.id }
       },
     }
@@ -355,12 +403,17 @@ describe('ingest task bypasses document validation on the system path', () => {
       secretKey: 'test-secret',
     })
     const run = task.handler as unknown as (a: {
-      input: { connectionId: string; model: string; providerConfigKey: string }
+      input: IngestIntegrationRecordsInput
       req: PayloadRequest
     }) => Promise<{ output: { deleted: number; processed: number; upserted: number } }>
 
     const result = await run({
-      input: { connectionId: 'conn-1', model: 'Document', providerConfigKey: 'gdrive-prod' },
+      input: {
+        connectionId: 'conn-1',
+        model: 'Document',
+        providerConfigKey: 'gdrive-prod',
+        syncVariant: 'shared-drive',
+      },
       req,
     })
 
@@ -377,6 +430,12 @@ describe('ingest task bypasses document validation on the system path', () => {
     // Idempotent upsert wiring: create carries the tenant + externalId
     expect(documentCreates[0].data?.tenant).toBe(5)
     expect((documentCreates[0].data?.data as { externalId?: string }).externalId).toBe('rec-new')
+
+    expect(listRecords).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'Document', variant: 'shared-drive' }),
+    )
+    expect(definitionCreates[0].data?.slug).toBe('integration_gdrive_document_shared_drive')
+    expect(integrationUpdates[0].data?.syncCursor).toBe('{"Document::shared-drive":"c3"}')
   })
 })
 

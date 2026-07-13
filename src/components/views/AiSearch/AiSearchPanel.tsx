@@ -1,21 +1,8 @@
 'use client'
 
-import { useConfig } from '@payloadcms/ui'
+import { Button, TextInput, useConfig } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
 import React from 'react'
-
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { type AiSearchMessageKey, type ProxyResult, t } from './shared'
 
@@ -45,6 +32,41 @@ type FieldSpec = {
   type: 'number' | 'password' | 'text'
 }
 
+const cardStyle: React.CSSProperties = {
+  background: 'var(--theme-elevation-25, transparent)',
+  border: '1px solid var(--theme-elevation-100, #e3e3e3)',
+  borderRadius: 6,
+  padding: 'calc(var(--base, 20px) * 0.9)',
+}
+
+const mutedStyle: React.CSSProperties = { color: 'var(--theme-elevation-600, #6b6b6b)' }
+
+const thStyle: React.CSSProperties = {
+  ...mutedStyle,
+  borderBottom: '1px solid var(--theme-elevation-100, #e3e3e3)',
+  fontSize: '0.8rem',
+  fontWeight: 500,
+  padding: '0.4rem 0.75rem 0.4rem 0',
+  textAlign: 'left',
+}
+
+const tdStyle: React.CSSProperties = {
+  borderBottom: '1px solid var(--theme-elevation-50, #f0f0f0)',
+  padding: '0.5rem 0.75rem 0.5rem 0',
+  verticalAlign: 'middle',
+}
+
+const textInputAttributes = (
+  type: FieldSpec['type'],
+): { autoComplete?: React.HTMLInputAutoCompleteAttribute } | undefined => {
+  if (type === 'text') return undefined
+  return {
+    autoComplete: type === 'password' ? 'new-password' : 'off',
+    inputMode: type === 'number' ? 'numeric' : undefined,
+    type,
+  } as unknown as { autoComplete?: React.HTMLInputAutoCompleteAttribute }
+}
+
 const NL_FIELDS: FieldSpec[] = [
   {
     key: 'model_name',
@@ -54,7 +76,7 @@ const NL_FIELDS: FieldSpec[] = [
     type: 'text',
   },
   { key: 'api_key', labelKey: 'apiKey', placeholder: 'sk-…', required: true, type: 'password' },
-  { key: 'max_bytes', labelKey: 'maxBytes', placeholder: '16000', type: 'number' },
+  { key: 'max_bytes', labelKey: 'maxBytes', placeholder: '16000', required: true, type: 'number' },
 ]
 
 const CONVERSATION_FIELDS: FieldSpec[] = [
@@ -72,11 +94,19 @@ const CONVERSATION_FIELDS: FieldSpec[] = [
     placeholder: 'You are a helpful search assistant.',
     type: 'text',
   },
-  { key: 'max_bytes_to_send', labelKey: 'maxBytesToSend', placeholder: '10000', type: 'number' },
+  // The engine's field is `max_bytes` (same name as NL models) — NOT
+  // `max_bytes_to_send`, which isn't a recognized property and was silently
+  // dropped, so every create always 400'd on the real "max_bytes is not
+  // provided" validation.
+  { key: 'max_bytes', labelKey: 'maxBytes', placeholder: '16000', required: true, type: 'number' },
   {
+    // Required by the engine on create (no server-side default — the
+    // legacy auto-provisioned default collection only applies when
+    // migrating models that predate this field, not to new creates).
     key: 'history_collection',
     labelKey: 'historyCollection',
     placeholder: 'conversation_store',
+    required: true,
     type: 'text',
   },
 ]
@@ -122,10 +152,12 @@ const useProxy = (apiURL: (path: `/${string}`) => string) =>
   )
 
 /**
- * Pull the model list out of a GET response whose wrapper key isn't fully
- * pinned down across these Typesense-style endpoints (confirmed for NL
- * search models: `{ nl_search_models: [...] }`; assumed-but-unconfirmed for
- * conversation models) — accept a bare array or any plausible wrapper key.
+ * Pull the model list out of a GET response. The engine's `get_nl_search_models`
+ * / `get_conversation_models` handlers both `res->set_200(models.dump())` a
+ * BARE array (no wrapper key) for both endpoints — the array check below is
+ * the path that actually matches production traffic. The wrapper-key
+ * fallbacks are defensive only, kept in case a future engine version nests
+ * the list under a key.
  */
 const extractModels = (value: unknown): ModelEntry[] => {
   if (Array.isArray(value)) return value as ModelEntry[]
@@ -208,89 +240,78 @@ const ModelRegistry: React.FC<{
   const listTitleKey: AiSearchMessageKey = kind === 'nl' ? 'nlListTitle' : 'conversationListTitle'
 
   return (
-    <div className="mt-4 flex flex-col gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>{t(lang, createTitleKey)}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-3 text-sm text-muted-foreground">{t(lang, createHintKey)}</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'calc(var(--base, 20px) * 0.75)', marginTop: 'calc(var(--base, 20px) * 0.75)' }}>
+      <div style={cardStyle}>
+        <h3 style={{ margin: '0 0 0.6rem' }}>{t(lang, createTitleKey)}</h3>
+        <p style={{ ...mutedStyle, fontSize: '0.85rem', margin: '0 0 0.75rem' }}>{t(lang, createHintKey)}</p>
 
-          <div className="mb-3 grid gap-3 sm:grid-cols-2">
+          <div style={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginBottom: '0.75rem' }}>
             {fields.map((field) => (
-              <div key={field.key}>
-                <label
-                  className="mb-1 block text-sm text-muted-foreground"
-                  htmlFor={`${kind}-${field.key}`}
-                >
-                  {t(lang, field.labelKey)}
-                </label>
-                <Input
-                  id={`${kind}-${field.key}`}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, [field.key]: event.target.value }))
-                  }
-                  placeholder={field.placeholder}
-                  type={field.type}
-                  value={form[field.key] ?? ''}
-                />
-              </div>
+              <TextInput
+                htmlAttributes={textInputAttributes(field.type)}
+                key={field.key}
+                label={t(lang, field.labelKey)}
+                onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                  setForm((current) => ({ ...current, [field.key]: event.target.value }))
+                }
+                path={`${kind}.${field.key}`}
+                placeholder={field.placeholder}
+                required={field.required}
+                value={form[field.key] ?? ''}
+              />
             ))}
           </div>
 
-          {formError && <p className="mb-2 text-sm text-destructive">{formError}</p>}
+          {formError && <p style={{ color: 'var(--theme-error-500, #d93030)', fontSize: '0.85rem', margin: '0 0 0.5rem' }}>{formError}</p>}
 
-          <Button disabled={busy || !canSubmit} onClick={() => void create()} type="button">
+          <Button buttonStyle="primary" disabled={busy || !canSubmit} onClick={() => void create()} type="button">
             {t(lang, 'create')}
           </Button>
-        </CardContent>
-      </Card>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t(lang, listTitleKey)}</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div style={cardStyle}>
+        <h3 style={{ margin: '0 0 0.6rem' }}>{t(lang, listTitleKey)}</h3>
           {state.kind === 'loading' ? (
-            <p className="text-sm text-muted-foreground">{t(lang, 'loading')}</p>
+            <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'loading')}</p>
           ) : state.kind === 'error' ? (
-            <p className="text-sm text-muted-foreground">{t(lang, 'errorGeneric')}</p>
+            <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'errorGeneric')}</p>
           ) : state.data.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t(lang, 'modelsEmpty')}</p>
+            <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'modelsEmpty')}</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t(lang, 'modelId')}</TableHead>
-                  <TableHead>{t(lang, 'modelName')}</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', minWidth: 480, width: '100%' }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>{t(lang, 'modelId')}</th>
+                    <th style={thStyle}>{t(lang, 'modelName')}</th>
+                    <th style={thStyle} />
+                  </tr>
+                </thead>
+                <tbody>
                 {state.data.map((row, index) => (
-                  <TableRow key={row.id ?? index}>
-                    <TableCell>
-                      <code className="text-xs">{row.id ?? '—'}</code>
-                    </TableCell>
-                    <TableCell>{row.model_name ?? '—'}</TableCell>
-                    <TableCell>
+                  <tr key={row.id ?? index}>
+                    <td style={tdStyle}>
+                      <code>{row.id ?? '—'}</code>
+                    </td>
+                    <td style={tdStyle}>{row.model_name ?? '—'}</td>
+                    <td style={tdStyle}>
                       <Button
+                        buttonStyle="error"
                         disabled={busy}
                         onClick={() => void remove(row.id)}
-                        size="sm"
+                        size="small"
                         type="button"
-                        variant="destructive"
                       >
                         {t(lang, 'delete')}
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ))}
-              </TableBody>
-            </Table>
+                </tbody>
+              </table>
+            </div>
           )}
-        </CardContent>
-      </Card>
+      </div>
     </div>
   )
 }
@@ -303,18 +324,27 @@ export const AiSearchPanel: React.FC<Props> = ({ lang }) => {
     [apiRoute],
   )
 
+  const [activeTab, setActiveTab] = React.useState<ModelKind>('nl')
+
   return (
-    <Tabs defaultValue="nl">
-      <TabsList>
-        <TabsTrigger value="nl">{t(lang, 'tabNlModels')}</TabsTrigger>
-        <TabsTrigger value="conversation">{t(lang, 'tabConversationModels')}</TabsTrigger>
-      </TabsList>
-      <TabsContent value="nl">
-        <ModelRegistry apiURL={apiURL} kind="nl" lang={lang} />
-      </TabsContent>
-      <TabsContent value="conversation">
-        <ModelRegistry apiURL={apiURL} kind="conversation" lang={lang} />
-      </TabsContent>
-    </Tabs>
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <Button
+          buttonStyle={activeTab === 'nl' ? 'primary' : 'secondary'}
+          onClick={() => setActiveTab('nl')}
+          type="button"
+        >
+          {t(lang, 'tabNlModels')}
+        </Button>
+        <Button
+          buttonStyle={activeTab === 'conversation' ? 'primary' : 'secondary'}
+          onClick={() => setActiveTab('conversation')}
+          type="button"
+        >
+          {t(lang, 'tabConversationModels')}
+        </Button>
+      </div>
+      <ModelRegistry apiURL={apiURL} kind={activeTab} lang={lang} />
+    </div>
   )
 }

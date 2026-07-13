@@ -4,6 +4,7 @@
  * White-label copy only — brand is "AACSearch"; never name any vendor.
  */
 const dict = {
+  colActions: { de: 'Aktionen', en: 'Actions', ru: 'Действия' },
   colEmail: { de: 'E-Mail', en: 'Email', ru: 'Эл. почта' },
   colJoined: { de: 'Beigetreten', en: 'Joined', ru: 'Присоединился' },
   colRole: { de: 'Rolle', en: 'Role', ru: 'Роль' },
@@ -18,11 +19,6 @@ const dict = {
     en: 'Invite failed. Please try again.',
     ru: 'Не удалось пригласить. Попробуйте ещё раз.',
   },
-  inviteExists: {
-    de: 'Diese Person ist bereits Mitglied.',
-    en: 'That person is already a member.',
-    ru: 'Этот человек уже участник.',
-  },
   inviteSend: { de: 'Einladen', en: 'Invite', ru: 'Пригласить' },
   inviteSuccess: {
     de: 'Einladung gesendet — die Person erhält einen Link zum Festlegen des Passworts.',
@@ -30,12 +26,35 @@ const dict = {
     ru: 'Приглашение отправлено — участник получит ссылку для установки пароля.',
   },
   inviteTitle: { de: 'Mitglied einladen', en: 'Invite a member', ru: 'Пригласить участника' },
+  memberRemoved: {
+    de: 'Mitglied aus diesem Arbeitsbereich entfernt.',
+    en: 'Member removed from this workspace.',
+    ru: 'Участник удалён из рабочего пространства.',
+  },
   membersEmpty: {
     de: 'In diesem Arbeitsbereich gibt es noch keine Mitglieder.',
     en: 'No members in this workspace yet.',
     ru: 'В этом рабочем пространстве пока нет участников.',
   },
   membersTitle: { de: 'Mitglieder', en: 'Members', ru: 'Участники' },
+  removeCancel: { de: 'Abbrechen', en: 'Cancel', ru: 'Отмена' },
+  removeConfirm: { de: 'Entfernen bestätigen', en: 'Confirm remove', ru: 'Подтвердить удаление' },
+  removeError: {
+    de: 'Entfernen fehlgeschlagen. Bitte erneut versuchen.',
+    en: 'Could not remove the member. Please try again.',
+    ru: 'Не удалось удалить участника. Попробуйте ещё раз.',
+  },
+  removeMember: { de: 'Entfernen', en: 'Remove', ru: 'Удалить' },
+  roleChanged: {
+    de: 'Rolle aktualisiert.',
+    en: 'Role updated.',
+    ru: 'Роль обновлена.',
+  },
+  roleChangeError: {
+    de: 'Rolle konnte nicht geändert werden. Bitte erneut versuchen.',
+    en: 'Could not change the role. Please try again.',
+    ru: 'Не удалось изменить роль. Попробуйте ещё раз.',
+  },
   noTenant: {
     de: 'Sie gehören noch keinem Arbeitsbereich an.',
     en: 'You are not a member of any workspace yet.',
@@ -45,6 +64,7 @@ const dict = {
   roleViewer: { de: 'Betrachter', en: 'Viewer', ru: 'Наблюдатель' },
   title: { de: 'Team', en: 'Team', ru: 'Команда' },
   workspace: { de: 'Arbeitsbereich', en: 'Workspace', ru: 'Рабочее пространство' },
+  you: { de: 'Sie', en: 'You', ru: 'Вы' },
 } as const
 
 export type TeamMessageKey = keyof typeof dict

@@ -125,6 +125,12 @@ export const toCreateSchema = (schema: CollectionSchema, name: string): Collecti
 
 export const createReindexCollectionTask = (): TaskConfig<ReindexIO> => ({
   slug: REINDEX_TASK_SLUG,
+  // A job self-chains by re-queuing the SAME jobId for its next chunk; if the
+  // cron runner ever fires faster than one chunk completes (or a stuck job is
+  // manually retried), two chunks of the same job could run concurrently and
+  // interleave writes into `targetCollection`. Keying on jobId (exclusive
+  // defaults to true) makes the queue itself serialize a job's own chunks.
+  concurrency: ({ input }) => `reindexCollection:${input.jobId}`,
   handler: async ({ input, req }) => {
     const { jobId, targetSchema } = input
     const { payload } = req

@@ -18,6 +18,7 @@ import {
   mergeTenantSynonymSets,
   sanitizeSearchResponse,
   synonymRowsToItems,
+  verifyScopedKeyParams,
   tenantSynonymSetName,
   type ScopedKeyExtraParams,
 } from '@/lib/search/client'
@@ -119,6 +120,21 @@ describe('buildScopedKeyParams', () => {
     expect(params.filter_by).toBe('tenant:=42')
     expect(params.expires_at).toBeGreaterThan(Math.floor(Date.now() / 1000))
     expect(params.query_by).toBe('title')
+  })
+
+  it('verifies scoped keys and extracts signed params server-side', async () => {
+    const signed = buildScopedKeyParams('42', 'en', { limitMultiSearches: 2 })
+    const key = await generateScopedKey('search-only-key', signed)
+    const verified = verifyScopedKeyParams('search-only-key', key)
+    expect(verified?.tenant).toBe('42')
+    expect(verified?.params.filter_by).toBe('tenant:=42 && locale:=en')
+    expect(verified?.params.limit_multi_searches).toBe(2)
+  })
+
+  it('rejects tampered scoped keys', async () => {
+    const key = await generateScopedKey('search-only-key', buildScopedKeyParams('42'))
+    const tampered = key.slice(0, -2) + 'xx'
+    expect(verifyScopedKeyParams('search-only-key', tampered)).toBeNull()
   })
 })
 
@@ -487,6 +503,80 @@ describe('search gateway proxy — SaaS boundary', () => {
 
     expect(res.status).toBe(403)
     expect(await res.json()).toEqual(GATEWAY_ERRORS.forbidden)
+    expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
+  })
+})
+
+describe('scoped widget search gateway — public SaaS boundary', () => {
+  const logger = { error: () => {}, warn: () => {} }
+
+  const scopedHandler = () => {
+    const cfg = searchGatewayPlugin({
+      billing: {},
+      host: 'search.example.com',
+      searchOnlyKey: 'search-only-key',
+    })({ collections: [], endpoints: [] } as unknown as Config) as Config
+    const ep = (cfg.endpoints ?? []).find(
+      (e) => e.path === '/v1/scoped/multi_search' && e.method === 'post',
+    )
+    if (!ep) throw new Error('endpoint /v1/scoped/multi_search not found')
+    return ep.handler
+  }
+
+  const makeReq = (over: Record<string, unknown>): PayloadRequest =>
+    ({
+      headers: new Headers(),
+      json: async () => ({}),
+      payload: { logger },
+      query: {},
+      user: null,
+      ...over,
+    }) as unknown as PayloadRequest
+
+  it('proxies browser scoped-key searches without Payload session and translates collection slugs', async () => {
+    const scopedKey = await generateScopedKey('search-only-key', buildScopedKeyParams('7'))
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ results: [{ found: 1 }] }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    )
+
+    const res = await scopedHandler()(
+      makeReq({
+        headers: new Headers({ 'x-typesense-api-key': scopedKey }),
+        json: async () => ({
+          searches: [{ collection: 'catalog', per_page: 250, q: 'chair', query_by: 'title' }],
+        }),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ results: [{ found: 1 }] })
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://search.example.com:443/multi_search')
+    expect(init.method).toBe('POST')
+    expect(init.headers).toEqual(
+      expect.objectContaining({ 'X-TYPESENSE-API-KEY': scopedKey }),
+    )
+    const upstreamBody = JSON.parse(String(init.body)) as { searches: Array<Record<string, unknown>> }
+    expect(upstreamBody.searches[0]).toEqual(
+      expect.objectContaining({
+        collection: 't7_catalog',
+        filter_by: 'tenant:=7',
+        per_page: MAX_PER_PAGE,
+      }),
+    )
+    fetchSpy.mockRestore()
+  })
+
+  it('rejects scoped-key searches when the key is missing or invalid', async () => {
+    vi.restoreAllMocks()
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const res = await scopedHandler()(makeReq({ headers: new Headers() }))
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual(GATEWAY_ERRORS.unauthorized)
     expect(fetchSpy).not.toHaveBeenCalled()
     fetchSpy.mockRestore()
   })
