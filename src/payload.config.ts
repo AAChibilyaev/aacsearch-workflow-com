@@ -16,15 +16,19 @@ import { nestedDocsPlugin } from '@payloadcms/plugin-nested-docs'
 import { importExportPlugin } from '@payloadcms/plugin-import-export'
 import { mcpPlugin } from '@payloadcms/plugin-mcp'
 import { openapi, scalar } from 'payload-oapi'
+import { betterPreview } from 'payload-better-preview'
+import { payloadPluginNotifications } from '@elghaied/payload-plugin-notifications'
+import { openAIResolver, payloadAltTextPlugin } from '@jhb.software/payload-alt-text-plugin'
 import { en } from '@payloadcms/translations/languages/en'
 import { ru } from '@payloadcms/translations/languages/ru'
 import { de } from '@payloadcms/translations/languages/de'
 
-import { isSuperAdmin } from './access/isSuperAdmin'
+import { isSuperAdmin, isSuperAdminAccess } from './access/isSuperAdmin'
 import { airbytePlugin } from './plugins/airbyte'
 import { lagoPlugin } from './plugins/lago'
 import { nangoPlugin } from './plugins/nango'
 import { searchScopedKeyPlugin } from './plugins/searchScopedKey'
+import { superAdminOnlyEndpoints } from './plugins/superAdminOnlyEndpoints'
 import { CollectionDefinitions } from './collections/CollectionDefinitions'
 import { TenantSettings } from './collections/TenantSettings'
 import { Users } from './collections/Users'
@@ -74,6 +78,13 @@ export default buildConfig({
     },
     importMap: {
       baseDir: path.resolve(dirname),
+    },
+    // Live preview renders the (frontend) [slug] route next to the editor;
+    // RefreshRouteOnSave on that route re-fetches on every save
+    livePreview: {
+      collections: ['pages'],
+      url: ({ data, locale }) =>
+        `/${(data as { slug?: string })?.slug ?? ''}${locale ? `?locale=${locale.code}` : ''}`,
     },
     user: Users.slug,
   },
@@ -189,6 +200,30 @@ export default buildConfig({
           enabled: true,
         },
       },
+      // An MCP key executes requests as its linked `user`, so creating a key
+      // is privilege assignment — super-admin only (the collection ships with
+      // NO access config = any authenticated user; runtime key lookup uses
+      // overrideAccess so this doesn't break MCP auth)
+      overrideApiKeyCollection: (collection) => ({
+        ...collection,
+        access: {
+          create: isSuperAdminAccess,
+          delete: isSuperAdminAccess,
+          read: isSuperAdminAccess,
+          update: isSuperAdminAccess,
+        },
+        admin: {
+          ...collection.admin,
+          hidden: ({ user }) => !isSuperAdmin(user),
+        },
+      }),
+    }),
+    // Scroll-synced live-preview overlay (highlights the edited block in the iframe)
+    betterPreview(),
+    // In-admin notification bell; notifications are tenant-scoped so customers
+    // in the shared panel only see their own
+    payloadPluginNotifications({
+      tenants: {},
     }),
     // Billing: plans/subscriptions live in Lago (source of truth) — the plugin
     // mirrors tenants to Lago customers and proxies read/usage endpoints.
@@ -212,11 +247,69 @@ export default buildConfig({
       apiUrl: process.env.AIRBYTE_API_URL,
       workspaceId: process.env.AIRBYTE_WORKSPACE_ID,
     }),
+    // Stripe: card payments + webhooks (enable with STRIPE_SECRET_KEY)
+    ...(process.env.STRIPE_SECRET_KEY
+      ? [
+          (await import('@payloadcms/plugin-stripe')).stripePlugin({
+            stripeSecretKey: process.env.STRIPE_SECRET_KEY,
+            stripeWebhooksEndpointSecret: process.env.STRIPE_WEBHOOKS_SIGNING_SECRET,
+          }),
+        ]
+      : []),
+    // Sentry error reporting (enable with SENTRY_DSN; see instrumentation docs
+    // for OpenNext/Cloudflare caveats)
+    ...(process.env.SENTRY_DSN
+      ? [
+          (await import('@payloadcms/plugin-sentry')).sentryPlugin({
+            Sentry: await import('@sentry/nextjs'),
+          }),
+        ]
+      : []),
+    // AI compose/translate in the admin (enable with ANTHROPIC_API_KEY or
+    // OPENAI_API_KEY; lazy import keeps it out of the bundle otherwise)
+    ...(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY
+      ? [
+          (await import('@ai-stack/payloadcms')).payloadAiPlugin({
+            // Uses the PLATFORM's AI keys and one GLOBAL (cross-tenant)
+            // instructions collection whose defaults allow any authenticated
+            // user — super-admin only in the shared panel
+            access: {
+              generate: ({ req }) => isSuperAdmin(req.user),
+              settings: ({ req }) => isSuperAdmin(req.user),
+            },
+            collections: { pages: true },
+            disableSponsorMessage: true,
+            overrideInstructions: {
+              access: {
+                create: isSuperAdminAccess,
+                delete: isSuperAdminAccess,
+                read: isSuperAdminAccess,
+                update: isSuperAdminAccess,
+              },
+            },
+          }),
+        ]
+      : []),
+    // AI alt-text for media. Always on (it owns the required `alt` field, so
+    // gating it on env would make the schema env-dependent); generation itself
+    // needs OPENAI_API_KEY plus NEXT_PUBLIC_SERVER_URL so the model can fetch
+    // the image.
+    payloadAltTextPlugin({
+      collections: ['media'],
+      getImageThumbnail: (doc) => `${process.env.NEXT_PUBLIC_SERVER_URL ?? ''}${doc.url}`,
+      resolver: openAIResolver({ apiKey: process.env.OPENAI_API_KEY ?? '' }),
+    }),
+    // NOTE: @payloadcms/plugin-ecommerce is installed but intentionally NOT
+    // enabled: it generates its own carts/orders/transactions collections that
+    // must first be wrapped into multiTenantPlugin to keep tenant isolation.
     openapi({
       metadata: { title: 'AACSearch API', version: '1.0.0' },
       openapiVersion: '3.0',
     }),
     scalar({}),
+    // payload-oapi/scalar register their endpoints public-by-design; the full
+    // API surface map is super-admin only in the shared customer panel
+    superAdminOnlyEndpoints(['/openapi.json', '/docs']),
     // Typesense sync activates only when TYPESENSE_HOST is configured.
     // Lazy import: the module (and its deps) never load when the env is absent.
     ...(process.env.TYPESENSE_HOST

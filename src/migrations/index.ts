@@ -1,6 +1,7 @@
 import * as migration_20250929_111647 from './20250929_111647';
 import * as migration_20260711_200002_aacsearch_multitenant_stack from './20260711_200002_aacsearch_multitenant_stack';
 import * as migration_20260711_202415_hero_basic_block from './20260711_202415_hero_basic_block';
+import * as migration_20260711_204901_ui_plugins_notifications_ai from './20260711_204901_ui_plugins_notifications_ai';
 
 export const migrations = [
   {
@@ -16,6 +17,11 @@ export const migrations = [
   {
     up: migration_20260711_202415_hero_basic_block.up,
     down: migration_20260711_202415_hero_basic_block.down,
-    name: '20260711_202415_hero_basic_block'
+    name: '20260711_202415_hero_basic_block',
+  },
+  {
+    up: migration_20260711_204901_ui_plugins_notifications_ai.up,
+    down: migration_20260711_204901_ui_plugins_notifications_ai.down,
+    name: '20260711_204901_ui_plugins_notifications_ai'
   },
 ];

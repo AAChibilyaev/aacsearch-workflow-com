@@ -8,5 +8,12 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
     include: ['tests/int/**/*.int.spec.ts'],
+    server: {
+      deps: {
+        // dist imports './lexicalFeature/feature.server' without .js — strict
+        // Node ESM can't resolve it, so let Vite transform the package instead
+        inline: ['payload-better-preview'],
+      },
+    },
   },
 })

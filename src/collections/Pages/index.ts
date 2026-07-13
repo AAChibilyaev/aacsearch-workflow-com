@@ -8,6 +8,10 @@ import { HeroBasic } from '../../blocks/HeroBasic/config'
 export const Pages: CollectionConfig = {
   slug: 'pages',
   admin: {
+    livePreview: {
+      url: ({ data, locale, req }) =>
+        `${req.protocol}//${req.host}/${data?.slug ?? ''}?locale=${locale.code}`,
+    },
     useAsTitle: 'title',
   },
   fields: [
