@@ -83,13 +83,35 @@ const extractTenantID = (value: unknown): null | number | string => {
  * into another tenant. This beforeValidate hook forces/validates `data.tenant`
  * against the key's own tenant(s) and rejects otherwise.
  *
- * `users` principals are intentionally untouched — their tenant assignment is
- * handled by the plugin's admin tenant selector and injected Where; super-admin
+ * `users` principals keep the plugin's create-time assignment (admin tenant
+ * selector + injected Where), but UPDATE re-parenting is rejected here too: a
+ * user who belongs to tenants A and B could otherwise move rows between them
+ * (the plugin's row Where only proves access to the CURRENT tenant, and the
+ * open tenantField access never re-checks the incoming value). Super-admin
  * may write across tenants.
  */
-export const enforceTenantWriteScope: CollectionBeforeValidateHook = ({ data, operation, req }) => {
-  if (getPrincipalCollection(req.user) !== 'api-keys') return data
+export const enforceTenantWriteScope: CollectionBeforeValidateHook = ({
+  data,
+  operation,
+  originalDoc,
+  req,
+}) => {
   if (!data) return data
+  if (getPrincipalCollection(req.user) !== 'api-keys') {
+    if (
+      operation === 'update' &&
+      req.user &&
+      !isSuperAdmin(req.user) &&
+      getPrincipalCollection(req.user) === 'users'
+    ) {
+      const incoming = extractTenantID((data as { tenant?: unknown }).tenant)
+      const current = extractTenantID((originalDoc as { tenant?: unknown } | undefined)?.tenant)
+      if (incoming !== null && current !== null && String(incoming) !== String(current)) {
+        throw new APIError('Forbidden tenant', 403, { code: 'FORBIDDEN_TENANT' }, true)
+      }
+    }
+    return data
+  }
 
   // A revoked/expired key must not write even if access somehow let it through.
   const allowed = isApiKeyPrincipalValid(req.user) ? getPrincipalTenantIDs(req.user) : []

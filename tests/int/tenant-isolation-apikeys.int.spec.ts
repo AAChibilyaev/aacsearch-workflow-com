@@ -150,8 +150,8 @@ describe('enforceTenantWriteScope (cross-tenant write hard stop)', () => {
 // ---------------------------------------------------------------------------
 
 type ProductDoc = { id: number | string; tenant?: null | number | string | { id: number | string } }
-type DefinitionDoc = { id: number | string; tenant?: null | number | string | { id: number | string } }
-type DocumentDoc = { id: number | string; tenant?: null | number | string | { id: number | string } }
+type DefinitionDoc = { id: number; tenant?: null | number | string | { id: number | string } }
+type DocumentDoc = { id: number; tenant?: null | number | string | { id: number | string } }
 type TenantScopedUser = { collection: 'api-keys'; id: string; tenant: number | string }
 
 const tenantIDOf = (

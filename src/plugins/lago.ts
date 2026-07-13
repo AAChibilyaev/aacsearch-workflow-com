@@ -11,6 +11,8 @@ import {
   toWalletDTO,
   toWalletTransactionDTO,
   flattenEntitlements,
+  normalizeBillingStatus,
+  sanitizeEntitlements,
 } from '@/lib/billing/dto'
 import { clearEntitlementsCache } from '@/lib/billing/entitlements'
 import { emitUsageEvent, getLagoClient } from '@/lib/billing/usage'
@@ -303,6 +305,7 @@ const updateTenantBilling = async (
   externalCustomerId: string,
   patch: BillingPatch,
   event: string,
+  guards?: { onlyIfCurrent?: BillingStatus[] },
 ): Promise<void> => {
   const id = Number(externalCustomerId)
   if (!Number.isFinite(id)) {
@@ -322,6 +325,9 @@ const updateTenantBilling = async (
   }
   const previousStatus =
     (existing as { billing?: TenantBillingMirror }).billing?.status ?? 'none'
+  if (guards?.onlyIfCurrent && !guards.onlyIfCurrent.includes(previousStatus as BillingStatus)) {
+    return
+  }
 
   await req.payload.update({
     id,
@@ -332,6 +338,11 @@ const updateTenantBilling = async (
       billing: {
         ...((existing as { billing?: TenantBillingMirror }).billing ?? {}),
         ...patch,
+        entitlements: sanitizeEntitlements(
+          patch.entitlements ??
+            (existing as { billing?: TenantBillingMirror }).billing?.entitlements,
+        ),
+        status: patch.status,
         syncedAt: new Date().toISOString(),
       },
     },
@@ -434,8 +445,15 @@ const mirrorInvoiceToCollection = async (req: PayloadRequest, invoiceRaw: unknow
     const tenantExternalId = externalCustomerIdOf(invoiceRaw)
     if (!externalId || !tenantExternalId) return
 
+    const tenantId = Number(tenantExternalId)
+    if (!Number.isFinite(tenantId)) {
+      req.payload.logger.warn({
+        msg: 'invoice mirror: non-numeric tenant external id, skipping',
+      })
+      return
+    }
     const tenant = await req.payload
-      .findByID({ id: tenantExternalId, collection: 'tenants', depth: 0, req })
+      .findByID({ id: tenantId, collection: 'tenants', depth: 0, overrideAccess: true, req })
       .catch((): null => null)
     if (!tenant) return
 
@@ -519,6 +537,8 @@ const mirrorWalletBalance = async (req: PayloadRequest, wallet: W): Promise<void
       data: {
         billing: {
           ...previousBilling,
+          entitlements: sanitizeEntitlements(previousBilling.entitlements),
+          status: normalizeBillingStatus(previousBilling.status),
           walletId: wallet.lago_id || undefined,
           walletBalanceCents: balance,
           walletCurrency: wallet.currency || previousBilling.walletCurrency || 'USD',
@@ -603,10 +623,20 @@ const applyBillingWebhook = async (
     }
 
     case 'invoice.payment_status_updated': {
-      const invoice = event.invoice as unknown as { payment_status?: string }
-      if (invoice?.payment_status === 'succeeded') {
+      const invoice = event.invoice as unknown as {
+        invoice_type?: string
+        payment_status?: string
+      }
+      // Only a SUBSCRIPTION invoice payment may recover a past_due tenant.
+      // Unconditional `active` would resurrect canceled/terminated tenants
+      // (e.g. a final invoice paid after termination, or a one-off top-up).
+      if (invoice?.payment_status === 'succeeded' && invoice?.invoice_type === 'subscription') {
         const externalId = externalCustomerIdOf(event.invoice)
-        if (externalId) await updateTenantBilling(req, externalId, { status: 'active' }, type)
+        if (externalId) {
+          await updateTenantBilling(req, externalId, { status: 'active' }, type, {
+            onlyIfCurrent: ['past_due'],
+          })
+        }
       }
       await mirrorInvoiceToCollection(req, event.invoice)
       return
@@ -629,6 +659,36 @@ const applyBillingWebhook = async (
       if (walletObj) {
         await mirrorWalletBalance(req, walletObj)
       }
+      return
+    }
+
+    // ── Wallet lifecycle: keep the balance mirror fresh ─────────────
+    case 'wallet.depleted_ongoing_balance': {
+      const walletObj = (event as unknown as { wallet?: W }).wallet
+      if (walletObj) await mirrorWalletBalance(req, walletObj)
+      return
+    }
+
+    case 'wallet_transaction.payment_failure': {
+      const payload = event as unknown as { wallet_transaction?: { wallet?: W } }
+      req.payload.logger.warn({ msg: 'wallet top-up payment failed', type })
+      if (payload.wallet_transaction?.wallet) {
+        await mirrorWalletBalance(req, payload.wallet_transaction.wallet)
+      }
+      return
+    }
+
+    // ── Usage-event ingestion errors — the billing backend actively
+    // reports events that failed to attach to a subscription. Losing these
+    // silently means losing revenue; surface them loudly in the logs.
+    case 'event.error':
+    case 'events.errors': {
+      req.payload.logger.error({
+        detail: (event as unknown as { event_error?: unknown; events_errors?: unknown })
+          .event_error ?? (event as unknown as { events_errors?: unknown }).events_errors,
+        msg: 'billing usage event REJECTED by billing backend — usage is not being billed',
+        type,
+      })
       return
     }
 
@@ -946,15 +1006,32 @@ export const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
         return Response.json({ error: 'Forbidden' }, { status: 403 })
       }
       try {
-        const wallet = await findActiveWallet(opts, String(tenant))
+        let wallet = await findActiveWallet(opts, String(tenant))
+        if (!wallet) {
+          // First top-up provisions the wallet (1 credit = 1 currency unit).
+          // Requiring a manually pre-created wallet would force an operator
+          // into the vendor console — exactly what the white-label rules ban.
+          const client = await getLagoClient(opts)
+          const { data } = await client.wallets.createWallet({
+            wallet: {
+              currency: 'USD',
+              external_customer_id: String(tenant),
+              name: 'Prepaid credits',
+              rate_amount: '1',
+            },
+          })
+          wallet = data.wallet ?? null
+        }
         if (!wallet) return Response.json({ error: 'No wallet available' }, { status: 404 })
 
         const rate = Number(wallet.rate_amount) || 1
-        const paidCredits = amountCents / 100 / rate
+        // Fixed-precision decimal string — Lago rejects exponent notation
+        // ("1e-7") and raw float division can produce either.
+        const paidCredits = (amountCents / 100 / rate).toFixed(5)
         const client = await getLagoClient(opts)
         const { data } = await client.walletTransactions.createWalletTransaction({
           wallet_transaction: {
-            paid_credits: String(paidCredits),
+            paid_credits: paidCredits,
             wallet_id: wallet.lago_id,
           },
         })
@@ -980,8 +1057,11 @@ export const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
     path: '/billing/wallet/topup',
   },
   {
-    // Subscribe the tenant to a plan — tenant-admin only. Idempotent: the
-    // deterministic external_id upserts, so re-posting the same plan is a no-op.
+    // Subscribe the tenant to a plan — tenant-admin only. The external_id IS
+    // the bare tenant id: Lago attaches usage events by matching
+    // external_subscription_id to it (usage.ts emits the tenant id), and
+    // re-posting the same external_id with a new plan_code performs a proper
+    // upgrade/downgrade instead of opening a second parallel subscription.
     handler: async (req) => {
       if (!req.user || !isApiKeyPrincipalValid(req.user)) {
         return Response.json({ error: 'Unauthorized' }, { status: 401 })
@@ -999,7 +1079,7 @@ export const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
         const { data } = await client.subscriptions.createSubscription({
           subscription: {
             external_customer_id: String(tenant),
-            external_id: `${tenant}:${planCode}`,
+            external_id: String(tenant),
             plan_code: planCode,
           },
         })
@@ -1015,14 +1095,19 @@ export const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
             entitlements: sub
               ? await resolveSubscriptionEntitlements(req, opts, {
                   external_customer_id: String(tenant),
-                  external_id: `${tenant}:${planCode}`,
+                  external_id: String(tenant),
                   plan: sub.plan,
                   plan_code: planCode,
                 })
               : {},
             plan: planCode,
             planName: sub?.plan?.name ?? planCode,
-            status: sub?.trial_ended_at ? 'trialing' : 'active',
+            // Only a trial end in the FUTURE means an active trial (same rule
+            // as the webhook path) — a past date is a finished trial.
+            status:
+              sub?.trial_ended_at && new Date(sub.trial_ended_at).getTime() > Date.now()
+                ? 'trialing'
+                : 'active',
             trialEndsAt: sub?.trial_ended_at ?? null,
           },
           'subscribe',
@@ -1105,6 +1190,12 @@ export const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
       }
       if (!tenant || !code) {
         return Response.json({ error: 'tenant and code are required' }, { status: 400 })
+      }
+      // Without an explicit id the shared helper hour-buckets the hash, so two
+      // legitimate events with identical properties in the same hour would
+      // silently collapse into one — require the caller to supply the key.
+      if (typeof transactionId !== 'string' || transactionId.length === 0) {
+        return Response.json({ error: 'transactionId is required' }, { status: 400 })
       }
       if (!canAccessTenant(req.user, tenant)) {
         return Response.json({ error: 'Forbidden' }, { status: 403 })

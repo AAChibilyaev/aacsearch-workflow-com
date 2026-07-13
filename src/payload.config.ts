@@ -58,7 +58,9 @@ const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 const realpath = (value: string) => (fs.existsSync(value) ? fs.realpathSync(value) : undefined)
 
-const isCLI = process.argv.some((value) => realpath(value).endsWith(path.join('payload', 'bin.js')))
+const isCLI = process.argv.some((value) =>
+  realpath(value)?.endsWith(path.join('payload', 'bin.js')),
+)
 const isProduction = process.env.NODE_ENV === 'production'
 
 const createLog =
@@ -311,6 +313,11 @@ export default buildConfig({
       tenantField: {
         access: {
           read: () => true,
+          // Field access must stay open: denying here silently STRIPS the
+          // incoming value before hooks run, hiding cross-tenant writes as
+          // no-ops. Re-parenting is instead rejected with an explicit 403 by
+          // `enforceTenantWriteScope` (for BOTH principal shapes) on every
+          // tenant-scoped collection.
           update: () => true,
         },
       },
@@ -333,16 +340,56 @@ export default buildConfig({
     }),
     redirectsPlugin({
       collections: ['pages'],
+      overrides: {
+        // Platform-site plumbing — keep it out of the customer panel
+        access: {
+          create: isSuperAdminAccess,
+          delete: isSuperAdminAccess,
+          read: () => true,
+          update: isSuperAdminAccess,
+        },
+        admin: { hidden: ({ user }) => !isSuperAdmin(user) },
+      },
     }),
     searchPlugin({
       collections: ['pages'],
       defaultPriorities: {
         pages: 10,
       },
+      searchOverrides: {
+        // Index rows mirror page content across tenants — super-admin surface
+        access: {
+          read: isSuperAdminAccess,
+        },
+        admin: { hidden: ({ user }) => !isSuperAdmin(user) },
+      },
     }),
     formBuilderPlugin({
       fields: {
         payment: false,
+      },
+      // The generated collections are NOT tenant-scoped (they're used for the
+      // platform marketing site only). Their plugin defaults are cross-tenant
+      // readable by any logged-in customer — lock management to super-admin
+      // and hide them from the customer panel. Public visitors may still
+      // read forms (to render them) and create submissions.
+      formOverrides: {
+        access: {
+          create: isSuperAdminAccess,
+          delete: isSuperAdminAccess,
+          read: () => true,
+          update: isSuperAdminAccess,
+        },
+        admin: { hidden: ({ user }) => !isSuperAdmin(user) },
+      },
+      formSubmissionOverrides: {
+        access: {
+          create: () => true,
+          delete: isSuperAdminAccess,
+          read: isSuperAdminAccess,
+          update: isSuperAdminAccess,
+        },
+        admin: { hidden: ({ user }) => !isSuperAdmin(user) },
       },
     }),
     importExportPlugin({
@@ -433,6 +480,8 @@ export default buildConfig({
     airbytePlugin({
       apiToken: process.env.AIRBYTE_API_TOKEN,
       apiUrl: process.env.AIRBYTE_API_URL,
+      clientId: process.env.AIRBYTE_CLIENT_ID,
+      clientSecret: process.env.AIRBYTE_CLIENT_SECRET,
       workspaceId: process.env.AIRBYTE_WORKSPACE_ID,
     }),
     // Cluster-ops: chunked reindex of one engine collection into another,

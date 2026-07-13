@@ -841,36 +841,58 @@ describe('buildAnalyticsDestinationSchemas / buildAnalyticsRules', () => {
 
   it('builds popular_queries + nohits_queries rules with the right schema', () => {
     const rules = buildAnalyticsRules(7, bothOn)
-    expect(rules).toHaveLength(2)
+    // 2 capture rules (default source: products) + 4 event log rules
+    expect(rules).toHaveLength(6)
     const popular = rules.find((r) => r.type === 'popular_queries')
     expect(popular).toMatchObject({
-      collection: 'documents',
+      collection: 'products',
       event_type: 'search',
-      name: 'tenant_7_popular',
+      name: 'tenant_7_popular__products',
       params: {
         capture_search_requests: true,
         destination_collection: 'tenant_7_popular_queries',
         limit: 1000,
       },
+      rule_tag: 'tenant_7',
       type: 'popular_queries',
     })
     const nohits = rules.find((r) => r.type === 'nohits_queries')
     expect(nohits).toMatchObject({
-      collection: 'documents',
+      collection: 'products',
       event_type: 'search',
-      name: 'tenant_7_nohits',
+      name: 'tenant_7_nohits__products',
       params: { destination_collection: 'tenant_7_nohits_queries' },
+      rule_tag: 'tenant_7',
       type: 'nohits_queries',
     })
   })
 
-  it('honours a custom source collection and the toggles', () => {
-    expect(buildAnalyticsRules(7, bothOn, { sourceCollection: 'products' })[0].collection).toBe(
-      'products',
-    )
-    expect(buildAnalyticsRules(7, {})).toEqual([])
+  it('always provisions the event log rules the events endpoint posts to', () => {
+    const logRules = buildAnalyticsRules(7, {}).filter((r) => r.type === 'log')
+    expect(logRules.map((r) => r.name).sort()).toEqual([
+      'tenant_7_click',
+      'tenant_7_conversion',
+      'tenant_7_search',
+      'tenant_7_visit',
+    ])
+    expect(logRules.every((r) => r.rule_tag === 'tenant_7')).toBe(true)
+  })
+
+  it('honours custom source collections and the toggles', () => {
+    const rules = buildAnalyticsRules(7, bothOn, {
+      sourceCollections: ['t7_faq', 'products'],
+    })
+    const captureNames = rules.filter((r) => r.type !== 'log').map((r) => r.name)
+    expect(captureNames.sort()).toEqual([
+      'tenant_7_nohits__products',
+      'tenant_7_nohits__t7_faq',
+      'tenant_7_popular__products',
+      'tenant_7_popular__t7_faq',
+    ])
     expect(
-      buildAnalyticsRules(7, { analytics: { enableNoHitsTracking: true } }).map((r) => r.type),
+      buildAnalyticsRules(7, { analytics: { enableNoHitsTracking: true } })
+        .filter((r) => r.type !== 'log')
+        .map((r) => r.type),
     ).toEqual(['nohits_queries'])
   })
 })

@@ -126,6 +126,16 @@ export const tenantPresetName = (tenant: number | string): string => base(tenant
 export const tenantPopularRuleName = (tenant: number | string): string => `${base(tenant)}_popular`
 /** nohits_queries analytics rule name for a tenant. */
 export const tenantNoHitsRuleName = (tenant: number | string): string => `${base(tenant)}_nohits`
+/** rule_tag shared by ALL of a tenant's analytics rules (tag-scoped cleanup). */
+export const tenantRuleTag = (tenant: number | string): string => base(tenant)
+/** Event types POST /v1/analytics/events accepts — one log rule per type. */
+export const ANALYTICS_EVENT_TYPES = ['click', 'conversion', 'search', 'visit'] as const
+/**
+ * Log-rule name a posted analytics event must reference — the engine rejects
+ * an event whose rule name does not exist.
+ */
+export const tenantEventRuleName = (tenant: number | string, eventType: string): string =>
+  `${base(tenant)}_${eventType}`
 /** Destination collection holding a tenant's popular queries. */
 export const tenantPopularQueriesCollection = (tenant: number | string): string =>
   `${base(tenant)}_popular_queries`
@@ -300,8 +310,12 @@ export const buildStopwords = (rows: StopwordRow[] | null | undefined): string[]
 
 /** Options controlling analytics-rule creation. */
 export type AnalyticsBuildOptions = {
-  /** Engine source collection the analytics rules aggregate. Default `documents`. */
-  sourceCollection?: string
+  /**
+   * REAL engine collections the rules capture from — a rule whose source
+   * collection does not exist captures nothing. Default: `['products']`
+   * (the shared platform collection, which always exists).
+   */
+  sourceCollections?: string[]
 }
 
 /**
@@ -336,33 +350,54 @@ export const buildAnalyticsRules = (
   opts: AnalyticsBuildOptions = {},
 ): AnalyticsRuleCreateSchema[] => {
   const analytics = settings.analytics ?? {}
-  const collection = opts.sourceCollection ?? 'documents'
+  const sources = opts.sourceCollections?.length ? opts.sourceCollections : ['products']
+  const tag = tenantRuleTag(tenant)
   const rules: AnalyticsRuleCreateSchema[] = []
-  if (analytics.enableQuerySuggestions) {
-    rules.push({
-      collection,
-      event_type: 'search',
-      name: tenantPopularRuleName(tenant),
-      params: {
-        capture_search_requests: true,
-        destination_collection: tenantPopularQueriesCollection(tenant),
-        expand_query: false,
-        limit: 1000,
-      },
-      type: 'popular_queries',
-    })
+  // One capture rule per REAL source collection (searches hit per-collection
+  // endpoints, so a single rule can only see one collection's traffic); all
+  // rules share one destination so the analytics read stays a single query.
+  for (const collection of sources) {
+    if (analytics.enableQuerySuggestions) {
+      rules.push({
+        collection,
+        event_type: 'search',
+        name: `${tenantPopularRuleName(tenant)}__${collection}`,
+        params: {
+          capture_search_requests: true,
+          destination_collection: tenantPopularQueriesCollection(tenant),
+          expand_query: false,
+          limit: 1000,
+        },
+        rule_tag: tag,
+        type: 'popular_queries',
+      })
+    }
+    if (analytics.enableNoHitsTracking) {
+      rules.push({
+        collection,
+        event_type: 'search',
+        name: `${tenantNoHitsRuleName(tenant)}__${collection}`,
+        params: {
+          capture_search_requests: true,
+          destination_collection: tenantNoHitsQueriesCollection(tenant),
+          limit: 1000,
+        },
+        rule_tag: tag,
+        type: 'nohits_queries',
+      })
+    }
   }
-  if (analytics.enableNoHitsTracking) {
+  // Log rules back POST /v1/analytics/events (click/conversion/visit/search)
+  // — the engine rejects an event whose rule name does not exist, so these
+  // are provisioned unconditionally, independent of the capture toggles.
+  for (const eventType of ANALYTICS_EVENT_TYPES) {
     rules.push({
-      collection,
-      event_type: 'search',
-      name: tenantNoHitsRuleName(tenant),
-      params: {
-        capture_search_requests: true,
-        destination_collection: tenantNoHitsQueriesCollection(tenant),
-        limit: 1000,
-      },
-      type: 'nohits_queries',
+      collection: sources[0],
+      event_type: eventType,
+      name: tenantEventRuleName(tenant, eventType),
+      params: {},
+      rule_tag: tag,
+      type: 'log',
     })
   }
   return rules
@@ -470,15 +505,30 @@ export const syncTenantSearchSettings = async (
     }
   })
   await step('analytics-rules', async () => {
-    const analytics = settings.analytics ?? {}
-    if (!analytics.enableQuerySuggestions) {
-      await client.analytics.rules(tenantPopularRuleName(tenant)).delete().catch(ignore)
+    const desired = buildAnalyticsRules(tenant, settings, opts)
+    for (const rule of desired) {
+      // Per-rule isolation: one rejected rule must not block the others
+      await client.analytics
+        .rules()
+        .upsert(rule.name, rule)
+        .catch((err: unknown) =>
+          log?.error({ err, msg: `analytics rule upsert failed: ${rule.name}` }),
+        )
     }
-    if (!analytics.enableNoHitsTracking) {
-      await client.analytics.rules(tenantNoHitsRuleName(tenant)).delete().catch(ignore)
+    // Tag-scoped cleanup: drop this tenant's rules that are no longer desired
+    // (toggle turned off, collection deleted). Only OUR tag is touched.
+    const desiredNames = new Set(desired.map((rule) => rule.name))
+    const existing = await client.analytics
+      .rules()
+      .retrieve(tenantRuleTag(tenant))
+      .catch((): [] => [])
+    for (const rule of existing) {
+      if (!desiredNames.has(rule.name)) {
+        await client.analytics.rules(rule.name).delete().catch(ignore)
+      }
     }
-    for (const rule of buildAnalyticsRules(tenant, settings, opts)) {
-      await client.analytics.rules().upsert(rule.name, rule)
-    }
+    // Legacy pre-tag rule names (no rule_tag, so tag cleanup can't see them)
+    await client.analytics.rules(tenantPopularRuleName(tenant)).delete().catch(ignore)
+    await client.analytics.rules(tenantNoHitsRuleName(tenant)).delete().catch(ignore)
   })
 }

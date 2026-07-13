@@ -637,11 +637,19 @@ describe('billing endpoint auth guards', () => {
 
   it('/billing/events accepts a super-admin with a valid body', async () => {
     const res = await call('/billing/events', {
-      body: { code: 'search_requests', tenant: '1' },
+      body: { code: 'search_requests', tenant: '1', transactionId: 'evt-test-1' },
       user: superAdmin,
     })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ accepted: true })
+  })
+
+  it('/billing/events requires an explicit transactionId (400 without one)', async () => {
+    const res = await call('/billing/events', {
+      body: { code: 'search_requests', tenant: '1' },
+      user: superAdmin,
+    })
+    expect(res.status).toBe(400)
   })
 
   it('/billing/plans and /billing/summary reject a revoked api key (401)', async () => {
@@ -748,7 +756,7 @@ describe('billing webhook endpoint effects', () => {
             plan: 'pro',
             planName: 'Pro',
             status: 'active',
-            trialEndsAt: null,
+            trialEndsAt: null as null | string,
           },
           id: 1,
         }),
