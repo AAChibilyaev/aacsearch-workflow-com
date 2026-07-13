@@ -241,6 +241,690 @@ PHP-клиент (PSR-4 `AACSearch\SDK\`), PHP ≥ 8.1.
 
 ---
 
+# Полное дерево проекта
+
+Все папки и файлы репозитория (исключены только кеши и артефакты сборки:
+`node_modules/`, `.git/`, `.next/`, `.open-next/`, `.wrangler/`, `dist/`,
+`tsconfig.tsbuildinfo`, `.env`). Назначение каждого элемента описано в
+разделах ниже.
+
+```text
+.
+├── .agents/
+│   └── skills/
+│       ├── cms-migration/
+│       │   ├── reference/
+│       │   │   └── PAYLOAD-FIELD-REFERENCE.md
+│       │   └── SKILL.md
+│       └── payload/
+│           ├── reference/
+│           │   ├── ACCESS-CONTROL-ADVANCED.md
+│           │   ├── ACCESS-CONTROL.md
+│           │   ├── ADAPTERS.md
+│           │   ├── ADVANCED.md
+│           │   ├── COLLECTIONS.md
+│           │   ├── ENDPOINTS.md
+│           │   ├── FIELD-TYPE-GUARDS.md
+│           │   ├── FIELDS.md
+│           │   ├── HOOKS.md
+│           │   ├── PLUGIN-DEVELOPMENT.md
+│           │   └── QUERIES.md
+│           ├── README.md
+│           └── SKILL.md
+├── .claude/
+│   └── skills/
+│       ├── cms-migration/
+│       │   ├── reference/
+│       │   │   └── PAYLOAD-FIELD-REFERENCE.md
+│       │   └── SKILL.md
+│       └── payload/
+│           ├── reference/
+│           │   ├── ACCESS-CONTROL-ADVANCED.md
+│           │   ├── ACCESS-CONTROL.md
+│           │   ├── ADAPTERS.md
+│           │   ├── ADVANCED.md
+│           │   ├── COLLECTIONS.md
+│           │   ├── ENDPOINTS.md
+│           │   ├── FIELD-TYPE-GUARDS.md
+│           │   ├── FIELDS.md
+│           │   ├── HOOKS.md
+│           │   ├── PLUGIN-DEVELOPMENT.md
+│           │   └── QUERIES.md
+│           ├── README.md
+│           └── SKILL.md
+├── .devcontainer/
+│   └── devcontainer.json
+├── .payload-components/
+│   └── state.json
+├── .vscode/
+│   ├── extensions.json
+│   ├── launch.json
+│   └── settings.json
+├── docs/
+│   └── payload-ui-plugins.md
+├── packages/
+│   ├── aacsearch-ui/
+│   │   ├── src/
+│   │   │   ├── declarations.d.ts
+│   │   │   ├── index.ts
+│   │   │   ├── types.ts
+│   │   │   └── widget.ts
+│   │   ├── package.json
+│   │   ├── README.md
+│   │   ├── tsconfig.json
+│   │   └── tsup.config.ts
+│   ├── sdk/
+│   │   ├── src/
+│   │   │   ├── AACSearch/
+│   │   │   │   ├── Errors/
+│   │   │   │   │   ├── AACSearchError.ts
+│   │   │   │   │   ├── HTTPError.ts
+│   │   │   │   │   ├── ImportError.ts
+│   │   │   │   │   ├── MissingConfigurationError.ts
+│   │   │   │   │   ├── ObjectAlreadyExists.ts
+│   │   │   │   │   ├── ObjectNotFound.ts
+│   │   │   │   │   ├── ObjectUnprocessable.ts
+│   │   │   │   │   ├── RequestMalformed.ts
+│   │   │   │   │   ├── RequestUnauthorized.ts
+│   │   │   │   │   └── ServerError.ts
+│   │   │   │   ├── Aliases.ts
+│   │   │   │   ├── Analytics.ts
+│   │   │   │   ├── AnalyticsEvents.ts
+│   │   │   │   ├── AnalyticsRule.ts
+│   │   │   │   ├── AnalyticsRules.ts
+│   │   │   │   ├── ApiCall.ts
+│   │   │   │   ├── Client.ts
+│   │   │   │   ├── Collection.ts
+│   │   │   │   ├── Collections.ts
+│   │   │   │   ├── Configuration.ts
+│   │   │   │   ├── Conversation.ts
+│   │   │   │   ├── ConversationModel.ts
+│   │   │   │   ├── ConversationModels.ts
+│   │   │   │   ├── Conversations.ts
+│   │   │   │   ├── CurationSet.ts
+│   │   │   │   ├── CurationSetItem.ts
+│   │   │   │   ├── CurationSetItems.ts
+│   │   │   │   ├── CurationSets.ts
+│   │   │   │   ├── Debug.ts
+│   │   │   │   ├── Document.ts
+│   │   │   │   ├── Documents.ts
+│   │   │   │   ├── Health.ts
+│   │   │   │   ├── Keys.ts
+│   │   │   │   ├── Metrics.ts
+│   │   │   │   ├── MultiSearch.ts
+│   │   │   │   ├── NLSearchModel.ts
+│   │   │   │   ├── NLSearchModels.ts
+│   │   │   │   ├── Operations.ts
+│   │   │   │   ├── Overrides.ts
+│   │   │   │   ├── Presets.ts
+│   │   │   │   ├── RequestWithCache.ts
+│   │   │   │   ├── SearchClient.ts
+│   │   │   │   ├── SearchOnlyCollection.ts
+│   │   │   │   ├── SearchOnlyDocuments.ts
+│   │   │   │   ├── Stats.ts
+│   │   │   │   ├── Stemming.ts
+│   │   │   │   ├── StemmingDictionaries.ts
+│   │   │   │   ├── StemmingDictionary.ts
+│   │   │   │   ├── Stopword.ts
+│   │   │   │   ├── Stopwords.ts
+│   │   │   │   ├── Synonym.ts
+│   │   │   │   ├── Synonyms.ts
+│   │   │   │   ├── SynonymSet.ts
+│   │   │   │   ├── SynonymSetItem.ts
+│   │   │   │   ├── SynonymSetItems.ts
+│   │   │   │   ├── SynonymSets.ts
+│   │   │   │   └── Types.ts
+│   │   │   └── index.ts
+│   │   ├── .gitignore
+│   │   ├── .gitkeep
+│   │   ├── package.json
+│   │   ├── README.md
+│   │   ├── tsconfig.json
+│   │   └── tsup.config.ts
+│   └── sdk-php/
+│       ├── src/
+│       │   ├── Aliases/
+│       │   │   ├── Alias.php
+│       │   │   └── Aliases.php
+│       │   ├── Analytics/
+│       │   │   ├── Analytics.php
+│       │   │   ├── AnalyticsEvents.php
+│       │   │   ├── AnalyticsRule.php
+│       │   │   ├── AnalyticsRules.php
+│       │   │   └── AnalyticsV1.php
+│       │   ├── Collections/
+│       │   │   ├── Collection.php
+│       │   │   ├── Collections.php
+│       │   │   ├── Documents.php
+│       │   │   ├── SearchOnlyCollection.php
+│       │   │   └── SearchOnlyDocuments.php
+│       │   ├── Conversations/
+│       │   │   ├── Conversation.php
+│       │   │   ├── ConversationModel.php
+│       │   │   ├── ConversationModels.php
+│       │   │   └── Conversations.php
+│       │   ├── CurationSets/
+│       │   │   ├── CurationSet.php
+│       │   │   ├── CurationSetItem.php
+│       │   │   ├── CurationSetItems.php
+│       │   │   └── CurationSets.php
+│       │   ├── Errors/
+│       │   │   ├── AACSearchError.php
+│       │   │   ├── HTTPError.php
+│       │   │   ├── ImportError.php
+│       │   │   ├── MissingConfigurationError.php
+│       │   │   ├── ObjectAlreadyExists.php
+│       │   │   ├── ObjectNotFound.php
+│       │   │   ├── ObjectUnprocessable.php
+│       │   │   ├── RequestMalformed.php
+│       │   │   ├── RequestUnauthorized.php
+│       │   │   └── ServerError.php
+│       │   ├── Keys/
+│       │   │   ├── Key.php
+│       │   │   └── Keys.php
+│       │   ├── NLSearch/
+│       │   │   ├── NLSearchModel.php
+│       │   │   └── NLSearchModels.php
+│       │   ├── Overrides/
+│       │   │   └── Overrides.php
+│       │   ├── Presets/
+│       │   │   ├── Preset.php
+│       │   │   └── Presets.php
+│       │   ├── Stemming/
+│       │   │   ├── Stemming.php
+│       │   │   ├── StemmingDictionaries.php
+│       │   │   └── StemmingDictionary.php
+│       │   ├── Stopwords/
+│       │   │   ├── Stopword.php
+│       │   │   └── Stopwords.php
+│       │   ├── Synonyms/
+│       │   │   ├── Synonym.php
+│       │   │   ├── Synonyms.php
+│       │   │   ├── SynonymSet.php
+│       │   │   ├── SynonymSetItem.php
+│       │   │   ├── SynonymSetItems.php
+│       │   │   └── SynonymSets.php
+│       │   ├── System/
+│       │   │   ├── Debug.php
+│       │   │   ├── Health.php
+│       │   │   ├── Metrics.php
+│       │   │   ├── Operations.php
+│       │   │   └── Stats.php
+│       │   ├── ApiCall.php
+│       │   ├── Billing.php
+│       │   ├── Client.php
+│       │   ├── Configuration.php
+│       │   ├── Integrations.php
+│       │   ├── MultiSearch.php
+│       │   ├── Search.php
+│       │   ├── SearchClient.php
+│       │   └── SearchParams.php
+│       ├── .gitignore
+│       ├── composer.json
+│       └── README.md
+├── prompts/
+│   ├── INSTALLED-SOURCE-NOTES.md
+│   ├── payload-admin-ui-plugin-developer.md
+│   └── payloadcms-agent.md
+├── public/
+│   ├── widget/
+│   │   └── aacsearch-ui.js
+│   └── _headers
+├── src/
+│   ├── access/
+│   │   ├── isSuperAdmin.ts
+│   │   ├── tenants.ts
+│   │   ├── tenantScopedAccess.ts
+│   │   └── users.ts
+│   ├── app/
+│   │   ├── (frontend)/
+│   │   │   ├── [slug]/
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── RefreshRouteOnSave.tsx
+│   │   │   ├── layout.tsx
+│   │   │   ├── page.tsx
+│   │   │   ├── sitemap.ts
+│   │   │   └── styles.css
+│   │   ├── (payload)/
+│   │   │   ├── admin/
+│   │   │   │   ├── [[...segments]]/
+│   │   │   │   │   ├── not-found.tsx
+│   │   │   │   │   └── page.tsx
+│   │   │   │   └── importMap.js
+│   │   │   ├── api/
+│   │   │   │   ├── [...slug]/
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── graphql/
+│   │   │   │   │   └── route.ts
+│   │   │   │   └── graphql-playground/
+│   │   │   │       └── route.ts
+│   │   │   ├── custom.scss
+│   │   │   └── layout.tsx
+│   │   └── api/
+│   │       └── set-locale/
+│   │           └── route.ts
+│   ├── blocks/
+│   │   ├── CallToActionBoxed/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── CallToActionCentered/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── CallToActionSignup/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ComparatorGrid/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ComparatorStack/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ComparatorTable/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentColumns/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentCommunity/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentFeatureMedia/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentFeatureSplit/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentImageFrame/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentImageLead/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentList/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentListColumns/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentListIcons/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentQuote/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentRows/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentShowcase/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentSplitRows/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── ContentStats/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── EmbedBasic/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── FaqAccordion/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── FaqCard/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── FaqGrid/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── FaqGrouped/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── FaqIcons/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── FaqSplit/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── FeatureBento/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── FeatureGridBasic/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── FeatureSplit/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── FeatureSteps/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── HeroBasic/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── IntegrationCluster/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── IntegrationConnect/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── IntegrationGrid/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── IntegrationList/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── IntegrationMarquee/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── IntegrationOrbit/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── IntegrationSplit/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── IntegrationTestimonial/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── LogoCloudGrid/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── LogoCloudHover/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── LogoCloudInline/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── LogoCloudInlineWrap/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── LogoCloudMarquee/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── PricingCards/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── PricingCardsCta/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── PricingCardsMuted/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── PricingEnterprise/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── PricingSplit/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── shared/
+│   │   │   ├── callToActionFields.ts
+│   │   │   ├── comparatorFields.ts
+│   │   │   ├── contentFields.ts
+│   │   │   ├── contentIcons.ts
+│   │   │   ├── faqFields.ts
+│   │   │   ├── faqIcons.ts
+│   │   │   ├── featureFields.ts
+│   │   │   ├── heroFields.ts
+│   │   │   ├── integrationFields.ts
+│   │   │   ├── logoCloudFields.ts
+│   │   │   ├── pricingFields.ts
+│   │   │   ├── safeUrls.ts
+│   │   │   ├── teamFields.ts
+│   │   │   └── testimonialFields.ts
+│   │   ├── TeamGrid/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── TeamRoster/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── TestimonialsBento/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── TestimonialsGrid/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── TestimonialsQuote/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── TestimonialsRating/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── TestimonialsSpotlight/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── TestimonialsWall/
+│   │   │   ├── Component.tsx
+│   │   │   └── config.ts
+│   │   ├── CallToAction.ts
+│   │   ├── Content.ts
+│   │   ├── Hero.ts
+│   │   └── RenderBlocks.tsx
+│   ├── collections/
+│   │   ├── Pages/
+│   │   │   └── index.ts
+│   │   ├── ApiKeys.ts
+│   │   ├── CollectionDefinitions.ts
+│   │   ├── Documents.ts
+│   │   ├── GoldenQueries.ts
+│   │   ├── Integrations.ts
+│   │   ├── Invoices.ts
+│   │   ├── Media.ts
+│   │   ├── Products.ts
+│   │   ├── ReindexJobs.ts
+│   │   ├── Tenants.ts
+│   │   ├── TenantSettings.ts
+│   │   └── Users.ts
+│   ├── components/
+│   │   ├── BeforeDashboard/
+│   │   │   └── index.tsx
+│   │   ├── fields/
+│   │   │   └── DocumentDataField/
+│   │   │       ├── DocumentDataField.tsx
+│   │   │       └── index.tsx
+│   │   ├── graphics/
+│   │   │   └── Logo.tsx
+│   │   ├── Link/
+│   │   │   └── index.tsx
+│   │   ├── Media/
+│   │   │   └── index.tsx
+│   │   ├── SiteFooter/
+│   │   │   └── index.tsx
+│   │   ├── SiteHeader/
+│   │   │   └── index.tsx
+│   │   ├── ThemeToggle/
+│   │   │   └── index.tsx
+│   │   ├── ui/
+│   │   │   ├── accordion.tsx
+│   │   │   ├── badge.tsx
+│   │   │   ├── button.tsx
+│   │   │   ├── card.tsx
+│   │   │   ├── infinite-slider.tsx
+│   │   │   ├── input.tsx
+│   │   │   ├── progressive-blur.tsx
+│   │   │   ├── select.tsx
+│   │   │   ├── switch.tsx
+│   │   │   ├── table.tsx
+│   │   │   └── tabs.tsx
+│   │   └── views/
+│   │       ├── AiSearch/
+│   │       │   ├── AiSearchPanel.tsx
+│   │       │   ├── index.tsx
+│   │       │   └── shared.ts
+│   │       ├── Analytics/
+│   │       │   ├── AnalyticsPanel.tsx
+│   │       │   ├── i18n.ts
+│   │       │   └── index.tsx
+│   │       ├── Billing/
+│   │       │   ├── BillingPanel.tsx
+│   │       │   ├── i18n.ts
+│   │       │   ├── index.tsx
+│   │       │   ├── InvoicesTable.tsx
+│   │       │   ├── PlanCards.tsx
+│   │       │   ├── shared.tsx
+│   │       │   ├── SubscriptionCard.tsx
+│   │       │   ├── UsageMeters.tsx
+│   │       │   └── WalletCard.tsx
+│   │       ├── Engine/
+│   │       │   ├── EnginePanel.tsx
+│   │       │   ├── index.tsx
+│   │       │   └── shared.ts
+│   │       ├── GoldenQueries/
+│   │       │   ├── GoldenQueriesPanel.tsx
+│   │       │   ├── index.tsx
+│   │       │   └── shared.ts
+│   │       ├── Integrations/
+│   │       │   ├── i18n.ts
+│   │       │   ├── index.tsx
+│   │       │   └── IntegrationsPanel.tsx
+│   │       ├── nav/
+│   │       │   └── PanelNavLinks.tsx
+│   │       ├── QuerySuggestions/
+│   │       │   ├── index.tsx
+│   │       │   ├── QuerySuggestionsPanel.tsx
+│   │       │   └── shared.ts
+│   │       ├── Relevance/
+│   │       │   ├── index.tsx
+│   │       │   ├── RelevancePanel.tsx
+│   │       │   └── shared.ts
+│   │       ├── Search/
+│   │       │   ├── i18n.ts
+│   │       │   ├── index.tsx
+│   │       │   └── SearchPanel.tsx
+│   │       ├── Team/
+│   │       │   ├── i18n.ts
+│   │       │   ├── index.tsx
+│   │       │   └── TeamPanel.tsx
+│   │       ├── Usage/
+│   │       │   ├── i18n.ts
+│   │       │   ├── index.tsx
+│   │       │   └── UsagePanel.tsx
+│   │       └── Widget/
+│   │           ├── i18n.ts
+│   │           ├── index.tsx
+│   │           └── WidgetPanel.tsx
+│   ├── fields/
+│   │   ├── link.ts
+│   │   └── linkGroup.ts
+│   ├── globals/
+│   │   ├── Footer.ts
+│   │   └── Header.ts
+│   ├── hooks/
+│   │   └── setCookieBasedOnDomain.ts
+│   ├── jobs/
+│   │   ├── ingestIntegrationRecords.ts
+│   │   └── reindexCollection.ts
+│   ├── lib/
+│   │   ├── billing/
+│   │   │   ├── dto.ts
+│   │   │   ├── entitlements.ts
+│   │   │   └── usage.ts
+│   │   ├── integrations/
+│   │   │   └── dto.ts
+│   │   ├── search/
+│   │   │   ├── client.ts
+│   │   │   ├── collectionSchema.ts
+│   │   │   └── settingsSync.ts
+│   │   ├── locale.ts
+│   │   ├── principal.ts
+│   │   ├── utils.ts
+│   │   └── validateDocumentData.ts
+│   ├── migrations/
+│   │   ├── 20250929_111647.json
+│   │   ├── 20250929_111647.ts
+│   │   ├── 20260711_200002_aacsearch_multitenant_stack.json
+│   │   ├── 20260711_200002_aacsearch_multitenant_stack.ts
+│   │   ├── 20260711_202415_hero_basic_block.json
+│   │   ├── 20260711_202415_hero_basic_block.ts
+│   │   ├── 20260711_204901_ui_plugins_notifications_ai.json
+│   │   ├── 20260711_204901_ui_plugins_notifications_ai.ts
+│   │   ├── 20260713_122854_registry_blocks_full_set.json
+│   │   ├── 20260713_122854_registry_blocks_full_set.ts
+│   │   ├── 20260713_124254_apikeys_globals_cmdk.json
+│   │   ├── 20260713_124254_apikeys_globals_cmdk.ts
+│   │   ├── 20260713_125137_search_os_core.json
+│   │   ├── 20260713_125137_search_os_core.ts
+│   │   ├── 20260713_141541_media_multitenant.json
+│   │   ├── 20260713_141541_media_multitenant.ts
+│   │   ├── 20260713_142500_wallet_invoices_search_fields.json
+│   │   ├── 20260713_142500_wallet_invoices_search_fields.ts
+│   │   ├── 20260713_143841_search_designer_capabilities.json
+│   │   ├── 20260713_143841_search_designer_capabilities.ts
+│   │   ├── 20260713_145957_faq_pricing_testimonials_comparator_blocks.json
+│   │   ├── 20260713_145957_faq_pricing_testimonials_comparator_blocks.ts
+│   │   ├── 20260713_154608_reindex_jobs.json
+│   │   ├── 20260713_154608_reindex_jobs.ts
+│   │   ├── 20260713_155649_golden_queries.json
+│   │   ├── 20260713_155649_golden_queries.ts
+│   │   ├── 20260713_162253_concurrency_control.json
+│   │   ├── 20260713_162253_concurrency_control.ts
+│   │   └── index.ts
+│   ├── plugins/
+│   │   ├── airbyte.ts
+│   │   ├── lago.ts
+│   │   ├── localeAwareOpenApi.ts
+│   │   ├── nango.ts
+│   │   ├── reindexJobs.ts
+│   │   ├── searchGateway.ts
+│   │   ├── searchScopedKey.ts
+│   │   ├── superAdminOnlyEndpoints.ts
+│   │   └── teamInvite.ts
+│   ├── utilities/
+│   │   ├── deepMerge.ts
+│   │   ├── extractID.ts
+│   │   ├── getCollectionIDType.ts
+│   │   ├── getUserTenantIDs.ts
+│   │   └── ui.ts
+│   ├── globals.d.ts
+│   ├── middleware.ts
+│   ├── payload-types.ts
+│   └── payload.config.ts
+├── tests/
+│   ├── e2e/
+│   │   ├── admin.e2e.spec.ts
+│   │   └── frontend.e2e.spec.ts
+│   ├── helpers/
+│   │   ├── login.ts
+│   │   └── seedUser.ts
+│   └── int/
+│       ├── api-keys.int.spec.ts
+│       ├── api.int.spec.ts
+│       ├── billing.int.spec.ts
+│       ├── collection-provisioning.int.spec.ts
+│       ├── collection-schema.int.spec.ts
+│       ├── documents-validation.int.spec.ts
+│       ├── integrations.int.spec.ts
+│       ├── multi-tenant.int.spec.ts
+│       ├── sdk-contract.int.spec.ts
+│       ├── search-gateway.int.spec.ts
+│       ├── search-panel-whitelabel.int.spec.ts
+│       ├── team.int.spec.ts
+│       └── tenant-isolation-apikeys.int.spec.ts
+├── .env.example
+├── .gitignore
+├── .npmrc
+├── .prettierrc.json
+├── .yarnrc
+├── CLAUDE.md
+├── cloudflare-env.d.ts
+├── components.json
+├── eslint.config.mjs
+├── next-env.d.ts
+├── next.config.ts
+├── open-next.config.ts
+├── package.json
+├── playwright.config.ts
+├── pnpm-lock.yaml
+├── pnpm-workspace.yaml
+├── postcss.config.mjs
+├── README.md
+├── skills-lock.json
+├── test.env
+├── tsconfig.json
+├── vitest.config.mts
+├── vitest.setup.ts
+└── wrangler.jsonc
+```
+
+---
+
 # Полная структура репозитория
 
 ## Корневые файлы
