@@ -121,15 +121,29 @@ const cloudflareLogger = {
   silent: () => {},
 } as unknown as PayloadLogger // structural JSON logger; narrower than pino's full surface
 
+/**
+ * Inert stand-in for Cloudflare bindings during `next build`. A recursive
+ * no-op callable proxy survives any property access / call chain
+ * (`binding.prepare().bind().run()`), so adapters can hold a "binding"
+ * without a real runtime behind it. Nothing may actually USE a binding at
+ * build time — every route is force-dynamic — the stub only lets the config
+ * construct. This deliberately avoids getPlatformProxy on the build host:
+ * remote mode demands a wrangler login and local mode needs to spawn the
+ * workerd sandbox, and CI build containers reliably provide neither.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const buildStubBinding: any = new Proxy(function stub() {}, {
+  apply: () => buildStubBinding,
+  get: (_target, prop) =>
+    prop === Symbol.toPrimitive ? () => 'build-stub' : buildStubBinding,
+})
+
 const cloudflare = isBuildPhase
-  ? // HERMETIC BUILD: local-only bindings (empty miniflare D1/R2). Nothing
-    // queries the DB during `next build` (every route is force-dynamic) and
-    // the real bindings are injected by the Workers runtime after deploy.
-    // Without this override wrangler's getPlatformProxy defaults to
-    // remoteBindings: true, and the `remote: true` D1 binding then demands a
-    // logged-in wrangler session on EVERY build host — exactly what killed
-    // CI ("You must be logged in to use wrangler dev in remote mode").
-    await getCloudflareContextFromWrangler({ remoteBindings: false })
+  ? ({
+      cf: {},
+      ctx: { passThroughOnException: () => {}, waitUntil: () => {} },
+      env: new Proxy({}, { get: () => buildStubBinding }),
+    } as unknown as CloudflareContext)
   : isCLI || !isProduction
     ? await getCloudflareContextFromWrangler()
     : await getCloudflareContext({ async: true })
