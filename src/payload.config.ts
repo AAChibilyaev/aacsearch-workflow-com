@@ -732,20 +732,55 @@ export default buildConfig({
 })
 
 // Adapted from https://github.com/opennextjs/opennextjs-cloudflare/blob/d00b3a13e42e65aad76fba41774815726422cc39/packages/cloudflare/src/api/cloudflare-context.ts#L328C36-L328C46
-function getCloudflareContextFromWrangler(
+async function getCloudflareContextFromWrangler(
   overrides?: Partial<GetPlatformProxyOptions>,
 ): Promise<CloudflareContext> {
-  return import(/* webpackIgnore: true */ `${'__wrangler'.replaceAll('_', '')}`).then(
-    ({ getPlatformProxy }) =>
-      getPlatformProxy({
-        environment: process.env.CLOUDFLARE_ENV,
-        // Isolated state dir (used by tests) so a second miniflare instance
-        // never fights the dev server over the same local D1 files
-        persist: process.env.WRANGLER_PERSIST_PATH
-          ? { path: process.env.WRANGLER_PERSIST_PATH }
-          : undefined,
-        remoteBindings: isProduction,
-        ...overrides,
-      } satisfies GetPlatformProxyOptions),
+  const { getPlatformProxy } = await import(
+    /* webpackIgnore: true */ `${'__wrangler'.replaceAll('_', '')}`
   )
+  const opts = {
+    environment: process.env.CLOUDFLARE_ENV,
+    // Isolated state dir (used by tests) so a second miniflare instance
+    // never fights the dev server over the same local D1 files
+    persist: process.env.WRANGLER_PERSIST_PATH
+      ? { path: process.env.WRANGLER_PERSIST_PATH }
+      : undefined,
+    remoteBindings: isProduction,
+    ...overrides,
+  } satisfies GetPlatformProxyOptions
+
+  if (!isProduction || !opts.remoteBindings) {
+    return getPlatformProxy(opts)
+  }
+
+  // Production CLI (payload migrate etc.): try remote bindings first
+  // (needs CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID). If the token
+  // is missing or the API call fails, fall back to local bindings so the
+  // config can construct without a Cloudflare token. The caller
+  // (migration, seed, etc.) must ensure real bindings are available when
+  // they actually execute SQL.
+  try {
+    return await getPlatformProxy(opts)
+  } catch (err) {
+    const cause = (err as { cause?: { code?: string }; code?: string })?.cause
+      ?? (err as { code?: string })
+    const code: string | undefined =
+      (cause as { code?: string })?.code ?? (err as { code?: string })?.code
+    const msg = (err as { message?: string })?.message ?? String(err)
+    if (
+      code === '10007' ||
+      code === 'ENOTFOUND' ||
+      code === 'ECONNREFUSED' ||
+      msg.includes('unauthorized') ||
+      msg.includes('Not Found') ||
+      msg.includes('fetch failed')
+    ) {
+      console.warn(
+        'Cloudflare API unreachable (no CLOUDFLARE_API_TOKEN?) — ' +
+          'falling back to local wrangler bindings',
+      )
+      return getPlatformProxy({ ...opts, remoteBindings: false })
+    }
+    throw err
+  }
 }
