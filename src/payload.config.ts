@@ -66,6 +66,9 @@ const isCLI = process.argv.some((value) =>
   realpath(value)?.endsWith(path.join('payload', 'bin.js')),
 )
 const isProduction = process.env.NODE_ENV === 'production'
+// True inside `next build` (Next sets NEXT_PHASE in the build process and its
+// page-data/static workers inherit it via process.env).
+const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build'
 
 /**
  * Wraps openAIResolver so the OpenAI client is constructed at GENERATION
@@ -118,8 +121,16 @@ const cloudflareLogger = {
   silent: () => {},
 } as unknown as PayloadLogger // structural JSON logger; narrower than pino's full surface
 
-const cloudflare =
-  isCLI || !isProduction
+const cloudflare = isBuildPhase
+  ? // HERMETIC BUILD: local-only bindings (empty miniflare D1/R2). Nothing
+    // queries the DB during `next build` (every route is force-dynamic) and
+    // the real bindings are injected by the Workers runtime after deploy.
+    // Without this override wrangler's getPlatformProxy defaults to
+    // remoteBindings: true, and the `remote: true` D1 binding then demands a
+    // logged-in wrangler session on EVERY build host — exactly what killed
+    // CI ("You must be logged in to use wrangler dev in remote mode").
+    await getCloudflareContextFromWrangler({ remoteBindings: false })
+  : isCLI || !isProduction
     ? await getCloudflareContextFromWrangler()
     : await getCloudflareContext({ async: true })
 
@@ -254,7 +265,9 @@ export default buildConfig({
       { label: 'Deutsch', code: 'de' },
     ],
   },
-  secret: process.env.PAYLOAD_SECRET || '',
+  // The build phase never serves requests — a placeholder keeps `next build`
+  // independent of deploy-time secrets (runtime still requires the real one).
+  secret: process.env.PAYLOAD_SECRET || (isBuildPhase ? 'build-phase-placeholder' : ''),
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
@@ -699,7 +712,9 @@ export default buildConfig({
 })
 
 // Adapted from https://github.com/opennextjs/opennextjs-cloudflare/blob/d00b3a13e42e65aad76fba41774815726422cc39/packages/cloudflare/src/api/cloudflare-context.ts#L328C36-L328C46
-function getCloudflareContextFromWrangler(): Promise<CloudflareContext> {
+function getCloudflareContextFromWrangler(
+  overrides?: Partial<GetPlatformProxyOptions>,
+): Promise<CloudflareContext> {
   return import(/* webpackIgnore: true */ `${'__wrangler'.replaceAll('_', '')}`).then(
     ({ getPlatformProxy }) =>
       getPlatformProxy({
@@ -710,6 +725,7 @@ function getCloudflareContextFromWrangler(): Promise<CloudflareContext> {
           ? { path: process.env.WRANGLER_PERSIST_PATH }
           : undefined,
         remoteBindings: isProduction,
+        ...overrides,
       } satisfies GetPlatformProxyOptions),
   )
 }
