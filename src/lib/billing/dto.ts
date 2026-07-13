@@ -129,10 +129,16 @@ export type InvoicesDTO = { invoices: InvoiceDTO[] }
 
 /** Shape of the `billing` group mirrored on the tenant document. */
 export type TenantBillingMirror = {
-  entitlements?: unknown
+  entitlements?:
+    | { [k: string]: unknown }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null
   plan?: null | string
   planName?: null | string
-  status?: null | string
+  status?: BillingStatus | null
   syncedAt?: null | string
   trialEndsAt?: null | string
 }
