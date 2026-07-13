@@ -146,9 +146,10 @@ async function search(container, cfg) {
   const statsContainer = getElement(root, ".aac-stats");
   const facetsContainer = getElement(root, ".aac-facets");
   const widgetList = [];
+  const escapeHtml = (value) => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const defaultRender = (hit) => `<div class="aac-hit" data-aac-hit>
-            <div class="aac-hit-title">${hit.title || hit.name || hit.id || ""}</div>
-            ${hit.description ? `<div class="aac-hit-desc">${hit.description}</div>` : ""}
+            <div class="aac-hit-title">${escapeHtml(hit.title || hit.name || hit.id || "")}</div>
+            ${hit.description ? `<div class="aac-hit-desc">${escapeHtml(hit.description)}</div>` : ""}
         </div>`;
   hitsContainer.addEventListener("click", (e) => {
     const hitEl = e.target.closest("[data-aac-hit]");
