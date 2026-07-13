@@ -744,7 +744,9 @@ function getCloudflareContextFromWrangler(
         persist: process.env.WRANGLER_PERSIST_PATH
           ? { path: process.env.WRANGLER_PERSIST_PATH }
           : undefined,
-        remoteBindings: isProduction,
+        // Only use remote bindings when a Cloudflare API token is available — in CI
+        // without secrets this gracefully degrades to local mode for payload migrate
+        remoteBindings: isProduction && !!process.env.CLOUDFLARE_API_TOKEN,
         ...overrides,
       } satisfies GetPlatformProxyOptions),
   )
