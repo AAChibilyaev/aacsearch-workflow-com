@@ -47,11 +47,12 @@
 |---|----------|----------|:---:|
 | 1 | [ARCHITECTURE](./AACSEARCH_OS_ARCHITECTURE.md) | Все | 15 мин |
 | 2 | [COMPLETE REFERENCE](./AACSEARCH_OS_COMPLETE_REFERENCE.md) | Разработчики | 45 мин |
-| 3 | [ENHANCED](./AACSEARCH_OS_ENHANCED.md) | Frontend-разработчики | 25 мин |
-| 4 | [ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) | Архитекторы | 25 мин |
-| 5 | [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) | Техлид / Архитектор | 35 мин |
-| 6 | [PRODUCTION](./AACSEARCH_OS_PRODUCTION.md) | DevOps / SRE | 25 мин |
-| 7 | [MASTER](./AACSEARCH_OS_MASTER.md) | Быстрый конспект | 10 мин |
+| 3 | [TYPESENSE V31](./AACSEARCH_OS_TYPESENSE_V31.md) | Разработчики | 35 мин |
+| 4 | [ENHANCED](./AACSEARCH_OS_ENHANCED.md) | Frontend-разработчики | 25 мин |
+| 5 | [ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) | Архитекторы | 25 мин |
+| 6 | [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) | Техлид / Архитектор | 35 мин |
+| 7 | [PRODUCTION](./AACSEARCH_OS_PRODUCTION.md) | DevOps / SRE | 25 мин |
+| 8 | [MASTER](./AACSEARCH_OS_MASTER.md) | Быстрый конспект | 10 мин |
 
 ## 📚 Описание документов
 
@@ -64,6 +65,25 @@
 > 📎 См. также: [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) для глубокого анализа ограничений
 
 ### 2. [COMPLETE REFERENCE](./AACSEARCH_OS_COMPLETE_REFERENCE.md) — Полный справочник
+**Каждый API-эндпоинт, каждая страница, каждый метод SDK.** 987 строк.
+- Все 50+ API эндпоинтов AACSearch OS
+- Все 12 Admin UI страниц с компонентами
+- TypeScript SDK (14 категорий) + PHP SDK
+- 60+ контентных блоков
+- Все 13 коллекций с полными схемами
+
+> 📎 См. также: [TYPESENSE V31](./AACSEARCH_OS_TYPESENSE_V31.md) для полного Typesense API
+
+### 3. [TYPESENSE V31](./AACSEARCH_OS_TYPESENSE_V31.md) — Полный Typesense API
+**Все эндпоинты Typesense v31, все 80+ параметров, все AI-возможности.** 797 строк.
+- 24 категории возможностей
+- 15 типов API эндпоинтов (Collections, Documents, Synonyms, Curation, ...)
+- 80+ search параметров (базовые, AI, ранжирование, опечатки, группировка, ...)
+- 6 AI-возможностей: Semantic, Hybrid, RAG, NL Search, Image, Voice
+- Рекомендательная система (similar items, trending, personalization)
+- Полные примеры кода
+
+> 📎 См. также: [ENHANCED](./AACSEARCH_OS_ENHANCED.md) для InstantSearch виджетов
 **Каждый API-эндпоинт, каждая страница, каждый метод SDK.** 974 строки.
 - Все 50+ API эндпоинтов с методами и описанием
 - Все 12 Admin UI страниц с компонентами
@@ -73,7 +93,7 @@
 
 > 📎 См. также: [ENHANCED](./AACSEARCH_OS_ENHANCED.md) для InstantSearch виджетов
 
-### 3. [ENHANCED](./AACSEARCH_OS_ENHANCED.md) — Расширенные возможности
+### 4. [ENHANCED](./AACSEARCH_OS_ENHANCED.md) — Расширенные возможности
 **InstantSearch.js, Typesense Dashboard, showcase-приложения.** 559 строк.
 - 25+ InstantSearch виджетов с примерами кода
 - 3 уровня поискового UI (CDN Widget → InstantSearch → SDK)
@@ -82,7 +102,7 @@
 
 > 📎 См. также: [ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) для полной экосистемы Typesense
 
-### 4. [ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) — Экосистема Typesense
+### 5. [ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) — Экосистема Typesense
 **Все 50+ репозиториев Typesense на GitHub.** 514 строк.
 - DocSearch (5 фреймворков)
 - Showcase (15+ фреймворков)
@@ -92,7 +112,7 @@
 
 > 📎 См. также: [ENHANCED](./AACSEARCH_OS_ENHANCED.md) для практических примеров
 
-### 5. [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) — Архитектурный анализ
+### 6. [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) — Архитектурный анализ
 **Ограничения платформы и интеграций.** 748 строк.
 - Cloudflare Workers: bundle limit, no sharp, isolates, D1
 - Payload CMS: версионирование, build-time vs runtime, access control
@@ -103,7 +123,7 @@
 
 > 📎 См. также: [PRODUCTION](./AACSEARCH_OS_PRODUCTION.md) для практического деплоя
 
-### 6. [PRODUCTION](./AACSEARCH_OS_PRODUCTION.md) — Production-анализ
+### 7. [PRODUCTION](./AACSEARCH_OS_PRODUCTION.md) — Production-анализ
 **Практическое руководство по запуску.** 489 строк.
 - Матрица ВСЕХ 25+ env переменных с взаимозависимостями
 - CI/CD pipeline
@@ -114,7 +134,7 @@
 
 > 📎 См. также: [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) для теоретического обоснования
 
-### 7. [MASTER](./AACSEARCH_OS_MASTER.md) — Технический конспект
+### 8. [MASTER](./AACSEARCH_OS_MASTER.md) — Технический конспект
 **Сжатый конспект всего репозитория.** 194 строки.
 - Payload CMS internals
 - Access control 4-layer
