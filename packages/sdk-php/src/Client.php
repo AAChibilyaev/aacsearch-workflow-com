@@ -1,290 +1,227 @@
 <?php
-
 declare(strict_types=1);
-
 namespace AACSearch\SDK;
 
-use AACSearch\SDK\Collections\Collections;
-use AACSearch\SDK\Collections\Collection;
-use AACSearch\SDK\Aliases\Aliases;
-use AACSearch\SDK\Aliases\Alias;
-use AACSearch\SDK\Keys\Keys;
-use AACSearch\SDK\Keys\Key;
-use AACSearch\SDK\Synonyms\SynonymSets;
-use AACSearch\SDK\Synonyms\SynonymSet;
-use AACSearch\SDK\Synonyms\Synonym;
-use AACSearch\SDK\Overrides\Overrides;
-use AACSearch\SDK\CurationSets\CurationSets;
-use AACSearch\SDK\CurationSets\CurationSet;
-use AACSearch\SDK\Analytics\Analytics;
-use AACSearch\SDK\Analytics\AnalyticsV1;
-use AACSearch\SDK\Analytics\AnalyticsRules;
-use AACSearch\SDK\Analytics\AnalyticsRule;
-use AACSearch\SDK\Analytics\AnalyticsEvents;
-use AACSearch\SDK\Presets\Presets;
-use AACSearch\SDK\Presets\Preset;
-use AACSearch\SDK\Conversations\Conversations;
-use AACSearch\SDK\Conversations\Conversation;
-use AACSearch\SDK\NLSearch\NLSearchModels;
-use AACSearch\SDK\NLSearch\NLSearchModel;
-use AACSearch\SDK\Stemming\Stemming;
-use AACSearch\SDK\Stopwords\Stopwords;
-use AACSearch\SDK\Stopwords\Stopword;
-use AACSearch\SDK\System\Health;
-use AACSearch\SDK\System\Metrics;
-use AACSearch\SDK\System\Stats;
-use AACSearch\SDK\System\Debug;
-use AACSearch\SDK\System\Operations;
-
 /**
- * @phpstan-type Options array{
- *   apiKey: string,
- *   nodes: array<int, array{host:string, port?:int, protocol?:string, path?:string}>,
- *   connectionTimeoutSeconds?: int,
- *   numRetries?: int,
- *   retryIntervalSeconds?: int,
- *   sendApiKeyAsQueryParam?: bool,
- *   cacheSearchResultsForSeconds?: int,
- *   useServerSideSearchCache?: bool,
- *   additionalHeaders?: array<string,string>,
- * }
+ * AACSearch PayloadCMS v3 PHP SDK.
+ *
+ * Minimal:
+ *   $aac = new Client('aac_sk_live_...');
+ *
+ * Custom instance:
+ *   $aac = new Client('aac_sk_...', 'https://my-instance.aacsearch.com');
+ *
+ * Full options:
+ *   $aac = new Client(['apiKey' => '...', 'baseUrl' => '...', 'numRetries' => 5]);
+ *
+ * @property-read MultiSearch $multiSearch     Multi-search across collections
+ * @property-read Search $search               PayloadCMS search gateway (multiSearch, scopedKey, health)
+ * @property-read Integrations $integrations   White-label data connectors (catalog, connect, disconnect)
+ * @property-read Billing $billing             White-label billing (plans, summary, events)
+ * @property-read Analytics $analytics         Analytics rules
+ * @property-read AnalyticsV1 $analyticsV1     Analytics events v1
+ * @property-read Stemming $stemming           Stemming dictionaries
+ * @property-read Health $health               Health check
+ * @property-read Metrics $metrics             System metrics
+ * @property-read Stats $stats                 Search stats
+ * @property-read Debug $debug                 Debug info
+ * @property-read Operations $operations       System operations (snapshot, cache/clear, db/compact)
  */
 class Client
 {
-    public readonly Configuration $configuration;
-    public readonly ApiCall $apiCall;
-    public readonly Debug $debug;
-    public readonly Metrics $metrics;
-    public readonly Stats $stats;
-    public readonly Health $health;
-    public readonly Operations $operations;
+    /** @readonly */
     public readonly MultiSearch $multiSearch;
-    public readonly Analytics $analytics;
-    public readonly AnalyticsV1 $analyticsV1;
-    public readonly Stemming $stemming;
+    /** @readonly */
+    public readonly Search $search;
+    /** @readonly */
+    public readonly Integrations $integrations;
+    /** @readonly */
+    public readonly Billing $billing;
+    /** @readonly */
+    public readonly Analytics\Analytics $analytics;
+    /** @readonly */
+    public readonly Analytics\AnalyticsV1 $analyticsV1;
+    /** @readonly */
+    public readonly Stemming\Stemming $stemming;
+    /** @readonly */
+    public readonly System\Health $health;
+    /** @readonly */
+    public readonly System\Metrics $metrics;
+    /** @readonly */
+    public readonly System\Stats $stats;
+    /** @readonly */
+    public readonly System\Debug $debug;
+    /** @readonly */
+    public readonly System\Operations $operations;
 
-    private readonly Collections $collectionsObj;
-    /** @var array<string, Collection> */
+    private readonly Configuration $config;
+    private readonly ApiCall $api;
+
+    private readonly Collections\Collections $collectionsObj;
+    private readonly Aliases\Aliases $aliasesObj;
+    private readonly Keys\Keys $keysObj;
+    private readonly Presets\Presets $presetsObj;
+    private readonly Synonyms\SynonymSets $synonymSetsObj;
+    private readonly CurationSets\CurationSets $curationSetsObj;
+    private readonly Overrides\Overrides $overridesObj;
+    private readonly Analytics\AnalyticsRules $analyticsRulesObj;
+    private readonly Analytics\AnalyticsEvents $analyticsEventsObj;
+    private readonly Stopwords\Stopwords $stopwordsObj;
+    private readonly Conversations\Conversations $conversationsObj;
+    private readonly NLSearch\NLSearchModels $nlSearchModelsObj;
+
+    /** @var array<string, Collections\Collection> */
     private array $individualCollections = [];
-
-    private readonly Aliases $aliasesObj;
-    /** @var array<string, Alias> */
+    /** @var array<string, Aliases\Alias> */
     private array $individualAliases = [];
-
-    private readonly Keys $keysObj;
-    /** @var array<int, Key> */
+    /** @var array<int, Keys\Key> */
     private array $individualKeys = [];
-
-    private readonly Presets $presetsObj;
-    /** @var array<string, Preset> */
+    /** @var array<string, Presets\Preset> */
     private array $individualPresets = [];
-
-    private readonly SynonymSets $synonymSetsObj;
-    /** @var array<string, SynonymSet> */
+    /** @var array<string, Synonyms\SynonymSet> */
     private array $individualSynonymSets = [];
-
-    /** @var array<string, Synonym> */
-    private array $individualSynonyms = [];
-
-    private readonly CurationSets $curationSetsObj;
-    /** @var array<string, CurationSet> */
+    /** @var array<string, CurationSets\CurationSet> */
     private array $individualCurationSets = [];
-
-    private readonly Overrides $overridesObj;
-
-    private readonly AnalyticsRules $analyticsRulesObj;
-    /** @var array<string, AnalyticsRule> */
+    /** @var array<string, Analytics\AnalyticsRule> */
     private array $individualAnalyticsRules = [];
-
-    private readonly AnalyticsEvents $analyticsEventsObj;
-
-    private readonly Stopwords $stopwordsObj;
-    /** @var array<string, Stopword> */
+    /** @var array<string, Stopwords\Stopword> */
     private array $individualStopwords = [];
-
-    private readonly Conversations $conversationsObj;
-    /** @var array<string, Conversation> */
+    /** @var array<string, Conversations\Conversation> */
     private array $individualConversations = [];
-
-    private readonly NLSearchModels $nlSearchModelsObj;
-    /** @var array<string, NLSearchModel> */
+    /** @var array<string, NLSearch\NLSearchModel> */
     private array $individualNLSearchModels = [];
 
     /**
-     * @param Options $options
+     * @param string|array{apiKey:string, baseUrl?:string, tenantId?:string, timeoutSeconds?:int, numRetries?:int} $options
+     * @param string|null $baseUrl   Custom instance URL (default: https://api.aacsearch.ru)
+     * @param string|null $tenantId  Default workspace/tenant for billing & integrations
      */
-    public function __construct(array $options)
+    public function __construct(string|array $options, ?string $baseUrl = null, ?string $tenantId = null)
     {
-        $options['sendApiKeyAsQueryParam'] = $options['sendApiKeyAsQueryParam'] ?? false;
+        $this->config = new Configuration($options, $baseUrl, $tenantId);
+        $this->api = new ApiCall($this->config);
 
-        $this->configuration = new Configuration($options);
-        $this->apiCall = new ApiCall($this->configuration);
+        $this->multiSearch = new MultiSearch($this->api);
+        $this->search = new Search($this->api);
+        $this->integrations = new Integrations($this->api, $this->config);
+        $this->billing = new Billing($this->api, $this->config);
+        $this->analytics = new Analytics\Analytics($this->api);
+        $this->analyticsV1 = new Analytics\AnalyticsV1($this->api);
+        $this->stemming = new Stemming\Stemming($this->api);
+        $this->health = new System\Health($this->api);
+        $this->metrics = new System\Metrics($this->api);
+        $this->stats = new System\Stats($this->api);
+        $this->debug = new System\Debug($this->api);
+        $this->operations = new System\Operations($this->api);
 
-        $this->debug = new Debug($this->apiCall);
-        $this->metrics = new Metrics($this->apiCall);
-        $this->stats = new Stats($this->apiCall);
-        $this->health = new Health($this->apiCall);
-        $this->operations = new Operations($this->apiCall);
-        $this->multiSearch = new MultiSearch($this->apiCall, $this->configuration);
-
-        $this->collectionsObj = new Collections($this->apiCall);
-        $this->aliasesObj = new Aliases($this->apiCall);
-        $this->keysObj = new Keys($this->apiCall);
-        $this->presetsObj = new Presets($this->apiCall);
-        $this->synonymSetsObj = new SynonymSets($this->apiCall);
-        $this->curationSetsObj = new CurationSets($this->apiCall);
-        $this->overridesObj = new Overrides($this->apiCall);
-
-        $this->analyticsRulesObj = new AnalyticsRules($this->apiCall);
-        $this->analyticsEventsObj = new AnalyticsEvents($this->apiCall);
-        $this->analytics = new Analytics($this->apiCall);
-        $this->analyticsV1 = new AnalyticsV1($this->apiCall);
-
-        $this->stopwordsObj = new Stopwords($this->apiCall);
-        $this->conversationsObj = new Conversations($this->apiCall);
-        $this->nlSearchModelsObj = new NLSearchModels($this->apiCall);
-
-        $this->stemming = new Stemming($this->apiCall);
+        $this->collectionsObj = new Collections\Collections($this->api);
+        $this->aliasesObj = new Aliases\Aliases($this->api);
+        $this->keysObj = new Keys\Keys($this->api);
+        $this->presetsObj = new Presets\Presets($this->api);
+        $this->synonymSetsObj = new Synonyms\SynonymSets($this->api);
+        $this->curationSetsObj = new CurationSets\CurationSets($this->api);
+        $this->overridesObj = new Overrides\Overrides($this->api);
+        $this->analyticsRulesObj = new Analytics\AnalyticsRules($this->api);
+        $this->analyticsEventsObj = new Analytics\AnalyticsEvents($this->api);
+        $this->stopwordsObj = new Stopwords\Stopwords($this->api);
+        $this->conversationsObj = new Conversations\Conversations($this->api);
+        $this->nlSearchModelsObj = new NLSearch\NLSearchModels($this->api);
     }
 
-    // ─── Collections ──────────────────────────────────────────
-
-    public function collections(?string $collectionName = null): Collections|Collection
-    {
-        if ($collectionName === null) {
-            return $this->collectionsObj;
-        }
-        if (!isset($this->individualCollections[$collectionName])) {
-            $this->individualCollections[$collectionName] = new Collection($collectionName, $this->apiCall, $this->configuration);
-        }
-        return $this->individualCollections[$collectionName];
+    // ── Collections ────────────────────────────────────────
+    /** @return Collections\Collections|Collections\Collection */
+    public function collections(?string $name = null): Collections\Collections|Collections\Collection {
+        if ($name === null) return $this->collectionsObj;
+        return $this->individualCollections[$name] ??= new Collections\Collection($name, $this->api, $this->config);
     }
 
-    // ─── Aliases ──────────────────────────────────────────────
-
-    public function aliases(?string $aliasName = null): Aliases|Alias
-    {
-        if ($aliasName === null) {
-            return $this->aliasesObj;
-        }
-        if (!isset($this->individualAliases[$aliasName])) {
-            $this->individualAliases[$aliasName] = new Alias($aliasName, $this->apiCall);
-        }
-        return $this->individualAliases[$aliasName];
+    // ── Aliases ────────────────────────────────────────────
+    /** @return Aliases\Aliases|Aliases\Alias */
+    public function aliases(?string $name = null): Aliases\Aliases|Aliases\Alias {
+        if ($name === null) return $this->aliasesObj;
+        return $this->individualAliases[$name] ??= new Aliases\Alias($name, $this->api);
     }
 
-    // ─── Keys ─────────────────────────────────────────────────
-
-    public function keys(?int $id = null): Keys|Key
-    {
-        if ($id === null) {
-            return $this->keysObj;
-        }
-        if (!isset($this->individualKeys[$id])) {
-            $this->individualKeys[$id] = new Key($id, $this->apiCall);
-        }
-        return $this->individualKeys[$id];
+    // ── Keys ───────────────────────────────────────────────
+    /** @return Keys\Keys|Keys\Key */
+    public function keys(?int $id = null): Keys\Keys|Keys\Key {
+        if ($id === null) return $this->keysObj;
+        return $this->individualKeys[$id] ??= new Keys\Key($id, $this->api);
     }
 
-    // ─── Presets ──────────────────────────────────────────────
-
-    public function presets(?string $presetName = null): Presets|Preset
-    {
-        if ($presetName === null) {
-            return $this->presetsObj;
-        }
-        if (!isset($this->individualPresets[$presetName])) {
-            $this->individualPresets[$presetName] = new Preset($presetName, $this->apiCall);
-        }
-        return $this->individualPresets[$presetName];
+    // ── Presets ────────────────────────────────────────────
+    /** @return Presets\Presets|Presets\Preset */
+    public function presets(?string $name = null): Presets\Presets|Presets\Preset {
+        if ($name === null) return $this->presetsObj;
+        return $this->individualPresets[$name] ??= new Presets\Preset($name, $this->api);
     }
 
-    // ─── Synonym Sets ─────────────────────────────────────────
-
-    public function synonymSets(?string $id = null): SynonymSets|SynonymSet
-    {
-        if ($id === null) {
-            return $this->synonymSetsObj;
-        }
-        if (!isset($this->individualSynonymSets[$id])) {
-            $this->individualSynonymSets[$id] = new SynonymSet($id, $this->apiCall);
-        }
-        return $this->individualSynonymSets[$id];
+    // ── Synonyms ───────────────────────────────────────────
+    /** @return Synonyms\SynonymSets|Synonyms\SynonymSet */
+    public function synonymSets(?string $id = null): Synonyms\SynonymSets|Synonyms\SynonymSet {
+        if ($id === null) return $this->synonymSetsObj;
+        return $this->individualSynonymSets[$id] ??= new Synonyms\SynonymSet($id, $this->api);
     }
 
-    // ─── Curations / Overrides ────────────────────────────────
-
-    public function curationSets(?string $id = null): CurationSets|CurationSet
-    {
-        if ($id === null) {
-            return $this->curationSetsObj;
-        }
-        if (!isset($this->individualCurationSets[$id])) {
-            $this->individualCurationSets[$id] = new CurationSet('', $id, $this->apiCall);
-        }
-        return $this->individualCurationSets[$id];
+    // ── Curations / Overrides ──────────────────────────────
+    /** @return CurationSets\CurationSets|CurationSets\CurationSet */
+    public function curationSets(?string $id = null): CurationSets\CurationSets|CurationSets\CurationSet {
+        if ($id === null) return $this->curationSetsObj;
+        return $this->individualCurationSets[$id] ??= new CurationSets\CurationSet('', $id, $this->api);
     }
-
     /** @deprecated use curationSets() */
-    public function overrides(): Overrides
-    {
-        return $this->overridesObj;
+    public function overrides(): Overrides\Overrides { return $this->overridesObj; }
+
+    // ── Analytics ──────────────────────────────────────────
+    /** @return Analytics\AnalyticsRules|Analytics\AnalyticsRule */
+    public function analyticsRules(?string $name = null): Analytics\AnalyticsRules|Analytics\AnalyticsRule {
+        if ($name === null) return $this->analyticsRulesObj;
+        return $this->individualAnalyticsRules[$name] ??= new Analytics\AnalyticsRule($name, $this->api);
+    }
+    public function analyticsEvents(): Analytics\AnalyticsEvents { return $this->analyticsEventsObj; }
+
+    // ── Stopwords ──────────────────────────────────────────
+    /** @return Stopwords\Stopwords|Stopwords\Stopword */
+    public function stopwords(?string $id = null): Stopwords\Stopwords|Stopwords\Stopword {
+        if ($id === null) return $this->stopwordsObj;
+        return $this->individualStopwords[$id] ??= new Stopwords\Stopword($id, $this->api);
     }
 
-    // ─── Analytics Rules ──────────────────────────────────────
-
-    public function analyticsRules(?string $name = null): AnalyticsRules|AnalyticsRule
-    {
-        if ($name === null) {
-            return $this->analyticsRulesObj;
-        }
-        if (!isset($this->individualAnalyticsRules[$name])) {
-            $this->individualAnalyticsRules[$name] = new AnalyticsRule($name, $this->apiCall);
-        }
-        return $this->individualAnalyticsRules[$name];
+    // ── Conversations ──────────────────────────────────────
+    /** @return Conversations\Conversations|Conversations\Conversation */
+    public function conversations(?string $id = null): Conversations\Conversations|Conversations\Conversation {
+        if ($id === null) return $this->conversationsObj;
+        return $this->individualConversations[$id] ??= new Conversations\Conversation($id, $this->api);
     }
 
-    public function analyticsEvents(): AnalyticsEvents
-    {
-        return $this->analyticsEventsObj;
+    // ── NL Search Models ───────────────────────────────────
+    /** @return NLSearch\NLSearchModels|NLSearch\NLSearchModel */
+    public function nlSearchModels(?string $id = null): NLSearch\NLSearchModels|NLSearch\NLSearchModel {
+        if ($id === null) return $this->nlSearchModelsObj;
+        return $this->individualNLSearchModels[$id] ??= new NLSearch\NLSearchModel($id, $this->api);
     }
 
-    // ─── Stopwords ────────────────────────────────────────────
+    // ── Convenience ─────────────────────────────────────────
 
-    public function stopwords(?string $id = null): Stopwords|Stopword
-    {
-        if ($id === null) {
-            return $this->stopwordsObj;
-        }
-        if (!isset($this->individualStopwords[$id])) {
-            $this->individualStopwords[$id] = new Stopword($id, $this->apiCall);
-        }
-        return $this->individualStopwords[$id];
+    /**
+     * Create a client from environment variables.
+     *
+     *   AACSEARCH_API_KEY   — required
+     *   AACSEARCH_BASE_URL  — optional (default: https://api.aacsearch.ru)
+     *
+     * @throws \RuntimeException when AACSEARCH_API_KEY is not set
+     */
+    public static function fromEnv(): self {
+        $key = getenv('AACSEARCH_API_KEY') ?: '';
+        if ($key === '') throw new \RuntimeException('AACSEARCH_API_KEY environment variable is required');
+        $url = getenv('AACSEARCH_BASE_URL') ?: null;
+        $tenant = getenv('AACSEARCH_TENANT_ID') ?: null;
+        return new self($key, $url, $tenant);
     }
 
-    // ─── Conversations ────────────────────────────────────────
-
-    public function conversations(?string $id = null): Conversations|Conversation
-    {
-        if ($id === null) {
-            return $this->conversationsObj;
-        }
-        if (!isset($this->individualConversations[$id])) {
-            $this->individualConversations[$id] = new Conversation($id, $this->apiCall);
-        }
-        return $this->individualConversations[$id];
-    }
-
-    // ─── NL Search Models ─────────────────────────────────────
-
-    public function nlSearchModels(?string $id = null): NLSearchModels|NLSearchModel
-    {
-        if ($id === null) {
-            return $this->nlSearchModelsObj;
-        }
-        if (!isset($this->individualNLSearchModels[$id])) {
-            $this->individualNLSearchModels[$id] = new NLSearchModel($id, $this->apiCall);
-        }
-        return $this->individualNLSearchModels[$id];
+    /** Quick connectivity & auth test. Returns true or throws on failure. */
+    public function ping(): bool {
+        $r = $this->search->health();
+        return ($r['ok'] ?? false) === true;
     }
 }

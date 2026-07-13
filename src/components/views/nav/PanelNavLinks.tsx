@@ -7,13 +7,14 @@ import React from 'react'
 
 /**
  * beforeNavLinks component: quick links to the Search OS custom views
- * (Billing / Integrations) plus collection shortcuts, styled exactly like
- * the built-in nav links (`nav__link` classes from @payloadcms/next).
+ * (Search / Billing / Integrations) plus collection shortcuts, styled exactly
+ * like the built-in nav links (`nav__link` classes from @payloadcms/next).
  */
 
 type LocalizedLabel = { en: string; ru: string }
 
 const ITEMS: { label: LocalizedLabel; path: `/${string}` }[] = [
+  { label: { en: 'Search', ru: 'Поиск' }, path: '/search' },
   { label: { en: 'Billing', ru: 'Тариф и оплата' }, path: '/billing' },
   { label: { en: 'Integrations', ru: 'Интеграции' }, path: '/integrations' },
   { label: { en: 'Collections', ru: 'Коллекции' }, path: '/collections/collection-definitions' },

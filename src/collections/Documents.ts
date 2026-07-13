@@ -4,6 +4,11 @@ import { APIError } from 'payload'
 
 import type { Document } from '@/payload-types'
 
+import {
+  enforceTenantWriteScope,
+  readTenantScoped,
+  writeTenantScoped,
+} from '@/access/tenantScopedAccess'
 import { validateDocumentData } from '@/lib/validateDocumentData'
 import { extractID } from '@/utilities/extractID'
 
@@ -63,12 +68,22 @@ const validateDataAgainstDefinition: CollectionBeforeValidateHook<Document> = as
  */
 export const Documents: CollectionConfig = {
   slug: 'documents',
+  // Tenant isolation: api-key principals are NOT scoped by the multi-tenant
+  // plugin (it only injects for `users`), so scope them explicitly here.
+  access: {
+    create: writeTenantScoped,
+    delete: writeTenantScoped,
+    read: readTenantScoped,
+    update: writeTenantScoped,
+  },
   admin: {
     defaultColumns: ['title', 'definition', 'updatedAt'],
     useAsTitle: 'title',
   },
   hooks: {
-    beforeValidate: [validateDataAgainstDefinition],
+    // enforceTenantWriteScope runs first so a cross-tenant `data.tenant` is
+    // rejected before the definition payload is validated.
+    beforeValidate: [enforceTenantWriteScope, validateDataAgainstDefinition],
   },
   labels: {
     singular: { en: 'Document', ru: 'Документ' },

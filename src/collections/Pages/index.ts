@@ -1,5 +1,10 @@
 import type { CollectionConfig } from 'payload'
 
+import {
+  enforceTenantWriteScope,
+  readTenantScoped,
+  writeTenantScoped,
+} from '@/access/tenantScopedAccess'
 import { CallToAction } from '@/blocks/CallToAction'
 import { Content } from '@/blocks/Content'
 import { Hero } from '@/blocks/Hero'
@@ -44,10 +49,21 @@ import { IntegrationMarquee } from '../../blocks/IntegrationMarquee/config'
 import { CallToActionSignup } from '../../blocks/CallToActionSignup/config'
 export const Pages: CollectionConfig = {
   slug: 'pages',
+  // Tenant isolation for api-key principals (the multi-tenant plugin only
+  // scopes `users`); the beforeValidate hook blocks cross-tenant writes.
+  access: {
+    create: writeTenantScoped,
+    delete: writeTenantScoped,
+    read: readTenantScoped,
+    update: writeTenantScoped,
+  },
   admin: {
     // Live preview is configured once at the root config (admin.livePreview);
     // a second per-collection url here would silently shadow it
     useAsTitle: 'title',
+  },
+  hooks: {
+    beforeValidate: [enforceTenantWriteScope],
   },
   fields: [
     {

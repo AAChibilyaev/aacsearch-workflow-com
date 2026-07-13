@@ -1,5 +1,11 @@
 import type { CollectionConfig } from 'payload'
 
+import {
+  enforceTenantWriteScope,
+  readTenantScoped,
+  writeTenantScoped,
+} from '@/access/tenantScopedAccess'
+
 /**
  * Per-tenant settings. A real Payload Global cannot be tenant-scoped, so this
  * is a collection registered with `isGlobal: true` in the multi-tenant plugin:
@@ -7,8 +13,19 @@ import type { CollectionConfig } from 'payload'
  */
 export const TenantSettings: CollectionConfig = {
   slug: 'tenant-settings',
+  // Tenant isolation for api-key principals (the multi-tenant plugin only
+  // scopes `users`); the beforeValidate hook blocks cross-tenant writes.
+  access: {
+    create: writeTenantScoped,
+    delete: writeTenantScoped,
+    read: readTenantScoped,
+    update: writeTenantScoped,
+  },
   admin: {
     group: { en: 'Settings', ru: 'Настройки' },
+  },
+  hooks: {
+    beforeValidate: [enforceTenantWriteScope],
   },
   labels: {
     singular: { en: 'Search settings', ru: 'Настройки поиска' },

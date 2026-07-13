@@ -80,6 +80,40 @@ const pipelineEndpoints = (opts: AirbytePluginOptions): Endpoint[] => [
       return Response.json(await res.json(), { status: res.status })
     },
   },
+  {
+    // Single job status/detail (poll a running sync/reset)
+    path: '/pipelines/jobs/:id',
+    method: 'get',
+    handler: async (req) => {
+      if (!isSuperAdmin(req.user)) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      const jobId = req.routeParams?.id
+      if (jobId === undefined || jobId === null || jobId === '') {
+        return Response.json({ error: 'job id is required' }, { status: 400 })
+      }
+      const res = await airbyteFetch(opts, `/jobs/${encodeURIComponent(String(jobId))}`)
+      return Response.json(await res.json(), { status: res.status })
+    },
+  },
+  {
+    // Cancel a running job (Airbyte API: DELETE /jobs/{jobId})
+    path: '/pipelines/jobs/:id/cancel',
+    method: 'post',
+    handler: async (req) => {
+      if (!isSuperAdmin(req.user)) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      const jobId = req.routeParams?.id
+      if (jobId === undefined || jobId === null || jobId === '') {
+        return Response.json({ error: 'job id is required' }, { status: 400 })
+      }
+      const res = await airbyteFetch(opts, `/jobs/${encodeURIComponent(String(jobId))}`, {
+        method: 'DELETE',
+      })
+      return Response.json(await res.json(), { status: res.status })
+    },
+  },
 ]
 
 export const airbytePlugin =

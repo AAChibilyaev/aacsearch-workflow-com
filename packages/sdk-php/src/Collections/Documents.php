@@ -1,122 +1,52 @@
 <?php
-
 declare(strict_types=1);
-
 namespace AACSearch\SDK\Collections;
-
 use AACSearch\SDK\ApiCall;
 use AACSearch\SDK\Configuration;
 
-class Documents extends SearchOnlyDocuments
-{
-    public function __construct(
-        string $collectionName,
-        ApiCall $apiCall,
-        Configuration $configuration,
-    ) {
-        parent::__construct($collectionName, $apiCall, $configuration);
-    }
+class Documents extends SearchOnlyDocuments {
+    public function __construct(string $c, ApiCall $a, Configuration $cfg) { parent::__construct($c, $a, $cfg); }
+
+    /** Create a document. Returns the created document. */
+    public function create(array $d, array $o = []): array { if(!$d) throw new \InvalidArgumentException('No document'); return $this->api->post($this->endpointPath(), $d, $o); }
+
+    /** Create or update a document by ID. */
+    public function upsert(array $d, array $o = []): array { if(!$d) throw new \InvalidArgumentException('No document'); return $this->api->post($this->endpointPath(), $d, array_merge($o, ['action'=>'upsert'])); }
+
+    /** Update a document. Uses filter_by for bulk updates, otherwise updates by ID. */
+    public function update(array $d, array $o = []): array { if(!$d) throw new \InvalidArgumentException('No document'); return isset($o['filter_by']) ? $this->api->patch($this->endpointPath(), $d, $o) : $this->api->post($this->endpointPath(), $d, array_merge($o, ['action'=>'update'])); }
+
+    /** Create or update a document by filter (emplace). */
+    public function emplace(array $d, array $o = []): array { if(!$d) throw new \InvalidArgumentException('No document'); return isset($o['filter_by']) ? $this->api->patch($this->endpointPath(), $d, $o) : $this->api->post($this->endpointPath(), $d, array_merge($o, ['action'=>'emplace'])); }
+
+    /** Delete documents by filter. Returns {num_deleted, results?}. */
+    public function delete(array $q = []): array { return $this->api->delete($this->endpointPath(), $q); }
+
+    /** Retrieve a single document by ID. */
+    public function retrieve(string $id): array { return $this->api->get($this->endpointPath() . '/' . urlencode($id)); }
 
     /**
-     * @param array<string,mixed> $document
-     * @return array<string,mixed>
+     * Bulk import documents as JSONL.
+     * @param array<int,array>|string $docs  Array of documents or raw JSONL string
+     * @param string|array $actionOrOpts     Action: 'upsert' (default), 'create', 'update', 'emplace' — or options array
+     * @return array|string  Import errors array, or raw string response
      */
-    public function create(array $document, array $options = []): array
-    {
-        if (empty($document)) {
-            throw new \InvalidArgumentException('No document provided');
+    public function import(array|string $docs, string|array $actionOrOpts = 'upsert'): array|string {
+        if (is_string($actionOrOpts)) {
+            $actionOrOpts = ['action' => $actionOrOpts];
         }
-        return $this->apiCall->post($this->endpointPath(), $document, $options);
-    }
+        $action = $actionOrOpts['action'] ?? 'upsert';
+        unset($actionOrOpts['action']);
 
-    /**
-     * @param array<string,mixed> $document
-     * @return array<string,mixed>
-     */
-    public function upsert(array $document, array $options = []): array
-    {
-        if (empty($document)) {
-            throw new \InvalidArgumentException('No document provided');
+        if (is_string($docs)) {
+            return $this->api->post($this->endpointPath() . '/import?action=' . urlencode($action), $docs, $actionOrOpts);
         }
-        return $this->apiCall->post($this->endpointPath(), $document, array_merge($options, ['action' => 'upsert']));
+        return $this->api->post($this->endpointPath() . '/import?action=' . urlencode($action), implode("\n", array_map('json_encode', $docs)), $actionOrOpts);
     }
 
-    /**
-     * @param array<string,mixed> $document
-     * @return array<string,mixed>
-     */
-    public function update(array $document, array $options = []): array
-    {
-        if (empty($document)) {
-            throw new \InvalidArgumentException('No document provided');
-        }
-        if (isset($options['filter_by'])) {
-            return $this->apiCall->patch($this->endpointPath(), $document, $options);
-        }
-        return $this->apiCall->post($this->endpointPath(), $document, array_merge($options, ['action' => 'update']));
-    }
+    /** Export all documents as JSONL string. */
+    public function export(array $o = []): string { return $this->api->get($this->endpointPath() . '/export', $o); }
 
-    /**
-     * @param array<string,mixed> $document
-     * @return array<string,mixed>
-     */
-    public function emplace(array $document, array $options = []): array
-    {
-        if (empty($document)) {
-            throw new \InvalidArgumentException('No document provided');
-        }
-        if (isset($options['filter_by'])) {
-            return $this->apiCall->patch($this->endpointPath(), $document, $options);
-        }
-        return $this->apiCall->post($this->endpointPath(), $document, array_merge($options, ['action' => 'emplace']));
-    }
-
-    /** @return array{num_deleted: int, results?: array<int, array{id:string}>} */
-    public function delete(array $query = []): array
-    {
-        return $this->apiCall->delete($this->endpointPath(), $query);
-    }
-
-    /** @return array<string,mixed> */
-    public function retrieve(string $id): array
-    {
-        return $this->apiCall->get($this->endpointPath() . '/' . urlencode($id));
-    }
-
-    /**
-     * @param array<int,array<string,mixed>>|string $documents
-     * @return array<int,array<string,mixed>>|string
-     */
-    public function import(array|string $documents, array $options = []): array|string
-    {
-        $action = $options['action'] ?? 'upsert';
-        unset($options['action']);
-
-        if (is_string($documents)) {
-            return $this->apiCall->post(
-                $this->endpointPath() . '/import?action=' . urlencode($action),
-                $documents,
-                $options,
-            );
-        }
-
-        $ndjson = implode("\n", array_map('json_encode', $documents));
-        return $this->apiCall->post(
-            $this->endpointPath() . '/import?action=' . urlencode($action),
-            $ndjson,
-            $options,
-        );
-    }
-
-    /** @return string */
-    public function export(array $options = []): string
-    {
-        return $this->apiCall->get($this->endpointPath() . '/export', $options);
-    }
-
-    /** @return array{num_deleted: int} */
-    public function deleteByQuery(array $params): array
-    {
-        return $this->apiCall->delete($this->endpointPath(), $params);
-    }
+    /** Delete documents matching a filter_by query. */
+    public function deleteByQuery(array $p): array { return $this->api->delete($this->endpointPath(), $p); }
 }

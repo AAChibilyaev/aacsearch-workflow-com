@@ -1,9 +1,5 @@
 # AACSearch PHP SDK
 
-PHP-клиент для [AACSearch](https://aacsearch.ru) — российского сервиса молниеносного полнотекстового поиска с AI.
-
-API-совместим с AACSearch API v2. Построен по архитектуре aacsearch-sdk — те же классы, те же методы, та же система ошибок.
-
 ```bash
 composer require aacsearch/sdk
 ```
@@ -13,14 +9,34 @@ composer require aacsearch/sdk
 ```php
 use AACSearch\SDK\Client;
 
-$aac = new Client([
-    'apiKey' => 'aac_sk_live_...',
-    'nodes' => [
-        ['host' => 'search.aacsearch.ru', 'port' => 443, 'protocol' => 'https'],
-    ],
-]);
+// Ключ + workspace — всё что нужно
+$aac = new Client('aac_sk_live_...', tenantId: 'my-workspace');
 
-// Создать коллекцию
+if (!$aac->ping()) throw new \Exception('Connection failed');
+
+// Поиск (массив или fluent SearchParams)
+$r = $aac->collections('products')->documents->search(
+    SearchParams::create()->q('ноутбук')->queryBy('title')->facet('brand')
+);
+foreach ($r['hits'] as $hit) {
+    echo $hit['document']['title'] . ' — ' . $hit['document']['brand'] . "\n";
+}
+
+// Документы
+$c = $aac->collections('products');
+$c->documents->create(['id' => '1', 'title' => 'Ноутбук', 'price' => 99990]);
+$c->documents->import($docs, 'upsert');
+
+// Биллинг — tenant из конструктора, не нужно повторять
+$s = $aac->billing->summary();
+echo $s['status'] . ' — ' . ($s['plan']['name'] ?? 'no plan');
+```
+
+## Частые сценарии
+
+### Создание коллекции и индексация
+
+```php
 $aac->collections()->create([
     'name' => 'products',
     'fields' => [
@@ -30,107 +46,151 @@ $aac->collections()->create([
     ],
     'default_sorting_field' => 'price',
 ]);
+$aac->collections('products')->documents->import($docs, 'upsert');
+```
 
-// Добавить документы
-$aac->collections('products')->documents->import([
-    ['id' => '1', 'title' => 'Ноутбук Dell XPS', 'price' => 129990, 'brand' => 'Dell'],
-    ['id' => '2', 'title' => 'Монитор Samsung 4K', 'price' => 45990, 'brand' => 'Samsung'],
-], 'upsert');
+### Поиск с фильтрами и пагинацией
 
-// Поиск
-$results = $aac->collections('products')->documents->search([
+```php
+$aac->collections('products')->documents->search([
     'q' => 'ноутбук',
-    'query_by' => 'title',
+    'query_by' => 'title,description',
+    'filter_by' => 'price:>50000 && brand:=Dell',
+    'sort_by' => 'price:asc',
+    'page' => 1,
+    'per_page' => 20,
     'facet_by' => 'brand,price',
 ]);
-
-echo "Найдено: " . $results['found'] . "\n";
-foreach ($results['hits'] as $hit) {
-    echo $hit['document']['title'] . "\n";
-}
 ```
 
-## API
-
-### Клиент
+### Мультипоиск (несколько коллекций)
 
 ```php
-new Client(['apiKey' => '...', 'nodes' => [['host' => '...', 'port' => 443, 'protocol' => 'https']]]);
-new SearchClient(['apiKey' => '...', 'nodes' => [...]]); // только поиск
+$r = $aac->multiSearch->perform(['searches' => [
+    ['collection' => 'products', 'q' => 'ноутбук', 'query_by' => 'title'],
+    ['collection' => 'articles', 'q' => 'обзор', 'query_by' => 'body'],
+]]);
+// $r['results'][0] — результаты products
+// $r['results'][1] — результаты articles
 ```
 
-### Коллекции
+### Синонимы
 
 ```php
-$aac->collections()->create($schema)       // Создать
-$aac->collections()->retrieve()            // Список всех
-$aac->collections('name')->retrieve()      // Одна коллекция
-$aac->collections('name')->delete()        // Удалить
-$aac->collections('name')->update($schema) // Обновить схему
+$set = $aac->synonymSets()->create(['synonyms' => ['ноутбук', 'лэптоп', 'ноут']]);
+// Теперь поиск «лэптоп» найдёт «ноутбук»
 ```
 
-### Документы
+### Курации (ручное управление выдачей)
 
 ```php
-$coll = $aac->collections('products');
-
-$coll->documents->create($doc)             // Создать
-$coll->documents->upsert($doc)             // Создать/обновить
-$coll->documents->retrieve($id)            // Получить
-$coll->documents->update($id, $partial)    // Обновить частично
-$coll->documents->delete($id)              // Удалить
-$coll->documents->search($params)          // Поиск
-$coll->documents->import($docs, 'upsert')  // Массовый импорт (JSONL)
-$coll->documents->export()                 // Экспорт
-$coll->documents->deleteByQuery(['filter_by' => '...']) // Удалить по фильтру
+$aac->curationSets()->create('products', [
+    'rule' => ['match' => 'распродажа', 'query' => 'sale'],
+    'includes' => [['id' => 'sale-item-1', 'position' => 1]],
+]);
 ```
 
-### Мультипоиск
+### Интеграции (подключение внешних данных)
 
 ```php
-$aac->multiSearch->perform(['searches' => [...]]);
+// tenant из конструктора, не нужно повторять
+$catalog = $aac->integrations->catalog();
+$connections = $aac->integrations->connections();
+$session = $aac->integrations->session(provider: 'hubspot');
+$aac->integrations->disconnect('conn-123');
+
+// Можно переопределить workspace:
+$aac->integrations->catalog('other-workspace');
 ```
 
-### Алиасы, ключи, синонимы, курации
+### Биллинг
 
 ```php
-$aac->aliases()->upsert($name, ['collection_name' => '...']);
-$aac->keys()->create(['description' => '...', 'actions' => ['*'], 'collections' => ['*']]);
-$aac->synonymSets()->create(['synonyms' => ['ноут', 'лэптоп']]);
-$aac->overrides()->upsert('products', 'promo', ['rule' => ['match' => '...', 'query' => '...']]);
+// Доступные тарифы
+$aac->billing->plans();
+
+// Текущий тариф и использование
+$s = $aac->billing->summary('workspace-1');
+echo $s['status'];        // active, trialing, past_due...
+echo $s['usage']['totalCents'] / 100;  // сумма в валюте
+
+// Отправить usage-событие (идемпотентно)
+$aac->billing->event('workspace-1', 'custom_metric', ['count' => 42]);
 ```
 
-### Системные
+### Экспорт всех документов
 
 ```php
-$aac->health->retrieve();     // /health
-$aac->metrics->retrieve();    // /metrics.json
-$aac->stats->retrieve();      // /stats.json
-$aac->debug->retrieve();      // /debug
-$aac->operations->perform('snapshot'); // /operations/snapshot
+$jsonl = $aac->collections('products')->documents->export();
+// или с фильтром:
+$jsonl = $aac->collections('products')->documents->export(['filter_by' => 'status:=active']);
+```
+
+## Reference
+
+### Client
+
+```php
+$aac = new Client('key');                                     // облако по умолчанию
+$aac = new Client('key', 'https://my-instance.aacsearch.com'); // свой инстанс
+$aac = new Client(['apiKey'=>'key', 'baseUrl'=>'...', 'numRetries'=>5]); // всё
+$aac->ping();           // true если связь есть
+```
+
+### Properties (read-only, доступны сразу)
+
+| Свойство | Класс | Назначение |
+|----------|-------|------------|
+| `$aac->multiSearch` | MultiSearch | Мультипоиск |
+| `$aac->search` | Search | Scoped keys + health |
+| `$aac->integrations` | Integrations | Каталог, connect, disconnect |
+| `$aac->billing` | Billing | Тарифы, usage, события |
+| `$aac->analytics` | Analytics | Правила аналитики |
+| `$aac->stemming` | Stemming | Словари стемминга |
+| `$aac->health` | Health | Health check |
+| `$aac->metrics` | Metrics | Системные метрики |
+| `$aac->debug` | Debug | Отладка |
+| `$aac->operations` | Operations | snapshot, cache/clear... |
+
+### Lazy methods (возвращают list или individual по ключу)
+
+```php
+$aac->collections()        → Collections (список)
+$aac->collections('name')  → Collection  (одна)
+$aac->aliases() / aliases('name')
+$aac->keys() / keys($id)
+$aac->presets() / presets('name')
+$aac->synonymSets() / synonymSets('id')
+$aac->curationSets() / curationSets('id')
+$aac->analyticsRules() / analyticsRules('name')
+$aac->stopwords() / stopwords('id')
+$aac->conversations() / conversations('id')
+$aac->nlSearchModels() / nlSearchModels('id')
+```
+
+### SearchClient (search-only ключ)
+
+```php
+$aac = new \AACSearch\SDK\SearchClient('aac_sk_search_...');
+$aac->collections('products')->documents()->search(['q'=>'...', 'query_by'=>'title']);
 ```
 
 ### Ошибки
 
 ```php
-use AACSearch\SDK\Errors\AACSearchError;
-use AACSearch\SDK\Errors\HTTPError;
-use AACSearch\SDK\Errors\ObjectNotFound;
-use AACSearch\SDK\Errors\ObjectAlreadyExists;
-use AACSearch\SDK\Errors\ObjectUnprocessable;
-use AACSearch\SDK\Errors\RequestMalformed;
-use AACSearch\SDK\Errors\RequestUnauthorized;
-use AACSearch\SDK\Errors\ServerError;
-use AACSearch\SDK\Errors\ImportError;
-use AACSearch\SDK\Errors\MissingConfigurationError;
+use AACSearch\SDK\Errors\{ObjectNotFound, RequestUnauthorized, ServerError};
 
 try {
     $aac->collections('unknown')->retrieve();
 } catch (ObjectNotFound $e) {
-    echo "Not found: " . $e->getMessage();
+    // 404
+} catch (RequestUnauthorized $e) {
+    // 401 — неверный ключ
+} catch (ServerError $e) {
+    // 5xx — сервер недоступен (авто-ретрай 3 раза)
 }
 ```
 
-## Лицензия
+`AACSearchError` → `HTTPError` → `RequestMalformed`(400), `RequestUnauthorized`(401), `ObjectNotFound`(404), `ObjectAlreadyExists`(409), `ObjectUnprocessable`(422), `ServerError`(5xx).
 
 MIT © AACSearch

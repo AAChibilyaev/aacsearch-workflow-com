@@ -108,6 +108,39 @@ const getCatalogProviders = async (opts: NangoPluginOptions): Promise<CatalogPro
   return providers
 }
 
+/**
+ * Load one connection by :id and confirm it belongs to the caller's tenant.
+ * Shared by disconnect / sync / status so the ownership check lives in one place;
+ * throws a 400/404 (never leaking cross-tenant existence) on any mismatch.
+ */
+const loadOwnedConnection = async (req: PayloadRequest): Promise<IntegrationDoc> => {
+  const tenant = guardTenantParam(
+    req,
+    typeof req.query?.tenant === 'string' ? req.query.tenant : undefined,
+  )
+  const rawID = req.routeParams?.id
+  if (rawID === undefined || rawID === null || rawID === '') {
+    throw new APIError('Connection id is required', 400, { code: 'id_required' })
+  }
+  const integrationsAPI = req.payload as unknown as IntegrationsLocalAPI
+  let doc: IntegrationDoc
+  try {
+    doc = await integrationsAPI.findByID({
+      collection: 'integrations',
+      depth: 0,
+      id: coerceIdValue(String(rawID)),
+      req,
+      ...principalScopedFindArgs(req),
+    })
+  } catch {
+    throw new APIError('Connection not found', 404, { code: 'not_found' })
+  }
+  if (String(extractRelationID(doc.tenant)) !== String(tenant)) {
+    throw new APIError('Connection not found', 404, { code: 'not_found' })
+  }
+  return doc
+}
+
 /** Tenant's connections from OUR collection, on behalf of the caller. */
 const findTenantIntegrations = async (
   req: PayloadRequest,
@@ -376,6 +409,65 @@ const integrationEndpoints = (opts: NangoPluginOptions): Endpoint[] => [
       // System context: guard already ran and the upstream connection is gone
       await integrationsAPI.delete({ collection: 'integrations', id: doc.id, req })
       return Response.json({ disconnected: true })
+    },
+  },
+  {
+    // Manual "Sync now": re-run this connection's data pull on demand.
+    // tenant-admins may sync their own connections; super-admin any. `?full=true`
+    // requests a full re-sync instead of incremental.
+    path: '/integrations/connections/:id/sync',
+    method: 'post',
+    handler: async (req) => {
+      const doc = await loadOwnedConnection(req)
+      const fullResync = req.query?.full === 'true' || req.query?.full === '1'
+      const nango = await getClient(opts)
+      try {
+        await nango.triggerSync(
+          doc.integrationKey,
+          undefined,
+          doc.connectionId,
+          // Full re-sync clears the connection's cache; incremental is the default
+          fullResync ? { emptyCache: true, reset: true } : undefined,
+        )
+      } catch (err) {
+        req.payload.logger.error({ err, msg: 'integration sync trigger failed' })
+        throw new APIError('Failed to start sync', 502, { code: 'sync_failed' })
+      }
+      return Response.json({ started: true })
+    },
+  },
+  {
+    // Live sync status for one connection — mapped to a white-label shape
+    // (generic sync name/state only; no vendor identifiers).
+    path: '/integrations/connections/:id/status',
+    method: 'get',
+    handler: async (req) => {
+      const doc = await loadOwnedConnection(req)
+      const nango = await getClient(opts)
+      try {
+        const status = (await nango.syncStatus(doc.integrationKey, '*', doc.connectionId)) as {
+          syncs?: Array<{
+            finishedAt?: null | string
+            latestResult?: unknown
+            name?: string
+            nextScheduledSyncAt?: null | string
+            status?: string
+          }>
+        }
+        const syncs = (status?.syncs ?? []).map((sync) => ({
+          finishedAt: sync.finishedAt ?? null,
+          name: sync.name ?? '',
+          nextRunAt: sync.nextScheduledSyncAt ?? null,
+          state: sync.status ?? 'unknown',
+        }))
+        return Response.json({ syncs })
+      } catch (err) {
+        req.payload.logger.warn({ err, msg: 'integration sync status failed' })
+        // Best-effort: fall back to the mirrored lastSyncedAt on our doc
+        return Response.json({
+          syncs: [{ finishedAt: doc.lastSyncedAt ?? null, name: '', nextRunAt: null, state: doc.status ?? 'unknown' }],
+        })
+      }
     },
   },
   {

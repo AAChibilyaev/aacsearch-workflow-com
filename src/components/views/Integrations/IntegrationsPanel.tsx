@@ -232,7 +232,15 @@ export const IntegrationsPanel: React.FC<Props> = ({ initialTenantId, lang, tena
       const { token } = (await res.json()) as { expiresAt: string; token: string }
       // Heavy SDK stays out of the initial admin chunk — load on demand
       const { default: ConnectSDK } = await import('@nangohq/frontend')
-      const sdk = new ConnectSDK({ connectSessionToken: token })
+      // Self-hosted deployments MUST talk to their own connector host, not the
+      // vendor cloud. With no host the SDK silently defaults to the vendor
+      // domain, leaking it to the browser. (On vendor Cloud the popup domain is
+      // inherent — a custom callback domain is required, out of code scope.)
+      const connectorHost = process.env.NEXT_PUBLIC_NANGO_HOST
+      const sdk = new ConnectSDK({
+        connectSessionToken: token,
+        ...(connectorHost ? { host: connectorHost } : {}),
+      })
       await sdk.auth(provider.key)
       await refreshConnections()
     } catch {

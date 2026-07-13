@@ -164,10 +164,21 @@ export const createIngestIntegrationRecordsTask = (
             title: deriveRecordTitle(record, model),
           }
           if (existing.docs[0]) {
-            await payload.update({ collection: 'documents', data, id: existing.docs[0].id, req })
+            await payload.update({
+              collection: 'documents',
+              // System ingestion path: the auto-created definition starts with
+              // fields:[] so the Documents beforeValidate validator would reject
+              // every ingested key. Bypass it (docs arrive faster than the
+              // customer's definition evolves); Typesense sync still fires.
+              context: { skipDocumentValidation: true },
+              data,
+              id: existing.docs[0].id,
+              req,
+            })
           } else {
             await payload.create({
               collection: 'documents',
+              context: { skipDocumentValidation: true },
               data: { ...data, tenant: tenantID as number },
               req,
             })

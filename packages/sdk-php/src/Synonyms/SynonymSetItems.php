@@ -2,13 +2,4 @@
 declare(strict_types=1);
 namespace AACSearch\SDK\Synonyms;
 use AACSearch\SDK\ApiCall;
-
-class SynonymSetItems {
-    public function __construct(private readonly string $synonymSetId, private readonly ApiCall $apiCall) {}
-    /** @param array{synonyms: string[], locale?: string} $params */
-    public function create(array $params): array {
-        return $this->apiCall->post('/synonyms/' . urlencode($this->synonymSetId) . '/items', $params);
-    }
-    /** @return array{synonyms: array<int, array<string,mixed>>} */
-    public function retrieve(): array { return $this->apiCall->get('/synonyms/' . urlencode($this->synonymSetId) . '/items'); }
-}
+class SynonymSetItems { public function __construct(private readonly string $sid,private readonly ApiCall $a){} public function create(array $p):array{return $this->a->post('/synonyms/'.urlencode($this->sid).'/items',$p);} public function retrieve():array{return $this->a->get('/synonyms/'.urlencode($this->sid).'/items');} }

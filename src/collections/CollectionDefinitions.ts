@@ -1,5 +1,11 @@
 import type { CollectionConfig } from 'payload'
 
+import {
+  enforceTenantWriteScope,
+  readTenantScoped,
+  writeTenantScoped,
+} from '@/access/tenantScopedAccess'
+
 /**
  * PART V: customer "collections" are DATA, never runtime Payload schema.
  * Each row defines a virtual collection for one tenant; its documents live
@@ -8,9 +14,20 @@ import type { CollectionConfig } from 'payload'
  */
 export const CollectionDefinitions: CollectionConfig = {
   slug: 'collection-definitions',
+  // Tenant isolation for api-key principals (the multi-tenant plugin only
+  // scopes `users`); the beforeValidate hook blocks cross-tenant writes.
+  access: {
+    create: writeTenantScoped,
+    delete: writeTenantScoped,
+    read: readTenantScoped,
+    update: writeTenantScoped,
+  },
   admin: {
     defaultColumns: ['name', 'slug', 'updatedAt'],
     useAsTitle: 'name',
+  },
+  hooks: {
+    beforeValidate: [enforceTenantWriteScope],
   },
   labels: {
     singular: { en: 'Collection definition', ru: 'Определение коллекции' },

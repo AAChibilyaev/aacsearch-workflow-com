@@ -1,6 +1,9 @@
 import type { CollectionAfterChangeHook, Config, Endpoint, Plugin } from 'payload'
 
+import { getCloudflareContext } from '@opennextjs/cloudflare'
+
 import { isSuperAdmin } from '@/access/isSuperAdmin'
+import { isApiKeyPrincipalValid } from '@/collections/ApiKeys'
 import { emitUsageEvent, type LagoClientOptions } from '@/lib/billing/usage'
 import { getPrincipalTenantIDs } from '@/lib/principal'
 import {
@@ -12,6 +15,8 @@ import {
   buildScopedKeyParams,
   generateScopedKey,
   getAdminSearchClient,
+  hasScope,
+  isSearchLocale,
   mergeSearchTenantFilter,
   sanitizeSearchResponse,
   synonymRowsToItems,
@@ -97,6 +102,11 @@ const hasSynonymError = (response: unknown): boolean => {
 const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
   const searchHandler: Endpoint['handler'] = async (req) => {
     if (!req.user) return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+    // Payload's useAPIKey auth does NOT enforce our custom revokedAt/expiresAt —
+    // a revoked or expired key still resolves to req.user. Reject it here.
+    if (!isApiKeyPrincipalValid(req.user)) {
+      return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+    }
 
     const body = await readJsonBody(req)
     if (body === null) return Response.json(GATEWAY_ERRORS.invalidBody, { status: 400 })
@@ -108,6 +118,9 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
     if (!tenant) return Response.json(GATEWAY_ERRORS.tenantRequired, { status: 400 })
     if (!canAccessTenant(req.user, tenant)) {
       return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
+    }
+    if (!hasScope(req.user, 'search:read')) {
+      return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
     }
 
     // Multi-search body { searches: [...], union? } with a single-search
@@ -184,10 +197,13 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
         response = await performWith(scoped.map(stripSynonymSets))
       }
 
-      // Fire-and-forget metering — never awaited on the hot path, never throws.
-      // Random transaction id: every request bills exactly once, retries
-      // inside the billing client reuse the same id and dedupe.
-      void emitUsageEvent(
+      // Meter exactly once per request (per-request UUID idempotency id; the
+      // billing client reuses it across its own retries so it never
+      // double-bills). On Workers the isolate can be frozen the moment the
+      // Response settles, dropping an un-awaited promise -> LOST billing. Hand
+      // the metering promise to ctx.waitUntil so the runtime keeps the isolate
+      // alive until it resolves; emitUsageEvent never throws.
+      const metering = emitUsageEvent(
         opts.billing ?? {},
         {
           code: 'search_requests',
@@ -197,8 +213,16 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
         },
         req.payload.logger,
       )
+      try {
+        const { ctx } = getCloudflareContext()
+        if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(metering)
+        else void metering
+      } catch {
+        // context unavailable (dev / CLI / tests) — fall back to fire-and-forget
+        void metering
+      }
 
-      return Response.json(sanitizeSearchResponse(response))
+      return Response.json(sanitizeSearchResponse(response, opts.host))
     } catch (err) {
       // neutral error only — upstream messages may leak engine hostnames
       req.payload.logger.error({ err, msg: 'search gateway upstream error' })
@@ -225,6 +249,11 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
       method: 'post',
       handler: async (req) => {
         if (!req.user) return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+        // useAPIKey auth ignores our revokedAt/expiresAt — enforce it here so a
+        // revoked/expired key cannot keep minting scoped keys.
+        if (!isApiKeyPrincipalValid(req.user)) {
+          return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+        }
         if (!opts.searchOnlyKey) {
           return Response.json(GATEWAY_ERRORS.searchUnavailable, { status: 502 })
         }
@@ -242,6 +271,17 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
         if (!canAccessTenant(req.user, tenant)) {
           return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
         }
+        if (!hasScope(req.user, 'search:read')) {
+          return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
+        }
+
+        // Validate locale against the configured allowlist BEFORE it reaches
+        // buildScopedKeyParams (raw interpolation = filter-injection surface).
+        const localeRaw =
+          typeof body.locale === 'string' && body.locale !== '' ? body.locale : undefined
+        if (localeRaw !== undefined && !isSearchLocale(localeRaw)) {
+          return Response.json(GATEWAY_ERRORS.invalidLocale, { status: 400 })
+        }
 
         const extraParams: ScopedKeyExtraParams = {}
         if (typeof body.query_by === 'string') extraParams.query_by = body.query_by
@@ -253,19 +293,13 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
         }
         if (typeof body.preset === 'string') extraParams.preset = body.preset
 
-        const params = buildScopedKeyParams(
-          tenant,
-          typeof body.locale === 'string' ? body.locale : undefined,
-          {
-            extraParams,
-            // client filter_by is appended AFTER the forced tenant filter
-            filterBy: typeof body.filter_by === 'string' ? body.filter_by : undefined,
-            limitMultiSearches:
-              typeof body.limit_multi_searches === 'number'
-                ? body.limit_multi_searches
-                : undefined,
-          },
-        )
+        const params = buildScopedKeyParams(tenant, localeRaw, {
+          extraParams,
+          // client filter_by is appended AFTER the forced tenant filter
+          filterBy: typeof body.filter_by === 'string' ? body.filter_by : undefined,
+          limitMultiSearches:
+            typeof body.limit_multi_searches === 'number' ? body.limit_multi_searches : undefined,
+        })
         // clients may SHORTEN the key lifetime, never extend it
         if (
           typeof body.expires_at === 'number' &&
@@ -288,6 +322,128 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
       path: '/v1/health',
       method: 'get',
       handler: async () => Response.json({ ok: true }),
+    },
+    {
+      // ── Generic Typesense proxy ──
+      // Accepts POST with { path, method, body?, tenant? } and proxies
+      // to the search engine with auth checks. The PHP/TS SDK uses this
+      // for all engine operations (collections, synonyms, keys, etc.).
+      path: '/v1/proxy',
+      method: 'post',
+      handler: async (req) => {
+        if (!req.user) return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+        if (!isApiKeyPrincipalValid(req.user)) {
+          return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+        }
+
+        const proxyBody = await readJsonBody(req)
+        if (!proxyBody || typeof proxyBody.path !== 'string') {
+          return Response.json(GATEWAY_ERRORS.invalidBody, { status: 400 })
+        }
+
+        const enginePath = proxyBody.path.startsWith('/')
+          ? proxyBody.path
+          : '/' + proxyBody.path
+        const engineMethod = (typeof proxyBody.method === 'string'
+          ? proxyBody.method.toUpperCase()
+          : 'GET') as string
+        const engineBody = proxyBody.body ?? null
+
+        // Determine tenant from principal (API key or session user).
+        // The API key's `tenant` relationship IS the tenant — no need for the
+        // client to pass it. Session users have it via getPrincipalTenantIDs.
+        const userTenantIDs = getPrincipalTenantIDs(req.user)
+        const principalTenant = userTenantIDs.length === 1 ? String(userTenantIDs[0]) : ''
+        const tenant =
+          principalTenant
+          || (typeof req.query?.tenant === 'string' ? req.query.tenant : '')
+          || (proxyBody && (typeof proxyBody.tenant === 'string' || typeof proxyBody.tenant === 'number')
+            ? String(proxyBody.tenant)
+            : '')
+
+        // Write operations require tenant-scoped admin access
+        const isWrite = ['post', 'put', 'patch', 'delete'].includes(engineMethod.toLowerCase())
+
+        if (isWrite) {
+          // Super-admin bypasses all checks
+          if (!isSuperAdmin(req.user)) {
+            if (!tenant) return Response.json(GATEWAY_ERRORS.tenantRequired, { status: 400 })
+            if (!canAccessTenant(req.user, tenant)) {
+              return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
+            }
+            if (!hasScope(req.user, 'documents:write')) {
+              return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
+            }
+          }
+        }
+
+        // Read operations: tenant-scoped for search, auth-gated for others
+        if (!isWrite && !isSuperAdmin(req.user)) {
+          if (enginePath.includes('/documents/search') || enginePath.endsWith('/search')) {
+            // Search: inject tenant filter into the request
+            if (!tenant) return Response.json(GATEWAY_ERRORS.tenantRequired, { status: 400 })
+            if (!canAccessTenant(req.user, tenant)) {
+              return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
+            }
+            if (!hasScope(req.user, 'search:read')) {
+              return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
+            }
+          }
+          // Non-search reads (collections, synonyms, etc.) require tenant access
+          if (tenant && !canAccessTenant(req.user, tenant)) {
+            return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
+          }
+        }
+
+        try {
+          const baseUrl = `${process.env.TYPESENSE_PROTOCOL || 'https'}://${opts.host}:${process.env.TYPESENSE_PORT || 443}`
+
+          // Build upstream URL — preserve existing query params, drop reserved ones
+          const upstreamParams = new URLSearchParams()
+          for (const [key, value] of Object.entries(req.query ?? {})) {
+            if (RESERVED_COMMON_PARAMS.has(key) || typeof value !== 'string') continue
+            upstreamParams.set(key, value)
+          }
+          const qs = upstreamParams.toString()
+          const upstreamUrl = `${baseUrl}${enginePath}${qs ? '?' + qs : ''}`
+
+          const upstreamResponse = await fetch(upstreamUrl, {
+            method: engineMethod,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-TYPESENSE-API-KEY': process.env.TYPESENSE_API_KEY || '',
+              Accept: 'application/json',
+            },
+            ...(engineBody && engineMethod.toLowerCase() !== 'get' && engineMethod.toLowerCase() !== 'delete'
+              ? { body: JSON.stringify(engineBody) }
+              : {}),
+          })
+
+          const contentType = upstreamResponse.headers.get('content-type') ?? ''
+          const raw = await upstreamResponse.text()
+
+          if (contentType.includes('application/json')) {
+            let parsed: unknown
+            try { parsed = JSON.parse(raw) } catch { parsed = raw }
+            // Scrub vendor strings from error messages
+            const scrubbed =
+              typeof parsed === 'object' && parsed !== null
+                ? JSON.parse(
+                    JSON.stringify(parsed).replace(/typesense/gi, 'search engine'),
+                  )
+                : parsed
+            return Response.json(scrubbed, { status: upstreamResponse.status })
+          }
+
+          return new Response(raw, {
+            status: upstreamResponse.status,
+            headers: { 'Content-Type': contentType },
+          })
+        } catch (err) {
+          req.payload.logger.error({ err, msg: 'search proxy upstream error' })
+          return Response.json(GATEWAY_ERRORS.searchUnavailable, { status: 502 })
+        }
+      },
     },
   ]
 }

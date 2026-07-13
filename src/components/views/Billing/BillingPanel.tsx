@@ -32,6 +32,17 @@ export type BillingSummary = {
   } | null
 }
 
+/** Shared endpoint contract: GET /api/billing/invoices?tenant=ID */
+export type BillingInvoice = {
+  currency: string
+  id: string
+  issuedAt: null | string
+  number: string
+  paymentStatus: string
+  status: string
+  totalCents: number
+}
+
 export type TenantOption = { id: string; label: string }
 
 type Props = {
@@ -63,6 +74,14 @@ const STATUS_STYLE: Record<BillingSummary['status'], { bg: string; fg: string }>
   suspended: { bg: 'var(--theme-error-100, #fbe9e9)', fg: 'var(--theme-error-750, #8f1f1f)' },
   trialing: { bg: 'var(--theme-elevation-100, #ededed)', fg: 'var(--theme-elevation-800, #333)' },
 }
+
+/** Lago payment_status -> white-label i18n key */
+const paymentStatusKey = (status: string): BillingMessageKey =>
+  status === 'succeeded'
+    ? 'paymentSucceeded'
+    : status === 'failed'
+      ? 'paymentFailed'
+      : 'paymentPending'
 
 const cardStyle: React.CSSProperties = {
   background: 'var(--theme-elevation-25, transparent)',
@@ -102,6 +121,7 @@ export const BillingPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpt
   const [tenant, setTenant] = React.useState<null | string>(initialTenantId)
   const [reloadKey, setReloadKey] = React.useState(0)
   const [result, setResult] = React.useState<FetchResult | null>(null)
+  const [invoices, setInvoices] = React.useState<BillingInvoice[]>([])
 
   const apiRoute = config.routes.api
   const stamp = `${tenant}:${reloadKey}`
@@ -119,6 +139,29 @@ export const BillingPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpt
         if (!cancelled) setResult({ data, kind: 'ready', stamp })
       } catch {
         if (!cancelled) setResult({ kind: 'error', stamp })
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [apiRoute, stamp, tenant])
+
+  // Invoices load independently — best-effort, never blocks the summary card
+  React.useEffect(() => {
+    if (!tenant) return
+    let cancelled = false
+
+    const run = async () => {
+      try {
+        const url = `${formatAdminURL({ apiRoute, path: '/billing/invoices' })}?tenant=${encodeURIComponent(tenant)}`
+        const res = await fetch(url, { credentials: 'include' })
+        if (!res.ok) throw new Error(String(res.status))
+        const body = (await res.json()) as { invoices?: BillingInvoice[] }
+        if (!cancelled) setInvoices(body.invoices ?? [])
+      } catch {
+        if (!cancelled) setInvoices([])
       }
     }
 
@@ -413,6 +456,57 @@ export const BillingPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpt
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {/* Invoices */}
+        {invoices.length > 0 && (
+          <div style={cardStyle}>
+            <h3 style={{ margin: '0 0 0.6rem' }}>{t(lang, 'invoicesTitle')}</h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', minWidth: 480, width: '100%' }}>
+                <thead>
+                  <tr>
+                    {[
+                      t(lang, 'invoiceNumber'),
+                      t(lang, 'invoiceDate'),
+                      t(lang, 'invoiceStatus'),
+                      t(lang, 'colAmount'),
+                    ].map((heading, index) => (
+                      <th
+                        key={index}
+                        style={{
+                          ...mutedStyle,
+                          borderBottom: '1px solid var(--theme-elevation-100, #e3e3e3)',
+                          fontSize: '0.8rem',
+                          fontWeight: 500,
+                          padding: '0.4rem 0.75rem 0.4rem 0',
+                          textAlign: 'left',
+                        }}
+                      >
+                        {heading}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoices.map((invoice) => (
+                    <tr key={invoice.id || invoice.number}>
+                      <td style={{ padding: '0.5rem 0.75rem 0.5rem 0' }}>{invoice.number || invoice.id}</td>
+                      <td style={{ ...mutedStyle, padding: '0.5rem 0.75rem 0.5rem 0' }}>
+                        {invoice.issuedAt ? formatDate(invoice.issuedAt) : '—'}
+                      </td>
+                      <td style={{ padding: '0.5rem 0.75rem 0.5rem 0' }}>
+                        {t(lang, paymentStatusKey(invoice.paymentStatus))}
+                      </td>
+                      <td style={{ padding: '0.5rem 0 0.5rem 0' }}>
+                        {formatMoney(invoice.totalCents, invoice.currency)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

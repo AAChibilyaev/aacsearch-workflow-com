@@ -1,63 +1,21 @@
 <?php
-
 declare(strict_types=1);
-
 namespace AACSearch\SDK\Collections;
-
 use AACSearch\SDK\ApiCall;
 use AACSearch\SDK\Configuration;
-
-class Collection
-{
+use AACSearch\SDK\SearchParams;
+class Collection {
     public readonly Documents $documents;
-
-    public function __construct(
-        private readonly string $name,
-        private readonly ApiCall $apiCall,
-        Configuration $configuration,
-    ) {
-        $this->documents = new Documents($name, $apiCall, $configuration);
+    public function __construct(private readonly string $name, private readonly ApiCall $api, Configuration $cfg) {
+        $this->documents = new Documents($name, $api, $cfg);
     }
-
-    /** @return array<string,mixed> */
-    public function retrieve(): array
-    {
-        return $this->apiCall->get('/collections/' . urlencode($this->name));
-    }
-
-    /**
-     * @param array{fields: array<int,array<string,mixed>>} $schema
-     * @return array<string,mixed>
-     */
-    public function update(array $schema): array
-    {
-        return $this->apiCall->patch('/collections/' . urlencode($this->name), $schema);
-    }
-
-    /**
-     * @param array{fields: string[]} $fields
-     * @return array<string,mixed>
-     */
-    public function dropField(array $fields): array
-    {
-        return $this->apiCall->patch('/collections/' . urlencode($this->name), $fields);
-    }
-
-    /** @return array<string,mixed> */
-    public function delete(): array
-    {
-        return $this->apiCall->delete('/collections/' . urlencode($this->name));
-    }
-
-    /**
-     * @param array<string,mixed> $params
-     * @return array{found:int, hits:array<int,array<string,mixed>>, facet_counts:array<int,array<string,mixed>>}
-     */
-    public function search(array $params): array
-    {
-        return $this->apiCall->get(
-            '/collections/' . urlencode($this->name) . '/documents/search',
-            $params,
-        );
+    public function retrieve(): array { return $this->api->get('/collections/' . urlencode($this->name)); }
+    public function update(array $s): array { return $this->api->patch('/collections/' . urlencode($this->name), $s); }
+    public function delete(): array { return $this->api->delete('/collections/' . urlencode($this->name)); }
+    /** Search with tenant filter injection. Accepts array or SearchParams. */
+    public function search(array|SearchParams $p): array {
+        $entry = array_merge(['collection' => $this->name], $p instanceof SearchParams ? $p->toArray() : $p);
+        $res = $this->api->post('/v1/multi_search', ['searches' => [$entry]]);
+        return $res['results'][0] ?? ['found' => 0, 'hits' => []];
     }
 }

@@ -2,11 +2,4 @@
 declare(strict_types=1);
 namespace AACSearch\SDK\Aliases;
 use AACSearch\SDK\ApiCall;
-
-class Alias {
-    public function __construct(private readonly string $name, private readonly ApiCall $apiCall) {}
-    /** @return array<string,mixed> */
-    public function retrieve(): array { return $this->apiCall->get(Aliases::RESOURCEPATH . '/' . urlencode($this->name)); }
-    /** @return array<string,mixed> */
-    public function delete(): array { return $this->apiCall->delete(Aliases::RESOURCEPATH . '/' . urlencode($this->name)); }
-}
+class Alias { public function __construct(private readonly string $n,private readonly ApiCall $a){} public function retrieve():array{return $this->a->get('/aliases/'.urlencode($this->n));} public function delete():array{return $this->a->delete('/aliases/'.urlencode($this->n));} }

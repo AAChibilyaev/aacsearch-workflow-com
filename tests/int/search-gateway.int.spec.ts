@@ -1,14 +1,19 @@
 // @vitest-environment node
+import type { Config, PayloadRequest } from 'payload'
+
 import { createHmac } from 'node:crypto'
 
 import { describe, expect, it } from 'vitest'
 
+import { isApiKeyPrincipalValid } from '@/collections/ApiKeys'
 import {
   DEFAULT_LIMIT_MULTI_SEARCHES,
   GATEWAY_ERRORS,
   MAX_PER_PAGE,
   buildScopedKeyParams,
   generateScopedKey,
+  hasScope,
+  isSearchLocale,
   mergeSearchTenantFilter,
   mergeTenantSynonymSets,
   sanitizeSearchResponse,
@@ -16,6 +21,7 @@ import {
   tenantSynonymSetName,
   type ScopedKeyExtraParams,
 } from '@/lib/search/client'
+import { searchGatewayPlugin } from '@/plugins/searchGateway'
 
 // White-label: customer-visible JSON must never contain backend vendor names
 const VENDOR_STRINGS = /lago|nango|typesense|getlago|nango\.dev/i
@@ -224,6 +230,174 @@ describe('scoped key generation (offline HMAC, self-generated parent key)', () =
     expect(embedded.filter_by).toContain('(category:=books)')
     expect(embedded.expires_at).toBeGreaterThan(Math.floor(Date.now() / 1000))
     expect(embedded.limit_multi_searches).toBe(DEFAULT_LIMIT_MULTI_SEARCHES)
+  })
+})
+
+describe('locale allowlist — scoped-key filter-injection defence', () => {
+  it('accepts the configured locales verbatim (matches engine filter syntax)', () => {
+    expect(buildScopedKeyParams('42', 'en').filter_by).toBe('tenant:=42 && locale:=en')
+    expect(buildScopedKeyParams('42', 'ru').filter_by).toBe('tenant:=42 && locale:=ru')
+    expect(buildScopedKeyParams('42', 'de').filter_by).toBe('tenant:=42 && locale:=de')
+  })
+
+  it('throws on a crafted locale that would break out of the tenant clause', () => {
+    // Without the allowlist this produced `tenant:=42 && locale:=en || tenant:=999`,
+    // whose top-level `||` widens the scope to another tenant.
+    expect(() => buildScopedKeyParams('42', 'en || tenant:=999')).toThrow()
+    expect(() => buildScopedKeyParams('42', 'tenant:=999')).toThrow()
+    expect(() => buildScopedKeyParams('42', 'de && tenant:=1')).toThrow()
+    // an unconfigured but innocuous locale is rejected too (fail closed)
+    expect(() => buildScopedKeyParams('42', 'fr')).toThrow()
+  })
+
+  it('isSearchLocale allowlists only the configured locales', () => {
+    expect(isSearchLocale('en')).toBe(true)
+    expect(isSearchLocale('ru')).toBe(true)
+    expect(isSearchLocale('de')).toBe(true)
+    expect(isSearchLocale('en || tenant:=999')).toBe(false)
+    expect(isSearchLocale('EN')).toBe(false)
+    expect(isSearchLocale('')).toBe(false)
+    expect(isSearchLocale(undefined)).toBe(false)
+    expect(isSearchLocale(null)).toBe(false)
+  })
+})
+
+describe('hasScope — search:read enforcement for api-key principals', () => {
+  it('does not scope-limit session users or super-admins', () => {
+    expect(hasScope({ collection: 'users', roles: ['super-admin'] }, 'search:read')).toBe(true)
+    expect(hasScope({ collection: 'users', roles: ['user'] }, 'search:read')).toBe(true)
+  })
+
+  it('requires api-key principals to carry the scope', () => {
+    expect(hasScope({ collection: 'api-keys', scopes: ['search:read'] }, 'search:read')).toBe(true)
+    expect(hasScope({ collection: 'api-keys', scopes: ['documents:read'] }, 'search:read')).toBe(
+      false,
+    )
+    expect(hasScope({ collection: 'api-keys' }, 'search:read')).toBe(false)
+    // a non-array scopes field never grants
+    expect(hasScope({ collection: 'api-keys', scopes: 'search:read' }, 'search:read')).toBe(false)
+  })
+})
+
+describe('isApiKeyPrincipalValid — revocation/expiry honoured by guards', () => {
+  it('accepts a live api-key and any non-api-key principal', () => {
+    expect(isApiKeyPrincipalValid({ collection: 'api-keys', tenant: 1 })).toBe(true)
+    expect(isApiKeyPrincipalValid({ collection: 'users', roles: ['user'] })).toBe(true)
+  })
+
+  it('rejects revoked, expired and null/malformed principals (fail closed)', () => {
+    expect(isApiKeyPrincipalValid({ collection: 'api-keys', revokedAt: '2000-01-01' })).toBe(false)
+    expect(isApiKeyPrincipalValid({ collection: 'api-keys', expiresAt: '2000-01-01' })).toBe(false)
+    expect(isApiKeyPrincipalValid({ collection: 'api-keys', expiresAt: 'not-a-date' })).toBe(false)
+    expect(isApiKeyPrincipalValid(null)).toBe(false)
+  })
+})
+
+describe('sanitizeSearchResponse — host + URL scrubbing (white-label)', () => {
+  it('scrubs the configured host and any http(s) URL from per-search errors', () => {
+    const host = 'aac-xyz.a1.typesense.net'
+    const response = sanitizeSearchResponse(
+      {
+        results: [
+          { code: 502, error: `Request to https://${host}:443/collections/x failed` },
+          { code: 500, error: `connect ECONNREFUSED ${host}:443` },
+          { found: 3, hits: [] },
+        ],
+      },
+      host,
+    )
+    const json = JSON.stringify(response)
+    expect(json).not.toMatch(VENDOR_STRINGS)
+    expect(json).not.toContain(host)
+    expect(json).not.toContain('https://')
+    // successful results still pass through untouched
+    expect((response.results[2] as { found: number }).found).toBe(3)
+  })
+
+  it('still scrubs the literal vendor name when no host is supplied', () => {
+    const out = sanitizeSearchResponse({ results: [{ error: 'Typesense connection refused' }] })
+    expect(JSON.stringify(out)).not.toMatch(VENDOR_STRINGS)
+  })
+})
+
+describe('search gateway endpoint guards (api-key validity + scope + locale)', () => {
+  const logger = { error: () => {}, warn: () => {} }
+
+  const gatewayHandler = (path: string) => {
+    const cfg = searchGatewayPlugin({
+      billing: {},
+      host: 'search.example.com',
+      searchOnlyKey: 'search-only-key',
+    })({ collections: [], endpoints: [] } as unknown as Config) as Config
+    const ep = (cfg.endpoints ?? []).find((e) => e.path === path && e.method === 'post')
+    if (!ep) throw new Error(`endpoint ${path} not found`)
+    return ep.handler
+  }
+
+  const makeReq = (over: Record<string, unknown>): PayloadRequest =>
+    ({
+      json: async () => ({}),
+      payload: { logger },
+      query: {},
+      user: null,
+      ...over,
+    }) as unknown as PayloadRequest
+
+  it('rejects a revoked api-key with 401 on /v1/search (auth does not check revocation)', async () => {
+    const res = await gatewayHandler('/v1/search')(
+      makeReq({
+        query: { tenant: '7' },
+        user: {
+          collection: 'api-keys',
+          id: 'k1',
+          revokedAt: '2000-01-01T00:00:00.000Z',
+          scopes: ['search:read'],
+          tenant: 7,
+        },
+      }),
+    )
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual(GATEWAY_ERRORS.unauthorized)
+  })
+
+  it('rejects an api-key without search:read scope with 403 on /v1/search', async () => {
+    const res = await gatewayHandler('/v1/search')(
+      makeReq({
+        json: async () => ({ searches: [{ collection: 'products', q: '*' }] }),
+        query: { tenant: '7' },
+        user: { collection: 'api-keys', id: 'k2', scopes: ['documents:read'], tenant: 7 },
+      }),
+    )
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual(GATEWAY_ERRORS.forbiddenScope)
+  })
+
+  it('rejects a crafted locale with 400 on /v1/keys/scoped (before key issuance)', async () => {
+    const res = await gatewayHandler('/v1/keys/scoped')(
+      makeReq({
+        json: async () => ({ locale: 'en || tenant:=999', tenant: '7' }),
+        user: { collection: 'api-keys', id: 'k3', scopes: ['search:read'], tenant: 7 },
+      }),
+    )
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual(GATEWAY_ERRORS.invalidLocale)
+  })
+
+  it('rejects a revoked api-key with 401 on /v1/keys/scoped', async () => {
+    const res = await gatewayHandler('/v1/keys/scoped')(
+      makeReq({
+        json: async () => ({ tenant: '7' }),
+        user: {
+          collection: 'api-keys',
+          expiresAt: '2000-01-01T00:00:00.000Z',
+          id: 'k4',
+          scopes: ['search:read'],
+          tenant: 7,
+        },
+      }),
+    )
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual(GATEWAY_ERRORS.unauthorized)
   })
 })
 

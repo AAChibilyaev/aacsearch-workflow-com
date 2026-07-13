@@ -23,8 +23,66 @@ import { sanitizeEntitlements } from './dto'
  */
 
 const CACHE_TTL_MS = 60_000
+/** Hard ceiling on distinct tenants held in the isolate cache (bounded memory). */
+const CACHE_MAX_ENTRIES = 500
 
-const entitlementsCache = new Map<string, { expiresAt: number; value: EntitlementsRecord }>()
+/**
+ * Bounded, per-entry-TTL cache with an injectable clock (pure — unit-testable).
+ * Insertion/recency order is the Map's own order, so the "oldest" key evicted
+ * on overflow is the least-recently used. Expired entries are pruned on read
+ * and opportunistically on overflow, so a churn of distinct tenants can never
+ * grow the map without bound.
+ */
+export const createBoundedTtlCache = <T>(
+  ttlMs: number,
+  maxEntries: number,
+  now: () => number = () => Date.now(),
+): {
+  clear: () => void
+  get: (key: string) => T | undefined
+  set: (key: string, value: T) => void
+  size: () => number
+} => {
+  const store = new Map<string, { expiresAt: number; value: T }>()
+  return {
+    clear: () => store.clear(),
+    get: (key) => {
+      const hit = store.get(key)
+      if (!hit) return undefined
+      if (hit.expiresAt <= now()) {
+        store.delete(key) // prune on expiry
+        return undefined
+      }
+      // Recency bump: re-insert so this key is newest (LRU eviction order)
+      store.delete(key)
+      store.set(key, hit)
+      return hit.value
+    },
+    set: (key, value) => {
+      store.delete(key)
+      store.set(key, { expiresAt: now() + ttlMs, value })
+      if (store.size <= maxEntries) return
+      // Over capacity: prune expired first, then evict oldest (LRU) until bounded
+      const current = now()
+      for (const k of [...store.keys()]) {
+        if (store.size <= maxEntries) break
+        const entry = store.get(k)
+        if (entry && entry.expiresAt <= current) store.delete(k)
+      }
+      while (store.size > maxEntries) {
+        const oldest = store.keys().next().value
+        if (oldest === undefined) break
+        store.delete(oldest)
+      }
+    },
+    size: () => store.size,
+  }
+}
+
+const entitlementsCache = createBoundedTtlCache<EntitlementsRecord>(
+  CACHE_TTL_MS,
+  CACHE_MAX_ENTRIES,
+)
 
 /** Test/webhook helper: drop cached entitlements so the next read is fresh. */
 export const clearEntitlementsCache = (): void => {
@@ -44,7 +102,7 @@ export const getTenantEntitlements = async (
 ): Promise<EntitlementsRecord> => {
   const cacheKey = String(tenantID)
   const hit = entitlementsCache.get(cacheKey)
-  if (hit && hit.expiresAt > Date.now()) return hit.value
+  if (hit !== undefined) return hit
 
   let value: EntitlementsRecord = {}
   try {
@@ -62,7 +120,7 @@ export const getTenantEntitlements = async (
     value = {}
   }
 
-  entitlementsCache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, value })
+  entitlementsCache.set(cacheKey, value)
   return value
 }
 

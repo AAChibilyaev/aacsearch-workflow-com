@@ -1,9 +1,9 @@
 {
     "name": "aacsearch/sdk",
-    "description": "AACSearch PHP SDK — native PHP client for AACSearch search engine (AACSearch-native API v31)",
+    "description": "AACSearch PayloadCMS v3 PHP SDK — search, collections, integrations & billing",
     "type": "library",
     "license": "MIT",
-    "keywords": ["aacsearch", "search", "sdk", "fulltext", "php", "russian"],
+    "keywords": ["aacsearch", "search", "sdk", "payloadcms", "php"],
     "require": {
         "php": ">=8.1",
         "guzzlehttp/guzzle": "^7.0",

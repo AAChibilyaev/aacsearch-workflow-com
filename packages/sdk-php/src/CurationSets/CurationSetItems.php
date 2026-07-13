@@ -2,24 +2,4 @@
 declare(strict_types=1);
 namespace AACSearch\SDK\CurationSets;
 use AACSearch\SDK\ApiCall;
-
-class CurationSetItems {
-    public function __construct(
-        private readonly string $collection,
-        private readonly string $curationSetId,
-        private readonly ApiCall $apiCall,
-    ) {}
-    /** @param array{id: string, position: int} $params */
-    public function create(array $params): array {
-        return $this->apiCall->post(
-            '/curations/' . urlencode($this->collection) . '/curations/' . urlencode($this->curationSetId) . '/items',
-            $params,
-        );
-    }
-    /** @return array{items: array<int, array<string,mixed>>} */
-    public function retrieve(): array {
-        return $this->apiCall->get(
-            '/curations/' . urlencode($this->collection) . '/curations/' . urlencode($this->curationSetId) . '/items',
-        );
-    }
-}
+class CurationSetItems { public function __construct(private readonly string $c,private readonly string $sid,private readonly ApiCall $a){} public function create(array $p):array{return $this->a->post('/curations/'.urlencode($this->c).'/curations/'.urlencode($this->sid).'/items',$p);} public function retrieve():array{return $this->a->get('/curations/'.urlencode($this->c).'/curations/'.urlencode($this->sid).'/items');} }

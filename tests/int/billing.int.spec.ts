@@ -22,7 +22,9 @@ import {
   getTenantEntitlements,
   requireFeature,
 } from '@/lib/billing/entitlements'
-import { verifyBillingWebhook } from '@/plugins/lago'
+import { billingEndpoints, verifyBillingWebhook, WEBHOOK_MAX_AGE_SECONDS } from '@/plugins/lago'
+
+import type { Endpoint, PayloadRequest } from 'payload'
 
 /**
  * Billing track verification:
@@ -332,6 +334,149 @@ describe('billing webhook verification', () => {
     await expect(
       verifyBillingWebhook({ algorithm: 'hmac', issuer, rawBody, signature }),
     ).rejects.toThrow(/not configured/)
+  })
+
+  it('rejects an expired JWT (exp in the past)', async () => {
+    const now = Date.now()
+    const nowSec = Math.floor(now / 1000)
+    const token = await signJwt(
+      { data: rawBody, exp: nowSec - 10, iss: issuer },
+      keys.privateKey,
+    )
+    await expect(
+      verifyBillingWebhook({
+        algorithm: 'jwt',
+        issuer,
+        now,
+        publicKey: keys.publicKey,
+        rawBody,
+        signature: token,
+      }),
+    ).rejects.toThrow(/expired/)
+  })
+
+  it('rejects a stale JWT (iat older than the max-age replay window)', async () => {
+    const now = Date.now()
+    const nowSec = Math.floor(now / 1000)
+    const token = await signJwt(
+      { data: rawBody, iat: nowSec - (WEBHOOK_MAX_AGE_SECONDS + 60), iss: issuer },
+      keys.privateKey,
+    )
+    await expect(
+      verifyBillingWebhook({
+        algorithm: 'jwt',
+        issuer,
+        now,
+        publicKey: keys.publicKey,
+        rawBody,
+        signature: token,
+      }),
+    ).rejects.toThrow(/too old/)
+  })
+
+  it('accepts a fresh JWT with valid iat + exp', async () => {
+    const now = Date.now()
+    const nowSec = Math.floor(now / 1000)
+    const token = await signJwt(
+      { data: rawBody, exp: nowSec + WEBHOOK_MAX_AGE_SECONDS, iat: nowSec, iss: issuer },
+      keys.privateKey,
+    )
+    const payload = (await verifyBillingWebhook({
+      algorithm: 'jwt',
+      issuer,
+      now,
+      publicKey: keys.publicKey,
+      rawBody,
+      signature: token,
+    })) as { webhook_type?: string }
+    expect(payload.webhook_type).toBe('subscription.started')
+  })
+})
+
+// --------------------------------------------------------------------------
+// (b2) Endpoint auth guards — principal validity + super-admin gate
+// --------------------------------------------------------------------------
+
+describe('billing endpoint auth guards', () => {
+  // opts without an apiKey: emitUsageEvent / getLagoClient short-circuit, so
+  // the guard branches are reachable with no live vendor call.
+  const endpoints = billingEndpoints({})
+  const byPath = (path: string): Endpoint => {
+    const ep = endpoints.find((e) => e.path === path)
+    if (!ep) throw new Error(`endpoint ${path} not registered`)
+    return ep
+  }
+
+  const loggerStub = { error: () => {}, info: () => {}, warn: () => {} }
+
+  const fakeReq = (over: {
+    body?: Record<string, unknown>
+    query?: Record<string, unknown>
+    user: unknown
+  }): PayloadRequest =>
+    ({
+      json: async () => over.body ?? {},
+      payload: { logger: loggerStub },
+      query: over.query ?? {},
+      user: over.user,
+    }) as unknown as PayloadRequest
+
+  const superAdmin = { collection: 'users', roles: ['super-admin'] }
+  const tenantUser = { collection: 'users', roles: ['user'] }
+  const validApiKey = { collection: 'api-keys', tenant: 1 }
+  const revokedApiKey = { collection: 'api-keys', revokedAt: '2020-01-01T00:00:00.000Z', tenant: 1 }
+
+  const call = async (path: string, over: Parameters<typeof fakeReq>[0]): Promise<Response> => {
+    const handler = byPath(path).handler as (req: PayloadRequest) => Promise<Response>
+    return handler(fakeReq(over))
+  }
+
+  it('/billing/events rejects an unauthenticated caller (401)', async () => {
+    const res = await call('/billing/events', { user: null })
+    expect(res.status).toBe(401)
+  })
+
+  it('/billing/events denies a valid non-super-admin api key (403)', async () => {
+    const res = await call('/billing/events', {
+      body: { code: 'search_requests', tenant: '1' },
+      user: validApiKey,
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('/billing/events denies a tenant-admin user — customers cannot self-report usage (403)', async () => {
+    const res = await call('/billing/events', {
+      body: { code: 'search_requests', tenant: '1' },
+      user: tenantUser,
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('/billing/events rejects a revoked api key before the super-admin check (401)', async () => {
+    const res = await call('/billing/events', {
+      body: { code: 'search_requests', tenant: '1' },
+      user: revokedApiKey,
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('/billing/events accepts a super-admin with a valid body', async () => {
+    const res = await call('/billing/events', {
+      body: { code: 'search_requests', tenant: '1' },
+      user: superAdmin,
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ accepted: true })
+  })
+
+  it('/billing/plans and /billing/summary reject a revoked api key (401)', async () => {
+    const plans = await call('/billing/plans', { user: revokedApiKey })
+    expect(plans.status).toBe(401)
+    const summary = await call('/billing/summary', {
+      query: { tenant: '1' },
+      user: revokedApiKey,
+    })
+    expect(summary.status).toBe(401)
   })
 })
 

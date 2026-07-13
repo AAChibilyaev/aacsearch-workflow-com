@@ -2,7 +2,14 @@ import type { LagoWebhookPayload } from 'lago-javascript-client'
 import type { CollectionAfterChangeHook, Config, Endpoint, PayloadRequest, Plugin } from 'payload'
 
 import { isSuperAdmin } from '@/access/isSuperAdmin'
-import { toBillingSummaryDTO, toPlanDTO, toUsageDTO, flattenEntitlements } from '@/lib/billing/dto'
+import { isApiKeyPrincipalValid } from '@/collections/ApiKeys'
+import {
+  toBillingSummaryDTO,
+  toInvoiceDTO,
+  toPlanDTO,
+  toUsageDTO,
+  flattenEntitlements,
+} from '@/lib/billing/dto'
 import { clearEntitlementsCache } from '@/lib/billing/entitlements'
 import { emitUsageEvent, getLagoClient } from '@/lib/billing/usage'
 import { getPrincipalTenantIDs } from '@/lib/principal'
@@ -79,6 +86,9 @@ const timingSafeEqualBytes = (a: Uint8Array, b: Uint8Array): boolean => {
   return diff === 0
 }
 
+/** JWTs older than this (by `iat`) are rejected to bound the replay window. */
+export const WEBHOOK_MAX_AGE_SECONDS = 300
+
 export type BillingWebhookVerifyArgs = {
   /** 'jwt' (default) or 'hmac' */
   algorithm?: null | string
@@ -86,6 +96,8 @@ export type BillingWebhookVerifyArgs = {
   hmacKey?: null | string
   /** expected `iss` claim for JWT verification */
   issuer: string
+  /** current time in ms (injectable for tests); defaults to Date.now() */
+  now?: number
   /** RSA public key (SPKI) for JWT verification */
   publicKey?: CryptoKey | null
   rawBody: string
@@ -153,8 +165,30 @@ export const verifyBillingWebhook = async (args: BillingWebhookVerifyArgs): Prom
   )
   if (!ok) throw new Error('invalid signature')
 
-  const claims = JSON.parse(bytesToString(base64urlToBytes(p))) as { data?: unknown; iss?: unknown }
+  const claims = JSON.parse(bytesToString(base64urlToBytes(p))) as {
+    data?: unknown
+    exp?: unknown
+    iat?: unknown
+    iss?: unknown
+  }
   if (claims.iss !== issuer) throw new Error('invalid issuer')
+
+  // Freshness — bound the replay window. Signature is already verified above,
+  // so these claims are trusted. Enforced only when present (Lago may omit them).
+  const nowSeconds = Math.floor((args.now ?? Date.now()) / 1000)
+  if (claims.exp !== undefined) {
+    if (typeof claims.exp !== 'number' || !Number.isFinite(claims.exp)) {
+      throw new Error('invalid exp')
+    }
+    if (claims.exp <= nowSeconds) throw new Error('token expired')
+  }
+  if (claims.iat !== undefined) {
+    if (typeof claims.iat !== 'number' || !Number.isFinite(claims.iat)) {
+      throw new Error('invalid iat')
+    }
+    if (nowSeconds - claims.iat > WEBHOOK_MAX_AGE_SECONDS) throw new Error('token too old')
+  }
+
   if (typeof claims.data !== 'string') throw new Error('missing payload')
   return JSON.parse(claims.data)
 }
@@ -185,9 +219,26 @@ const getWebhookPublicKey = async (opts: LagoPluginOptions): Promise<CryptoKey> 
   return key
 }
 
-// Module-level LRU dedup on X-Lago-Unique-Key (Set preserves insertion order).
+// Module-level LRU dedup keyed on a hash of the SIGNED payload (Set preserves
+// insertion order). The unsigned X-Lago-Unique-Key header is attacker-mutable
+// and MUST NOT be trusted for dedup — replays must collide on signed content.
 const SEEN_WEBHOOKS_MAX = 1000
 const seenWebhookKeys = new Set<string>()
+
+/** SHA-256 hex of a string — Web Crypto only (Workers-safe). */
+const sha256Hex = async (input: string): Promise<string> => {
+  const digest = await crypto.subtle.digest('SHA-256', textEncoder.encode(input))
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+/**
+ * Dedup key derived from the verified, signature-trusted payload. Identical
+ * signed webhooks (replays) collapse to the same key; the content cannot be
+ * varied without invalidating the signature.
+ */
+const dedupKeyForEvent = (event: unknown): Promise<string> => sha256Hex(JSON.stringify(event))
 
 /** Returns false when this webhook id was already processed by this isolate. */
 const markWebhookSeen = (key: string): boolean => {
@@ -418,12 +469,14 @@ const syncTenantToLago =
 const PLANS_CACHE_TTL_MS = 60_000
 let plansCache: { expiresAt: number; value: PlanDTO[] } | null = null
 
-const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
+export const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
   {
     // Plans/tariffs — read live from the billing backend, mapped to
     // vendor-free DTOs, never stored in Payload
     handler: async (req) => {
-      if (!req.user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      if (!req.user || !isApiKeyPrincipalValid(req.user)) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      }
       try {
         if (plansCache && plansCache.expiresAt > Date.now()) {
           return Response.json({ plans: plansCache.value })
@@ -461,7 +514,9 @@ const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
     // Replaces the former /billing/portal and /billing/subscriptions
     // (a hosted portal would leak the vendor domain).
     handler: async (req) => {
-      if (!req.user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      if (!req.user || !isApiKeyPrincipalValid(req.user)) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      }
       const tenant = req.query?.tenant as string | undefined
       if (!tenant) return Response.json({ error: 'tenant query param required' }, { status: 400 })
       if (!canAccessTenant(req.user, tenant)) {
@@ -508,9 +563,44 @@ const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
     path: '/billing/summary',
   },
   {
-    // Usage metering — idempotent by deterministic transaction id
+    // Tenant invoice history — read-only, own tenant. Mapped to a white-label
+    // DTO (no lago_id / vendor URLs). tenant-admins see their own; super-admin any.
     handler: async (req) => {
-      if (!req.user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      if (!req.user || !isApiKeyPrincipalValid(req.user)) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const tenant = req.query?.tenant as string | undefined
+      if (!tenant) return Response.json({ error: 'tenant query param required' }, { status: 400 })
+      if (!canAccessTenant(req.user, tenant)) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      try {
+        const client = await getLagoClient(opts)
+        const { data } = await client.invoices.findAllInvoices({
+          external_customer_id: String(tenant),
+          per_page: 50,
+        })
+        const invoices = (data.invoices ?? []).map(toInvoiceDTO)
+        return Response.json({ invoices })
+      } catch (err) {
+        req.payload.logger.error({ err, msg: 'billing invoices fetch failed' })
+        return Response.json({ error: 'Billing service unavailable' }, { status: 502 })
+      }
+    },
+    method: 'get',
+    path: '/billing/invoices',
+  },
+  {
+    // Usage metering — idempotent by deterministic transaction id.
+    // Super-admin ONLY: customers must never POST arbitrary billable usage;
+    // metering is emitted server-side (search gateway, ingestion job).
+    handler: async (req) => {
+      if (!req.user || !isApiKeyPrincipalValid(req.user)) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      if (!isSuperAdmin(req.user)) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 })
+      }
       const body = req.json ? await req.json() : {}
       const { code, properties, tenant, transactionId } = body as {
         code?: string
@@ -545,7 +635,6 @@ const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
 
         const signature = req.headers.get('X-Lago-Signature')
         const algorithm = req.headers.get('X-Lago-Signature-Algorithm') ?? 'jwt'
-        const uniqueKey = req.headers.get('X-Lago-Unique-Key')
 
         let publicKey: CryptoKey | null = null
         if (algorithm !== 'hmac') {
@@ -572,8 +661,11 @@ const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
           return Response.json({ error: 'Invalid signature' }, { status: 401 })
         }
 
-        // Idempotency: replays of an already-processed webhook are acked
-        if (uniqueKey && !markWebhookSeen(uniqueKey)) {
+        // Idempotency: dedup on the SIGNED payload (not the unsigned
+        // X-Lago-Unique-Key header). Replays of an already-processed webhook
+        // collide on this key and are acked without re-applying effects.
+        const dedupKey = await dedupKeyForEvent(event)
+        if (!markWebhookSeen(dedupKey)) {
           return Response.json({ received: true })
         }
 

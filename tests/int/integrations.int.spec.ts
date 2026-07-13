@@ -1,9 +1,13 @@
 // @vitest-environment node
 import { createHash, createHmac } from 'node:crypto'
 
-import { Nango } from '@nangohq/node'
-import { describe, expect, it } from 'vitest'
+import type { PayloadRequest } from 'payload'
 
+import { Nango } from '@nangohq/node'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { createBoundedTtlCache } from '@/lib/billing/entitlements'
+import { createIngestIntegrationRecordsTask } from '@/jobs/ingestIntegrationRecords'
 import {
   coerceIdValue,
   createTtlCache,
@@ -263,6 +267,187 @@ describe('cursor + id helpers', () => {
     expect(extractRelationID({ id: 9 })).toBe(9)
     expect(extractRelationID(null)).toBeNull()
     expect(extractRelationID(undefined)).toBeNull()
+  })
+})
+
+describe('ingest task bypasses document validation on the system path', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  // Minimal structural shapes for the stub Local API — no `any` at the boundary.
+  type FindArgs = { collection: string; where?: Record<string, unknown> }
+  type WriteArgs = {
+    collection: string
+    context?: Record<string, unknown>
+    data?: Record<string, unknown>
+    id?: number | string
+  }
+  type NangoRecordLike = { _nango_metadata?: { cursor?: string; last_action?: string }; id: string } & Record<
+    string,
+    unknown
+  >
+  type ListRecordsResult = Awaited<ReturnType<Nango['listRecords']>>
+
+  it('creates AND updates documents with context.skipDocumentValidation', async () => {
+    // One ADDED record that will be created, one ADDED record that already
+    // exists (updated), one DELETED record (deleted). Single page, no cursor.
+    const records: NangoRecordLike[] = [
+      { _nango_metadata: { cursor: 'c1', last_action: 'ADDED' }, id: 'rec-new', title: 'Fresh' },
+      { _nango_metadata: { cursor: 'c2', last_action: 'ADDED' }, id: 'rec-old', title: 'Existing' },
+      { _nango_metadata: { cursor: 'c3', last_action: 'DELETED' }, id: 'rec-gone', title: 'Gone' },
+    ]
+    vi.spyOn(Nango.prototype, 'listRecords').mockResolvedValue({
+      next_cursor: null,
+      records,
+    } as unknown as ListRecordsResult)
+
+    const documentCreates: WriteArgs[] = []
+    const documentUpdates: WriteArgs[] = []
+    const documentDeletes: FindArgs[] = []
+    let documentFindCount = 0
+
+    const payload = {
+      create: async (args: WriteArgs) => {
+        if (args.collection === 'documents') documentCreates.push(args)
+        if (args.collection === 'collection-definitions') return { id: 99 }
+        return { id: 1000 }
+      },
+      delete: async (args: FindArgs) => {
+        if (args.collection === 'documents') documentDeletes.push(args)
+        return {}
+      },
+      find: async (args: FindArgs) => {
+        if (args.collection === 'integrations') {
+          const integrationDoc: IntegrationDoc = {
+            id: 1,
+            connectionId: 'conn-1',
+            createdAt: '2026-07-13T00:00:00.000Z',
+            displayName: 'Google Drive',
+            integrationKey: 'gdrive',
+            syncCursor: null,
+            tenant: 5,
+          }
+          return { docs: [integrationDoc], totalDocs: 1 }
+        }
+        if (args.collection === 'collection-definitions') {
+          return { docs: [], totalDocs: 0 } // force definition create
+        }
+        if (args.collection === 'documents') {
+          documentFindCount += 1
+          // first ADDED record is new, second already exists
+          return documentFindCount === 1
+            ? { docs: [], totalDocs: 0 }
+            : { docs: [{ id: 500 }], totalDocs: 1 }
+        }
+        return { docs: [], totalDocs: 0 }
+      },
+      logger: { error: () => {}, info: () => {}, warn: () => {} },
+      update: async (args: WriteArgs) => {
+        if (args.collection === 'documents') documentUpdates.push(args)
+        return { id: args.id }
+      },
+    }
+
+    const req = { payload } as unknown as PayloadRequest
+    const task = createIngestIntegrationRecordsTask({
+      host: 'https://connect.example.com',
+      secretKey: 'test-secret',
+    })
+    const run = task.handler as unknown as (a: {
+      input: { connectionId: string; model: string; providerConfigKey: string }
+      req: PayloadRequest
+    }) => Promise<{ output: { deleted: number; processed: number; upserted: number } }>
+
+    const result = await run({
+      input: { connectionId: 'conn-1', model: 'Document', providerConfigKey: 'gdrive-prod' },
+      req,
+    })
+
+    expect(result.output).toEqual({ deleted: 1, processed: 3, upserted: 2 })
+
+    // The core fix: every document write bypasses the beforeValidate validator,
+    // which would otherwise reject all keys (auto-created definition has fields:[]).
+    expect(documentCreates).toHaveLength(1)
+    expect(documentCreates[0].context).toEqual({ skipDocumentValidation: true })
+    expect(documentUpdates).toHaveLength(1)
+    expect(documentUpdates[0].context).toEqual({ skipDocumentValidation: true })
+    expect(documentDeletes).toHaveLength(1)
+
+    // Idempotent upsert wiring: create carries the tenant + externalId
+    expect(documentCreates[0].data?.tenant).toBe(5)
+    expect((documentCreates[0].data?.data as { externalId?: string }).externalId).toBe('rec-new')
+  })
+})
+
+describe('bounded entitlements cache (eviction + expiry)', () => {
+  it('expires entries after the TTL and prunes them on read', () => {
+    let now = 1_000
+    const cache = createBoundedTtlCache<number>(60_000, 100, () => now)
+
+    cache.set('a', 1)
+    expect(cache.get('a')).toBe(1)
+
+    now += 59_999
+    expect(cache.get('a')).toBe(1) // still within TTL
+
+    now += 1 // exactly at TTL — expired
+    expect(cache.get('a')).toBeUndefined()
+    expect(cache.size()).toBe(0) // expired entry pruned on read
+  })
+
+  it('caches empty entitlement records (an empty object is a real hit)', () => {
+    const cache = createBoundedTtlCache<Record<string, unknown>>(60_000, 100)
+    cache.set('t', {})
+    expect(cache.get('t')).toEqual({})
+  })
+
+  it('evicts the oldest entry when the max size is exceeded', () => {
+    let now = 0
+    const cache = createBoundedTtlCache<number>(60_000, 3, () => now)
+
+    cache.set('a', 1)
+    cache.set('b', 2)
+    cache.set('c', 3)
+    expect(cache.size()).toBe(3)
+
+    cache.set('d', 4) // over cap -> evict least-recently-used ('a')
+    expect(cache.size()).toBe(3)
+    expect(cache.get('a')).toBeUndefined()
+    expect(cache.get('b')).toBe(2)
+    expect(cache.get('c')).toBe(3)
+    expect(cache.get('d')).toBe(4)
+  })
+
+  it('recency bump on read protects a freshly-read key from eviction', () => {
+    let now = 0
+    const cache = createBoundedTtlCache<number>(60_000, 3, () => now)
+
+    cache.set('a', 1)
+    cache.set('b', 2)
+    cache.set('c', 3)
+    expect(cache.get('a')).toBe(1) // 'a' becomes most-recent; 'b' now oldest
+
+    cache.set('d', 4) // evicts 'b'
+    expect(cache.get('b')).toBeUndefined()
+    expect(cache.get('a')).toBe(1)
+    expect(cache.get('c')).toBe(3)
+    expect(cache.get('d')).toBe(4)
+  })
+
+  it('prunes expired entries before evicting a live one on overflow', () => {
+    let now = 0
+    const cache = createBoundedTtlCache<number>(1_000, 2, () => now)
+
+    cache.set('a', 1) // expires at 1000
+    now = 500
+    cache.set('b', 2) // expires at 1500
+    now = 1_200 // 'a' expired, 'b' still live
+    cache.set('c', 3) // size 3 > 2 -> prune expired 'a', keep 'b' + 'c'
+
+    expect(cache.get('a')).toBeUndefined()
+    expect(cache.get('b')).toBe(2)
+    expect(cache.get('c')).toBe(3)
   })
 })
 

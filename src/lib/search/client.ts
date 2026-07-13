@@ -1,5 +1,8 @@
 import type { Client, DocumentSchema, GenerateScopedSearchKeyParams } from 'typesense'
 
+import { isSuperAdmin } from '@/access/isSuperAdmin'
+import { getPrincipalCollection } from '@/lib/principal'
+
 /**
  * Shared search-engine client factories + pure helpers for the AACSearch
  * gateway. The engine is an implementation detail — nothing exported here may
@@ -24,12 +27,41 @@ export const MAX_PER_PAGE = 100
 export const GATEWAY_ERRORS = {
   collectionRequired: { error: 'Each search requires a collection' },
   forbidden: { error: 'Forbidden' },
+  forbiddenScope: { error: 'Insufficient scope' },
   invalidBody: { error: 'Invalid request body' },
+  invalidLocale: { error: 'Unsupported locale' },
   searchUnavailable: { error: 'Search unavailable' },
   tenantRequired: { error: 'tenant is required' },
   tooManySearches: { error: 'Too many searches in one request' },
   unauthorized: { error: 'Unauthorized' },
 } as const
+
+/**
+ * Locales the platform is configured for (mirrors payload.config
+ * `localization.locales`). A scoped key's locale is interpolated RAW into the
+ * engine `filter_by` string, so only this allowlist may reach it — an
+ * unvalidated value like `en || tenant:=OTHER` would otherwise break out of the
+ * tenant clause and enable cross-tenant search.
+ */
+export const SEARCH_LOCALES = ['en', 'ru', 'de'] as const
+export type SearchLocale = (typeof SEARCH_LOCALES)[number]
+export const isSearchLocale = (value: unknown): value is SearchLocale =>
+  typeof value === 'string' && (SEARCH_LOCALES as readonly string[]).includes(value)
+
+/**
+ * Scope gate for a principal on the search gateway.
+ *  - super-admins and session `users` are NOT scope-limited here (their reach
+ *    is already bounded by collection access control)
+ *  - `api-keys` principals must carry the scope in their `scopes` array
+ * Callers MUST reject a null/invalid principal (401) BEFORE calling this — a
+ * missing principal is not an api-key principal and would otherwise pass.
+ */
+export const hasScope = (user: unknown, scope: string): boolean => {
+  if (isSuperAdmin(user)) return true
+  if (getPrincipalCollection(user) !== 'api-keys') return true
+  const scopes = (user as { scopes?: unknown }).scopes
+  return Array.isArray(scopes) && scopes.includes(scope)
+}
 
 const ttlSecondsFromEnv = (): number => {
   const parsed = Number(process.env.SEARCH_KEY_TTL_SECONDS)
@@ -95,7 +127,14 @@ export const buildScopedKeyParams = (
   opts: ScopedKeyOptions = {},
 ): ScopedKeyParams => {
   const clauses = [`tenant:=${tenant}`]
-  if (locale) clauses.push(`locale:=${locale}`)
+  if (locale) {
+    // `locale` is interpolated RAW (unparenthesised) into filter_by. A crafted
+    // value such as `en || tenant:=OTHER` would escape the tenant clause, so
+    // only the platform's configured locales are ever allowed through. Callers
+    // validate + return 400; this throw is the last-line security boundary.
+    if (!isSearchLocale(locale)) throw new Error('Unsupported locale')
+    clauses.push(`locale:=${locale}`)
+  }
   let filterBy = clauses.join(' && ')
   const clientFilter = opts.filterBy?.trim()
   if (clientFilter) filterBy += ` && (${clientFilter})`
@@ -174,11 +213,32 @@ export const mergeSearchTenantFilter = (
 }
 
 /**
+ * Scrub engine-vendor identifiers from a single (error) string so nothing
+ * customer-visible reveals the backend:
+ *  - the literal vendor name
+ *  - any http(s) URL (upstream errors can embed the engine hostname/port)
+ *  - the configured engine host, when provided by the caller
+ * All collapse to the neutral token "search engine".
+ */
+const scrubVendorString = (text: string, host?: string): string => {
+  // Order matters: collapse whole URLs first (a URL may embed the host or the
+  // vendor name), then the bare configured host, then any residual vendor name.
+  let out = text.replace(/https?:\/\/[^\s"')]+/gi, 'search engine')
+  if (host) {
+    const escaped = host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    out = out.replace(new RegExp(escaped, 'gi'), 'search engine')
+  }
+  out = out.replace(/typesense/gi, 'search engine')
+  return out
+}
+
+/**
  * Scrub engine-vendor names from per-search error strings so the public
  * response stays white-label. Successful result payloads carry no vendor
- * strings; only upstream error messages might.
+ * strings; only upstream error messages might. Pass the configured engine
+ * `host` so a leaked hostname is neutralised too.
  */
-export const sanitizeSearchResponse = <T>(response: T): T => {
+export const sanitizeSearchResponse = <T>(response: T, host?: string): T => {
   if (!response || typeof response !== 'object') return response
   const withResults = response as { results?: unknown }
   if (!Array.isArray(withResults.results)) return response
@@ -188,7 +248,7 @@ export const sanitizeSearchResponse = <T>(response: T): T => {
       if (result && typeof result === 'object' && typeof (result as { error?: unknown }).error === 'string') {
         return {
           ...result,
-          error: ((result as { error: string }).error).replace(/typesense/gi, 'search engine'),
+          error: scrubVendorString((result as { error: string }).error, host),
         }
       }
       return result

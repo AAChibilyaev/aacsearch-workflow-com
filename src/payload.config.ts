@@ -30,7 +30,6 @@ import { lagoPlugin } from './plugins/lago'
 import { nangoPlugin } from './plugins/nango'
 import { searchScopedKeyPlugin } from './plugins/searchScopedKey'
 import { searchGatewayPlugin } from './plugins/searchGateway'
-import { superAdminOnlyEndpoints } from './plugins/superAdminOnlyEndpoints'
 import { entitlementsPlugin } from './lib/billing/entitlements'
 import { ApiKeys } from './collections/ApiKeys'
 import { Integrations } from './collections/Integrations'
@@ -157,10 +156,25 @@ export default buildConfig({
   // overrideAccess internally — restrict to super-admin + CRON_SECRET.
   jobs: {
     access: {
-      run: ({ req }) => {
+      run: async ({ req }) => {
         if (isSuperAdmin(req.user)) return true
         const secret = process.env.CRON_SECRET
-        return Boolean(secret) && req.headers.get('authorization') === `Bearer ${secret}`
+        const provided = req.headers.get('authorization')
+        if (!secret || !provided) return false
+        // Constant-time compare: `===` on the bearer secret short-circuits on
+        // the first mismatching byte, leaking the secret one char at a time via
+        // response timing. Hash both sides to fixed-length (32-byte) SHA-256
+        // digests and XOR — no early exit, and length is hidden.
+        const encoder = new TextEncoder()
+        const [a, b] = await Promise.all([
+          crypto.subtle.digest('SHA-256', encoder.encode(provided)),
+          crypto.subtle.digest('SHA-256', encoder.encode(`Bearer ${secret}`)),
+        ])
+        const ua = new Uint8Array(a)
+        const ub = new Uint8Array(b)
+        let diff = 0
+        for (let i = 0; i < ua.length; i++) diff |= ua[i] ^ ub[i]
+        return diff === 0
       },
     },
     tasks: [],
@@ -371,14 +385,16 @@ export default buildConfig({
     // NOTE: @payloadcms/plugin-ecommerce is installed but intentionally NOT
     // enabled: it generates its own carts/orders/transactions collections that
     // must first be wrapped into multiTenantPlugin to keep tenant isolation.
+    // Public developer portal: OpenAPI spec at /api/openapi.json, Scalar API
+    // reference UI at /api/docs. Intentionally PUBLIC (openable without auth) —
+    // it is the product's API documentation. The endpoints it documents remain
+    // access-controlled by Payload, so exposing the schema is the standard
+    // dev-portal tradeoff. (Re-gate with superAdminOnlyEndpoints if ever needed.)
     openapi({
       metadata: { title: 'AACSearch API', version: '1.0.0' },
       openapiVersion: '3.0',
     }),
     scalar({}),
-    // payload-oapi/scalar register their endpoints public-by-design; the full
-    // API surface map is super-admin only in the shared customer panel
-    superAdminOnlyEndpoints(['/openapi.json', '/docs']),
     // Typesense sync activates only when TYPESENSE_HOST is configured.
     // Lazy import: the module (and its deps) never load when the env is absent.
     ...(process.env.TYPESENSE_HOST
