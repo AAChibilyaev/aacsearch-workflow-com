@@ -52,15 +52,22 @@ import { ImportSaveButton as ImportSaveButton_cdf7e044479f899a31f804427d568b36 }
 import { NotificationsListView as NotificationsListView_1e22612a0fadac954909c37fb67d8b1b } from '@elghaied/payload-plugin-notifications/client'
 import { SelectField as SelectField_4490b89d4413c1ffaecdacfe72efaf73 } from '@ai-stack/payloadcms/client'
 import { PromptEditorField as PromptEditorField_4490b89d4413c1ffaecdacfe72efaf73 } from '@ai-stack/payloadcms/client'
+import { Icon as Icon_e577ad08317d2e8977edf3e679038fc8 } from '../../../components/graphics/Logo'
+import { Logo as Logo_e577ad08317d2e8977edf3e679038fc8 } from '../../../components/graphics/Logo'
 import { GlobalViewRedirect as GlobalViewRedirect_d6d5f193a167989e2ee7d14202901e62 } from '@payloadcms/plugin-multi-tenant/rsc'
+import { SearchButton as SearchButton_3bf5d3e334c5eaf4f0d216451590d3c2 } from '@veiag/payload-cmdk/client'
 import { NotificationBell as NotificationBell_1e22612a0fadac954909c37fb67d8b1b } from '@elghaied/payload-plugin-notifications/client'
 import { BeforeDashboard as BeforeDashboard_6b5171ba20d0317956f72f91440ed7b5 } from '../../../components/BeforeDashboard'
 import { TenantSelector as TenantSelector_d6d5f193a167989e2ee7d14202901e62 } from '@payloadcms/plugin-multi-tenant/rsc'
+import { PanelNavLinks as PanelNavLinks_b01eaa187f58cec1a0367462656b59e2 } from '../../../components/views/nav/PanelNavLinks'
 import { R2ClientUploadHandler as R2ClientUploadHandler_85cc02ed84006fcc91d3aff39dda669d } from '@payloadcms/storage-r2/client'
 import { TenantSelectionProvider as TenantSelectionProvider_d6d5f193a167989e2ee7d14202901e62 } from '@payloadcms/plugin-multi-tenant/rsc'
 import { ImportExportProvider as ImportExportProvider_cdf7e044479f899a31f804427d568b36 } from '@payloadcms/plugin-import-export/rsc'
 import { AdminBlockSyncProvider as AdminBlockSyncProvider_5c2fb41b02405b9edc17e0e235c72608 } from 'payload-better-preview/client'
+import { CommandMenuProvider as CommandMenuProvider_3bf5d3e334c5eaf4f0d216451590d3c2 } from '@veiag/payload-cmdk/client'
 import { InstructionsProvider as InstructionsProvider_4490b89d4413c1ffaecdacfe72efaf73 } from '@ai-stack/payloadcms/client'
+import { BillingView as BillingView_e5ae7e3966f5465c4344dac4dd93dbf9 } from '../../../components/views/Billing'
+import { IntegrationsView as IntegrationsView_9e1735bac833ebc9ae622ee38570363b } from '../../../components/views/Integrations'
 import { AltTextHealthWidget as AltTextHealthWidget_a35949d21b38efe8500764b5b0b3638b } from '@jhb.software/payload-alt-text-plugin/server'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 
@@ -120,15 +127,22 @@ export const importMap = {
   "@elghaied/payload-plugin-notifications/client#NotificationsListView": NotificationsListView_1e22612a0fadac954909c37fb67d8b1b,
   "@ai-stack/payloadcms/client#SelectField": SelectField_4490b89d4413c1ffaecdacfe72efaf73,
   "@ai-stack/payloadcms/client#PromptEditorField": PromptEditorField_4490b89d4413c1ffaecdacfe72efaf73,
+  "/components/graphics/Logo#Icon": Icon_e577ad08317d2e8977edf3e679038fc8,
+  "/components/graphics/Logo#Logo": Logo_e577ad08317d2e8977edf3e679038fc8,
   "@payloadcms/plugin-multi-tenant/rsc#GlobalViewRedirect": GlobalViewRedirect_d6d5f193a167989e2ee7d14202901e62,
+  "@veiag/payload-cmdk/client#SearchButton": SearchButton_3bf5d3e334c5eaf4f0d216451590d3c2,
   "@elghaied/payload-plugin-notifications/client#NotificationBell": NotificationBell_1e22612a0fadac954909c37fb67d8b1b,
   "/components/BeforeDashboard#BeforeDashboard": BeforeDashboard_6b5171ba20d0317956f72f91440ed7b5,
   "@payloadcms/plugin-multi-tenant/rsc#TenantSelector": TenantSelector_d6d5f193a167989e2ee7d14202901e62,
+  "/components/views/nav/PanelNavLinks#PanelNavLinks": PanelNavLinks_b01eaa187f58cec1a0367462656b59e2,
   "@payloadcms/storage-r2/client#R2ClientUploadHandler": R2ClientUploadHandler_85cc02ed84006fcc91d3aff39dda669d,
   "@payloadcms/plugin-multi-tenant/rsc#TenantSelectionProvider": TenantSelectionProvider_d6d5f193a167989e2ee7d14202901e62,
   "@payloadcms/plugin-import-export/rsc#ImportExportProvider": ImportExportProvider_cdf7e044479f899a31f804427d568b36,
   "payload-better-preview/client#AdminBlockSyncProvider": AdminBlockSyncProvider_5c2fb41b02405b9edc17e0e235c72608,
+  "@veiag/payload-cmdk/client#CommandMenuProvider": CommandMenuProvider_3bf5d3e334c5eaf4f0d216451590d3c2,
   "@ai-stack/payloadcms/client#InstructionsProvider": InstructionsProvider_4490b89d4413c1ffaecdacfe72efaf73,
+  "/components/views/Billing#BillingView": BillingView_e5ae7e3966f5465c4344dac4dd93dbf9,
+  "/components/views/Integrations#IntegrationsView": IntegrationsView_9e1735bac833ebc9ae622ee38570363b,
   "@jhb.software/payload-alt-text-plugin/server#AltTextHealthWidget": AltTextHealthWidget_a35949d21b38efe8500764b5b0b3638b,
   "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1
 }

@@ -10,9 +10,10 @@ export default defineConfig({
     include: ['tests/int/**/*.int.spec.ts'],
     server: {
       deps: {
-        // dist imports './lexicalFeature/feature.server' without .js — strict
-        // Node ESM can't resolve it, so let Vite transform the package instead
-        inline: ['payload-better-preview'],
+        // These packages' dist use extensionless / directory ESM imports that
+        // strict Node ESM can't resolve (better-preview → './lexicalFeature/
+        // feature.server'; cmdk → './dist/translations'). Let Vite transform them.
+        inline: ['payload-better-preview', '@veiag/payload-cmdk'],
       },
     },
   },

@@ -19,6 +19,7 @@ import { openapi, scalar } from 'payload-oapi'
 import { betterPreview } from 'payload-better-preview'
 import { payloadPluginNotifications } from '@elghaied/payload-plugin-notifications'
 import { openAIResolver, payloadAltTextPlugin } from '@jhb.software/payload-alt-text-plugin'
+import { payloadCmdk } from '@veiag/payload-cmdk'
 import { en } from '@payloadcms/translations/languages/en'
 import { ru } from '@payloadcms/translations/languages/ru'
 import { de } from '@payloadcms/translations/languages/de'
@@ -28,7 +29,11 @@ import { airbytePlugin } from './plugins/airbyte'
 import { lagoPlugin } from './plugins/lago'
 import { nangoPlugin } from './plugins/nango'
 import { searchScopedKeyPlugin } from './plugins/searchScopedKey'
+import { searchGatewayPlugin } from './plugins/searchGateway'
 import { superAdminOnlyEndpoints } from './plugins/superAdminOnlyEndpoints'
+import { entitlementsPlugin } from './lib/billing/entitlements'
+import { ApiKeys } from './collections/ApiKeys'
+import { Integrations } from './collections/Integrations'
 import { CollectionDefinitions } from './collections/CollectionDefinitions'
 import { TenantSettings } from './collections/TenantSettings'
 import { Users } from './collections/Users'
@@ -37,6 +42,8 @@ import { Pages } from './collections/Pages'
 import { Tenants } from './collections/Tenants'
 import { Products } from './collections/Products'
 import { Documents } from './collections/Documents'
+import { Header } from './globals/Header'
+import { Footer } from './globals/Footer'
 import type { Config } from './payload-types'
 
 const filename = fileURLToPath(import.meta.url)
@@ -75,9 +82,31 @@ export default buildConfig({
   admin: {
     components: {
       beforeDashboard: ['/components/BeforeDashboard#BeforeDashboard'],
+      beforeNavLinks: ['/components/views/nav/PanelNavLinks#PanelNavLinks'],
+      graphics: {
+        Icon: '/components/graphics/Logo#Icon',
+        Logo: '/components/graphics/Logo#Logo',
+      },
+      views: {
+        billing: {
+          Component: '/components/views/Billing#BillingView',
+          exact: true,
+          meta: { title: 'Billing' },
+          path: '/billing',
+        },
+        integrations: {
+          Component: '/components/views/Integrations#IntegrationsView',
+          exact: true,
+          meta: { title: 'Integrations' },
+          path: '/integrations',
+        },
+      },
     },
     importMap: {
       baseDir: path.resolve(dirname),
+    },
+    meta: {
+      titleSuffix: ' — AACSearch',
     },
     // Live preview renders the (frontend) [slug] route next to the editor;
     // RefreshRouteOnSave on that route re-fetches on every save
@@ -92,12 +121,16 @@ export default buildConfig({
     Pages,
     Products,
     Documents,
+    Integrations,
     CollectionDefinitions,
     TenantSettings,
+    ApiKeys,
     Users,
     Media,
     Tenants,
   ],
+  // Platform marketing-site globals (super-admin managed; see each config)
+  globals: [Header, Footer],
   editor: lexicalEditor(),
   // Admin UI languages (docs/configuration/i18n)
   i18n: {
@@ -118,6 +151,20 @@ export default buildConfig({
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
   db: sqliteD1Adapter({ binding: cloudflare.env.D1 }),
+  // Jobs (ingestion etc.) don't self-run on Workers: a Cloudflare Cron Trigger
+  // or external cron must hit GET /api/payload-jobs/run with the Bearer secret.
+  // Default access.run allows ANY logged-in user and jobs execute with
+  // overrideAccess internally — restrict to super-admin + CRON_SECRET.
+  jobs: {
+    access: {
+      run: ({ req }) => {
+        if (isSuperAdmin(req.user)) return true
+        const secret = process.env.CRON_SECRET
+        return Boolean(secret) && req.headers.get('authorization') === `Bearer ${secret}`
+      },
+    },
+    tasks: [],
+  },
   logger: isProduction ? cloudflareLogger : undefined,
   onInit: async (payload) => {
     // A tenant must exist before users can be assigned to one
@@ -141,7 +188,11 @@ export default buildConfig({
         pages: {},
         products: {},
         documents: {},
+        // customer integration connections — system-managed by webhooks
+        integrations: {},
         'collection-definitions': {},
+        // tenant service API keys — scoped so a tenant-admin manages only their own
+        'api-keys': {},
         // one settings doc per tenant, rendered like a global in the admin
         'tenant-settings': { isGlobal: true },
       },
@@ -220,17 +271,24 @@ export default buildConfig({
     }),
     // Scroll-synced live-preview overlay (highlights the edited block in the iframe)
     betterPreview(),
+    // ⌘K command palette for fast nav in the shared panel (client-only, no schema)
+    payloadCmdk(),
     // In-admin notification bell; notifications are tenant-scoped so customers
     // in the shared panel only see their own
     payloadPluginNotifications({
       tenants: {},
     }),
-    // Billing: plans/subscriptions live in Lago (source of truth) — the plugin
-    // mirrors tenants to Lago customers and proxies read/usage endpoints.
+    // Billing (white-label): plans/usage read live from the backend, tenant
+    // mirror (tenants.billing.*) kept fresh by signature-verified webhooks.
     lagoPlugin({
       apiKey: process.env.LAGO_API_KEY,
       apiUrl: process.env.LAGO_API_URL,
+      webhookHmacKey: process.env.LAGO_WEBHOOK_HMAC_KEY,
+      webhookIssuer: process.env.LAGO_WEBHOOK_ISSUER,
     }),
+    // Plan quotas (PLAN_LIMIT) + feature gates driven by the tenant billing
+    // mirror — always on; a tenant without entitlements is unlimited.
+    entitlementsPlugin,
     // Per-tenant third-party integrations (OAuth) via Nango
     nangoPlugin({
       host: process.env.NANGO_HOST,
@@ -239,6 +297,17 @@ export default buildConfig({
     }),
     // Per-tenant scoped Typesense search keys (tenant filter HMAC-embedded)
     searchScopedKeyPlugin({
+      searchOnlyKey: process.env.TYPESENSE_SEARCH_ONLY_KEY,
+    }),
+    // AACSearch public search gateway (/api/v1/*): tenant-forced multi-search
+    // proxy, SDK-compatible scoped keys, health probe, tenant synonym sync.
+    // Disabled (config unchanged) when TYPESENSE_HOST is unset.
+    searchGatewayPlugin({
+      billing: {
+        apiKey: process.env.LAGO_API_KEY,
+        apiUrl: process.env.LAGO_API_URL,
+      },
+      host: process.env.TYPESENSE_HOST,
       searchOnlyKey: process.env.TYPESENSE_SEARCH_ONLY_KEY,
     }),
     // Data pipelines via Airbyte REST API (no official TS SDK exists)

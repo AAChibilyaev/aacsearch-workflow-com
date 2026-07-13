@@ -63,6 +63,7 @@ export type SupportedTimezones =
 
 export interface Config {
   auth: {
+    'api-keys': ApiKeyAuthOperations;
     users: UserAuthOperations;
     'payload-mcp-api-keys': PayloadMcpApiKeyAuthOperations;
   };
@@ -71,8 +72,10 @@ export interface Config {
     pages: Page;
     products: Product;
     documents: Document;
+    integrations: Integration;
     'collection-definitions': CollectionDefinition;
     'tenant-settings': TenantSetting;
+    'api-keys': ApiKey;
     users: User;
     media: Media;
     tenants: Tenant;
@@ -96,8 +99,10 @@ export interface Config {
     pages: PagesSelect<false> | PagesSelect<true>;
     products: ProductsSelect<false> | ProductsSelect<true>;
     documents: DocumentsSelect<false> | DocumentsSelect<true>;
+    integrations: IntegrationsSelect<false> | IntegrationsSelect<true>;
     'collection-definitions': CollectionDefinitionsSelect<false> | CollectionDefinitionsSelect<true>;
     'tenant-settings': TenantSettingsSelect<false> | TenantSettingsSelect<true>;
+    'api-keys': ApiKeysSelect<false> | ApiKeysSelect<true>;
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     tenants: TenantsSelect<false> | TenantsSelect<true>;
@@ -120,14 +125,20 @@ export interface Config {
     defaultIDType: number;
   };
   fallbackLocale: ('false' | 'none' | 'null') | false | null | ('en' | 'ru' | 'de') | ('en' | 'ru' | 'de')[];
-  globals: {};
-  globalsSelect: {};
+  globals: {
+    header: Header;
+    footer: Footer;
+  };
+  globalsSelect: {
+    header: HeaderSelect<false> | HeaderSelect<true>;
+    footer: FooterSelect<false> | FooterSelect<true>;
+  };
   locale: 'en' | 'ru' | 'de';
   widgets: {
     'alt-text-health': AltTextHealthWidget;
     collections: CollectionsWidget;
   };
-  user: User | PayloadMcpApiKey;
+  user: ApiKey | User | PayloadMcpApiKey;
   jobs: {
     tasks: {
       createCollectionExport: TaskCreateCollectionExport;
@@ -138,6 +149,24 @@ export interface Config {
       };
     };
     workflows: unknown;
+  };
+}
+export interface ApiKeyAuthOperations {
+  forgotPassword: {
+    email: string;
+    password: string;
+  };
+  login: {
+    email: string;
+    password: string;
+  };
+  registerFirstUser: {
+    email: string;
+    password: string;
+  };
+  unlock: {
+    email: string;
+    password: string;
   };
 }
 export interface UserAuthOperations {
@@ -225,6 +254,9 @@ export interface Page {
         | CallToActionBoxedBlock
         | TeamRosterBlock
         | TeamGridBlock
+        | LogoCloudMarqueeBlock
+        | IntegrationMarqueeBlock
+        | CallToActionSignupBlock
       )[]
     | null;
   meta?: {
@@ -266,6 +298,22 @@ export interface Tenant {
    * If checked, logging in is not required to read. Useful for building public pages.
    */
   allowPublicRead?: boolean | null;
+  billing?: {
+    plan?: string | null;
+    planName?: string | null;
+    status?: ('none' | 'trialing' | 'active' | 'past_due' | 'suspended' | 'canceled') | null;
+    trialEndsAt?: string | null;
+    entitlements?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+    syncedAt?: string | null;
+  };
   updatedAt: string;
   createdAt: string;
 }
@@ -1280,6 +1328,61 @@ export interface TeamGridBlock {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "LogoCloudMarqueeBlock".
+ */
+export interface LogoCloudMarqueeBlock {
+  heading: string;
+  logos: {
+    logo: number | Media;
+    name: string;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'logoCloudMarquee';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationMarqueeBlock".
+ */
+export interface IntegrationMarqueeBlock {
+  heading: string;
+  subtext?: string | null;
+  integrations: {
+    logo: number | Media;
+    name: string;
+    description?: string | null;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  /**
+   * Optional center brand mark shown at the focal point of the integration layout.
+   */
+  featuredLogo?: (number | null) | Media;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'integrationMarquee';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "CallToActionSignupBlock".
+ */
+export interface CallToActionSignupBlock {
+  title: string;
+  description?: string | null;
+  emailPlaceholder?: string | null;
+  submitLabel?: string | null;
+  /**
+   * Same-origin path where the email form posts, such as /api/newsletter.
+   */
+  action?: string | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'callToActionSignup';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "products".
  */
 export interface Product {
@@ -1360,6 +1463,34 @@ export interface CollectionDefinition {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "integrations".
+ */
+export interface Integration {
+  id: number;
+  tenant?: (number | null) | Tenant;
+  integrationKey: string;
+  provider?: string | null;
+  displayName?: string | null;
+  logoUrl?: string | null;
+  authMode?: string | null;
+  status?: ('connected' | 'error' | 'revoked') | null;
+  connectionId: string;
+  lastSyncedAt?: string | null;
+  syncCursor?: string | null;
+  meta?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "tenant-settings".
  */
 export interface TenantSetting {
@@ -1387,6 +1518,30 @@ export interface TenantSetting {
   brandColor?: string | null;
   updatedAt: string;
   createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "api-keys".
+ */
+export interface ApiKey {
+  id: number;
+  tenant?: (number | null) | Tenant;
+  name: string;
+  description?: string | null;
+  scopes?: ('search:read' | 'documents:read' | 'documents:write' | 'collections:read')[] | null;
+  /**
+   * First characters of the key, for audit logs
+   */
+  keyPrefix?: string | null;
+  expiresAt?: string | null;
+  revokedAt?: string | null;
+  lastUsedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  enableAPIKey?: boolean | null;
+  apiKey?: string | null;
+  apiKeyIndex?: string | null;
+  collection: 'api-keys';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -2026,12 +2181,20 @@ export interface PayloadLockedDocument {
         value: number | Document;
       } | null)
     | ({
+        relationTo: 'integrations';
+        value: number | Integration;
+      } | null)
+    | ({
         relationTo: 'collection-definitions';
         value: number | CollectionDefinition;
       } | null)
     | ({
         relationTo: 'tenant-settings';
         value: number | TenantSetting;
+      } | null)
+    | ({
+        relationTo: 'api-keys';
+        value: number | ApiKey;
       } | null)
     | ({
         relationTo: 'users';
@@ -2076,6 +2239,10 @@ export interface PayloadLockedDocument {
   globalSlug?: string | null;
   user:
     | {
+        relationTo: 'api-keys';
+        value: number | ApiKey;
+      }
+    | {
         relationTo: 'users';
         value: number | User;
       }
@@ -2093,6 +2260,10 @@ export interface PayloadLockedDocument {
 export interface PayloadPreference {
   id: number;
   user:
+    | {
+        relationTo: 'api-keys';
+        value: number | ApiKey;
+      }
     | {
         relationTo: 'users';
         value: number | User;
@@ -2174,6 +2345,9 @@ export interface PagesSelect<T extends boolean = true> {
         callToActionBoxed?: T | CallToActionBoxedBlockSelect<T>;
         teamRoster?: T | TeamRosterBlockSelect<T>;
         teamGrid?: T | TeamGridBlockSelect<T>;
+        logoCloudMarquee?: T | LogoCloudMarqueeBlockSelect<T>;
+        integrationMarquee?: T | IntegrationMarqueeBlockSelect<T>;
+        callToActionSignup?: T | CallToActionSignupBlockSelect<T>;
       };
   meta?:
     | T
@@ -3094,6 +3268,56 @@ export interface TeamGridBlockSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "LogoCloudMarqueeBlock_select".
+ */
+export interface LogoCloudMarqueeBlockSelect<T extends boolean = true> {
+  heading?: T;
+  logos?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        href?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationMarqueeBlock_select".
+ */
+export interface IntegrationMarqueeBlockSelect<T extends boolean = true> {
+  heading?: T;
+  subtext?: T;
+  integrations?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        description?: T;
+        href?: T;
+        id?: T;
+      };
+  featuredLogo?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "CallToActionSignupBlock_select".
+ */
+export interface CallToActionSignupBlockSelect<T extends boolean = true> {
+  title?: T;
+  description?: T;
+  emailPlaceholder?: T;
+  submitLabel?: T;
+  action?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "products_select".
  */
 export interface ProductsSelect<T extends boolean = true> {
@@ -3116,6 +3340,25 @@ export interface DocumentsSelect<T extends boolean = true> {
   definition?: T;
   data?: T;
   content?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "integrations_select".
+ */
+export interface IntegrationsSelect<T extends boolean = true> {
+  tenant?: T;
+  integrationKey?: T;
+  provider?: T;
+  displayName?: T;
+  logoUrl?: T;
+  authMode?: T;
+  status?: T;
+  connectionId?: T;
+  lastSyncedAt?: T;
+  syncCursor?: T;
+  meta?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -3178,6 +3421,25 @@ export interface TenantSettingsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "api-keys_select".
+ */
+export interface ApiKeysSelect<T extends boolean = true> {
+  tenant?: T;
+  name?: T;
+  description?: T;
+  scopes?: T;
+  keyPrefix?: T;
+  expiresAt?: T;
+  revokedAt?: T;
+  lastUsedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  enableAPIKey?: T;
+  apiKey?: T;
+  apiKeyIndex?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
@@ -3235,6 +3497,16 @@ export interface TenantsSelect<T extends boolean = true> {
   domain?: T;
   slug?: T;
   allowPublicRead?: T;
+  billing?:
+    | T
+    | {
+        plan?: T;
+        planName?: T;
+        status?: T;
+        trialEndsAt?: T;
+        entitlements?: T;
+        syncedAt?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
 }
@@ -3675,6 +3947,100 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "header".
+ */
+export interface Header {
+  id: number;
+  navItems?:
+    | {
+        label: string;
+        /**
+         * Relative (/pricing) or absolute (https://…)
+         */
+        url: string;
+        id?: string | null;
+      }[]
+    | null;
+  cta?: {
+    label?: string | null;
+    url?: string | null;
+  };
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "footer".
+ */
+export interface Footer {
+  id: number;
+  columns?:
+    | {
+        title?: string | null;
+        links?:
+          | {
+              label: string;
+              url: string;
+              id?: string | null;
+            }[]
+          | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * e.g. © 2026 AACSearch. All rights reserved.
+   */
+  copyright?: string | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "header_select".
+ */
+export interface HeaderSelect<T extends boolean = true> {
+  navItems?:
+    | T
+    | {
+        label?: T;
+        url?: T;
+        id?: T;
+      };
+  cta?:
+    | T
+    | {
+        label?: T;
+        url?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "footer_select".
+ */
+export interface FooterSelect<T extends boolean = true> {
+  columns?:
+    | T
+    | {
+        title?: T;
+        links?:
+          | T
+          | {
+              label?: T;
+              url?: T;
+              id?: T;
+            };
+        id?: T;
+      };
+  copyright?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "alt-text-health_widget".
  */
 export interface AltTextHealthWidget {
@@ -3706,8 +4072,10 @@ export interface TaskCreateCollectionExport {
       | 'pages'
       | 'products'
       | 'documents'
+      | 'integrations'
       | 'collection-definitions'
       | 'tenant-settings'
+      | 'api-keys'
       | 'users'
       | 'media'
       | 'tenants'

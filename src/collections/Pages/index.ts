@@ -39,6 +39,9 @@ import { IntegrationTestimonial } from '../../blocks/IntegrationTestimonial/conf
 import { CallToActionBoxed } from '../../blocks/CallToActionBoxed/config'
 import { TeamRoster } from '../../blocks/TeamRoster/config'
 import { TeamGrid } from '../../blocks/TeamGrid/config'
+import { LogoCloudMarquee } from '../../blocks/LogoCloudMarquee/config'
+import { IntegrationMarquee } from '../../blocks/IntegrationMarquee/config'
+import { CallToActionSignup } from '../../blocks/CallToActionSignup/config'
 export const Pages: CollectionConfig = {
   slug: 'pages',
   admin: {
@@ -63,7 +66,7 @@ export const Pages: CollectionConfig = {
       // full layout (docs/fields/blocks — nested fields need no `localized`)
       name: 'layout',
       type: 'blocks',
-      blocks: [Hero, Content, CallToAction, HeroBasic, FeatureGridBasic, CallToActionCentered, ContentStats, IntegrationOrbit, FeatureSplit, FeatureBento, FeatureSteps, EmbedBasic, ContentColumns, ContentImageLead, ContentFeatureMedia, ContentFeatureSplit, ContentShowcase, ContentQuote, ContentCommunity, ContentSplitRows, ContentRows, ContentImageFrame, ContentList, ContentListColumns, ContentListIcons, LogoCloudGrid, LogoCloudHover, LogoCloudInline, LogoCloudInlineWrap, IntegrationGrid, IntegrationCluster, IntegrationSplit, IntegrationConnect, IntegrationList, IntegrationTestimonial, CallToActionBoxed, TeamRoster, TeamGrid],
+      blocks: [Hero, Content, CallToAction, HeroBasic, FeatureGridBasic, CallToActionCentered, ContentStats, IntegrationOrbit, FeatureSplit, FeatureBento, FeatureSteps, EmbedBasic, ContentColumns, ContentImageLead, ContentFeatureMedia, ContentFeatureSplit, ContentShowcase, ContentQuote, ContentCommunity, ContentSplitRows, ContentRows, ContentImageFrame, ContentList, ContentListColumns, ContentListIcons, LogoCloudGrid, LogoCloudHover, LogoCloudInline, LogoCloudInlineWrap, IntegrationGrid, IntegrationCluster, IntegrationSplit, IntegrationConnect, IntegrationList, IntegrationTestimonial, CallToActionBoxed, TeamRoster, TeamGrid, LogoCloudMarquee, IntegrationMarquee, CallToActionSignup],
       localized: true,
       admin: {
         initCollapsed: true,

@@ -59,7 +59,7 @@
       "manifestVersion": "0.1.0",
       "registryItemName": "logo-cloud-marquee",
       "targetId": "payload-website-starter",
-      "installedAt": null,
+      "installedAt": "2026-07-13T12:23:35.641Z",
       "installedFiles": [
         "src/blocks/LogoCloudMarquee/Component.tsx",
         "src/blocks/LogoCloudMarquee/config.ts",
@@ -67,18 +67,15 @@
         "src/components/ui/infinite-slider.tsx",
         "src/components/ui/progressive-blur.tsx"
       ],
-      "lastAttemptAt": "2026-07-13T12:19:42.413Z",
-      "lastError": {
-        "message": "Command failed: pnpm dlx shadcn@4.7.0 add /var/folders/yb/bxc4pdv5335g602b7vz3gpqm0000gn/T/payload-components-registry-bEtWFE/logo-cloud-marquee.json --cwd /Users/aac/aacsearch-workflow-com/aacsearch-workflow-com --yes",
-        "stage": "registry-add"
-      },
+      "lastAttemptAt": "2026-07-13T12:23:35.641Z",
+      "lastError": null,
       "patchedFiles": [
         "package.json",
         "pnpm-lock.yaml",
         "src/blocks/RenderBlocks.tsx",
         "src/collections/Pages/index.ts"
       ],
-      "status": "partial"
+      "status": "installed"
     },
     "content-stats": {
       "manifestVersion": "0.1.0",
@@ -590,25 +587,22 @@
       "manifestVersion": "0.1.0",
       "registryItemName": "integration-marquee",
       "targetId": "payload-website-starter",
-      "installedAt": null,
+      "installedAt": "2026-07-13T12:23:50.288Z",
       "installedFiles": [
         "src/blocks/IntegrationMarquee/Component.tsx",
         "src/blocks/IntegrationMarquee/config.ts",
         "src/blocks/shared/integrationFields.ts",
         "src/components/ui/infinite-slider.tsx"
       ],
-      "lastAttemptAt": "2026-07-13T12:21:00.735Z",
-      "lastError": {
-        "message": "Command failed: pnpm dlx shadcn@4.7.0 add /var/folders/yb/bxc4pdv5335g602b7vz3gpqm0000gn/T/payload-components-registry-6BSANu/integration-marquee.json --cwd /Users/aac/aacsearch-workflow-com/aacsearch-workflow-com --yes",
-        "stage": "registry-add"
-      },
+      "lastAttemptAt": "2026-07-13T12:23:50.288Z",
+      "lastError": null,
       "patchedFiles": [
         "package.json",
         "pnpm-lock.yaml",
         "src/blocks/RenderBlocks.tsx",
         "src/collections/Pages/index.ts"
       ],
-      "status": "partial"
+      "status": "installed"
     },
     "integration-testimonial": {
       "manifestVersion": "0.1.0",
@@ -677,6 +671,27 @@
       "lastAttemptAt": "2026-07-13T12:21:46.454Z",
       "lastError": null,
       "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "call-to-action-signup": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "call-to-action-signup",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:24:29.816Z",
+      "installedFiles": [
+        "src/blocks/CallToActionSignup/Component.tsx",
+        "src/blocks/CallToActionSignup/config.ts",
+        "src/blocks/shared/callToActionFields.ts",
+        "src/blocks/shared/safeUrls.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:24:29.816Z",
+      "lastError": null,
+      "patchedFiles": [
+        "package.json",
+        "pnpm-lock.yaml",
         "src/blocks/RenderBlocks.tsx",
         "src/collections/Pages/index.ts"
       ],

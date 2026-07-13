@@ -2,6 +2,9 @@ import * as migration_20250929_111647 from './20250929_111647';
 import * as migration_20260711_200002_aacsearch_multitenant_stack from './20260711_200002_aacsearch_multitenant_stack';
 import * as migration_20260711_202415_hero_basic_block from './20260711_202415_hero_basic_block';
 import * as migration_20260711_204901_ui_plugins_notifications_ai from './20260711_204901_ui_plugins_notifications_ai';
+import * as migration_20260713_122854_registry_blocks_full_set from './20260713_122854_registry_blocks_full_set';
+import * as migration_20260713_124254_apikeys_globals_cmdk from './20260713_124254_apikeys_globals_cmdk';
+import * as migration_20260713_125137_search_os_core from './20260713_125137_search_os_core';
 
 export const migrations = [
   {
@@ -22,6 +25,21 @@ export const migrations = [
   {
     up: migration_20260711_204901_ui_plugins_notifications_ai.up,
     down: migration_20260711_204901_ui_plugins_notifications_ai.down,
-    name: '20260711_204901_ui_plugins_notifications_ai'
+    name: '20260711_204901_ui_plugins_notifications_ai',
+  },
+  {
+    up: migration_20260713_122854_registry_blocks_full_set.up,
+    down: migration_20260713_122854_registry_blocks_full_set.down,
+    name: '20260713_122854_registry_blocks_full_set',
+  },
+  {
+    up: migration_20260713_124254_apikeys_globals_cmdk.up,
+    down: migration_20260713_124254_apikeys_globals_cmdk.down,
+    name: '20260713_124254_apikeys_globals_cmdk',
+  },
+  {
+    up: migration_20260713_125137_search_os_core.up,
+    down: migration_20260713_125137_search_os_core.down,
+    name: '20260713_125137_search_os_core'
   },
 ];

@@ -37,6 +37,9 @@ import { IntegrationTestimonialBlock } from '@/blocks/IntegrationTestimonial/Com
 import { CallToActionBoxedBlock } from '@/blocks/CallToActionBoxed/Component'
 import { TeamRosterBlock } from '@/blocks/TeamRoster/Component'
 import { TeamGridBlock } from '@/blocks/TeamGrid/Component'
+import { LogoCloudMarqueeBlock } from '@/blocks/LogoCloudMarquee/Component'
+import { IntegrationMarqueeBlock } from '@/blocks/IntegrationMarquee/Component'
+import { CallToActionSignupBlock } from '@/blocks/CallToActionSignup/Component'
 const blockComponents = {
   heroBasic: HeroBasicBlock,
   featureGridBasic: FeatureGridBasicBlock,
@@ -73,6 +76,9 @@ const blockComponents = {
   callToActionBoxed: CallToActionBoxedBlock,
   teamRoster: TeamRosterBlock,
   teamGrid: TeamGridBlock,
+  logoCloudMarquee: LogoCloudMarqueeBlock,
+  integrationMarquee: IntegrationMarqueeBlock,
+  callToActionSignup: CallToActionSignupBlock,
 }
 
 export const RenderBlocks: React.FC<{

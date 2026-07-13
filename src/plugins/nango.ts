@@ -1,18 +1,47 @@
-import type { Config, Endpoint, Plugin } from 'payload'
+import type {
+  NangoAuthWebhookBody,
+  NangoSyncWebhookBodySuccess,
+  NangoWebhookBody,
+} from '@nangohq/node'
+import type { Config, Endpoint, PayloadRequest, Plugin, TaskConfig } from 'payload'
+
+import { APIError } from 'payload'
 
 import { isSuperAdmin } from '@/access/isSuperAdmin'
-import { getUserTenantIDs } from '@/utilities/getUserTenantIDs'
+import { isApiKeyPrincipalValid } from '@/collections/ApiKeys'
+import {
+  createIngestIntegrationRecordsTask,
+  INGEST_TASK_SLUG,
+  type IngestIntegrationRecordsInput,
+} from '@/jobs/ingestIntegrationRecords'
+import {
+  coerceIdValue,
+  createTtlCache,
+  extractRelationID,
+  integrationLogoPath,
+  mapConnection,
+  mapProvider,
+  type CatalogProvider,
+  type ConfiguredIntegration,
+  type IntegrationDoc,
+  type IntegrationsLocalAPI,
+  type ProviderDTO,
+} from '@/lib/integrations/dto'
+import { getPrincipalCollection, getPrincipalTenantIDs } from '@/lib/principal'
 
 /**
- * Nango integrations plugin — per-tenant third-party OAuth connections.
+ * Integrations plugin — per-tenant third-party connections, fully white-label.
  *
- * SDK: @nangohq/node — new Nango({ secretKey, host? })
- * Connections are namespaced by tenant via the connect session's
- * organization id; the frontend uses @nangohq/frontend with the
- * session token returned by /integrations/session.
+ * The connections backend (Nango) stays INVISIBLE: customers only ever see
+ * AACSearch-shaped DTOs (see `@/lib/integrations/dto`), same-origin logo
+ * paths, and a session token for the headless auth flow. The hosted
+ * `connect_link` is never returned — it exposes the vendor domain.
+ *
+ * Connection state lives in OUR `integrations` collection (written by the
+ * signature-verified webhook), so reads never fan out to the vendor API.
  */
 export type NangoPluginOptions = {
-  /** self-hosted Nango URL; omit for Nango Cloud */
+  /** self-hosted URL; omit for the cloud default */
   host?: string
   secretKey?: string
   /** HMAC key for inbound webhook verification (falls back to secretKey) */
@@ -28,75 +57,384 @@ const getClient = async (opts: NangoPluginOptions) => {
   })
 }
 
+/**
+ * Tenant guard for BOTH principal shapes: `users` (tenants membership array)
+ * and `api-keys` docs (single tenant relationship). Super-admin bypasses.
+ */
 const canAccessTenant = (user: unknown, tenantID: number | string): boolean => {
   if (isSuperAdmin(user)) return true
-  return getUserTenantIDs(user).some((id) => String(id) === String(tenantID))
+  return getPrincipalTenantIDs(user).some((id) => String(id) === String(tenantID))
+}
+
+/** 401/400/403 in one place; returns the validated tenant id. */
+const guardTenantParam = (req: PayloadRequest, tenant: string | undefined): string => {
+  if (!req.user) throw new APIError('Unauthorized', 401, { code: 'unauthorized' })
+  // Payload's auth strategy doesn't check key expiry/revocation — guards must
+  if (!isApiKeyPrincipalValid(req.user)) {
+    throw new APIError('Unauthorized', 401, { code: 'unauthorized' })
+  }
+  if (!tenant) throw new APIError('tenant is required', 400, { code: 'tenant_required' })
+  if (!canAccessTenant(req.user, tenant)) {
+    throw new APIError('Forbidden', 403, { code: 'forbidden' })
+  }
+  return tenant
+}
+
+/**
+ * API-key principals ('api-keys' docs) have no tenants membership array, so
+ * the multi-tenant plugin's injected access would deny them outright under
+ * `overrideAccess: false`. `guardTenantParam` has already proven tenant
+ * membership for BOTH principal shapes, so api-key reads run system-context
+ * WITH the explicit tenant constraint; real users keep user-context access.
+ */
+const principalScopedFindArgs = (
+  req: PayloadRequest,
+): { overrideAccess?: boolean; user?: unknown } =>
+  getPrincipalCollection(req.user) === 'api-keys'
+    ? {}
+    : { overrideAccess: false, user: req.user }
+
+/** The ~800-entry provider catalog barely changes — cache it for an hour. */
+const PROVIDER_CACHE_TTL_MS = 60 * 60 * 1000
+const providerCache = createTtlCache<CatalogProvider[]>(PROVIDER_CACHE_TTL_MS)
+
+const getCatalogProviders = async (opts: NangoPluginOptions): Promise<CatalogProvider[]> => {
+  const cached = providerCache.get()
+  if (cached) return cached
+  const nango = await getClient(opts)
+  const { data } = await nango.listProviders({})
+  const providers: CatalogProvider[] = data
+  providerCache.set(providers)
+  return providers
+}
+
+/** Tenant's connections from OUR collection, on behalf of the caller. */
+const findTenantIntegrations = async (
+  req: PayloadRequest,
+  tenant: string,
+): Promise<IntegrationDoc[]> => {
+  const integrationsAPI = req.payload as unknown as IntegrationsLocalAPI
+  const result = await integrationsAPI.find({
+    collection: 'integrations',
+    depth: 0,
+    limit: 500,
+    req,
+    sort: '-createdAt',
+    where: { tenant: { equals: coerceIdValue(tenant) } },
+    ...principalScopedFindArgs(req),
+  })
+  return result.docs
+}
+
+/**
+ * `type: 'auth'` webhook — upsert our `integrations` doc (idempotent, keyed
+ * by connectionId). Tenant linkage comes from `endUser.organization.id`,
+ * which is ONLY present for connect-session flows.
+ */
+const handleAuthWebhook = async (
+  req: PayloadRequest,
+  opts: NangoPluginOptions,
+  body: NangoAuthWebhookBody,
+): Promise<void> => {
+  const integrationsAPI = req.payload as unknown as IntegrationsLocalAPI
+  const existing = await integrationsAPI.find({
+    collection: 'integrations',
+    depth: 0,
+    limit: 1,
+    req,
+    where: { connectionId: { equals: body.connectionId } },
+  })
+  const doc = existing.docs[0]
+
+  if (!body.success) {
+    if (doc) {
+      await integrationsAPI.update({
+        collection: 'integrations',
+        data: { status: 'error' },
+        id: doc.id,
+        req,
+      })
+    }
+    return
+  }
+
+  if (doc) {
+    // Re-delivery / re-auth of a known connection: mark it healthy again.
+    await integrationsAPI.update({
+      collection: 'integrations',
+      data: { status: 'connected' },
+      id: doc.id,
+      req,
+    })
+    return
+  }
+
+  if (body.operation !== 'creation') return
+
+  const orgID = body.endUser?.organizationId
+  if (!orgID) {
+    req.payload.logger.warn({
+      connectionId: body.connectionId,
+      msg: 'integration auth webhook without tenant organization — skipped',
+    })
+    return
+  }
+
+  // Best-effort enrichment from the provider catalog — cosmetic only.
+  let displayName = body.providerConfigKey
+  try {
+    const nango = await getClient(opts)
+    const { data } = await nango.getProvider({ provider: body.provider })
+    if (data.display_name) displayName = data.display_name
+  } catch {
+    // never fail the webhook on a catalog lookup
+  }
+
+  await integrationsAPI.create({
+    collection: 'integrations',
+    data: {
+      authMode: body.authMode,
+      connectionId: body.connectionId,
+      displayName,
+      integrationKey: body.providerConfigKey,
+      // same-origin proxy path — never the vendor CDN URL
+      logoUrl: integrationLogoPath(body.provider),
+      meta: {
+        endUserEmail: body.endUser?.endUserEmail ?? null,
+        endUserId: body.endUser?.endUserId,
+      },
+      provider: body.provider,
+      status: 'connected',
+      tenant: coerceIdValue(orgID),
+    },
+    req,
+  })
+}
+
+/** `type: 'sync'` webhook — enqueue the drain and ack immediately. */
+const queueIngestion = async (
+  req: PayloadRequest,
+  body: NangoSyncWebhookBodySuccess,
+): Promise<void> => {
+  const input: IngestIntegrationRecordsInput = {
+    connectionId: body.connectionId,
+    model: body.model,
+    providerConfigKey: body.providerConfigKey,
+    syncName: body.syncName,
+  }
+  // The task slug is typed against generated TypedJobs only after the
+  // orchestrator regenerates payload-types — queue through a narrow signature.
+  const queue = req.payload.jobs.queue as unknown as (args: {
+    input: IngestIntegrationRecordsInput
+    req?: PayloadRequest
+    task: string
+  }) => Promise<unknown>
+  await queue({ input, req, task: INGEST_TASK_SLUG })
 }
 
 const integrationEndpoints = (opts: NangoPluginOptions): Endpoint[] => [
   {
-    // Session token for the Nango Connect UI (frontend: @nangohq/frontend)
+    // Full unbranded provider catalog merged with configured + connected state
+    path: '/integrations/catalog',
+    method: 'get',
+    handler: async (req) => {
+      const tenant = guardTenantParam(
+        req,
+        typeof req.query?.tenant === 'string' ? req.query.tenant : undefined,
+      )
+
+      const providers = await getCatalogProviders(opts)
+      const nango = await getClient(opts)
+      const { configs } = await nango.listIntegrations()
+      const docs = await findTenantIntegrations(req, tenant)
+      const connectedKeys = new Set(
+        docs.filter((doc) => doc.status !== 'revoked').map((doc) => doc.integrationKey),
+      )
+
+      const configuredByProvider = new Map<string, ConfiguredIntegration[]>()
+      for (const config of configs) {
+        const list = configuredByProvider.get(config.provider) ?? []
+        list.push(config)
+        configuredByProvider.set(config.provider, list)
+      }
+
+      const out: ProviderDTO[] = []
+      for (const provider of providers) {
+        const configured = configuredByProvider.get(provider.name)
+        if (configured && configured.length > 0) {
+          for (const integration of configured) {
+            out.push(mapProvider(provider, integration, connectedKeys.has(integration.unique_key)))
+          }
+        } else {
+          out.push(mapProvider(provider, null, false))
+        }
+      }
+      // Custom integrations whose provider is absent from the public catalog
+      const catalogNames = new Set(providers.map((provider) => provider.name))
+      for (const config of configs) {
+        if (!catalogNames.has(config.provider)) {
+          out.push(mapProvider(null, config, connectedKeys.has(config.unique_key)))
+        }
+      }
+
+      return Response.json({ providers: out })
+    },
+  },
+  {
+    // Session token for the headless frontend auth flow
     path: '/integrations/session',
     method: 'post',
     handler: async (req) => {
-      if (!req.user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-      const body = req.json ? await req.json() : {}
-      const { allowedIntegrations, tenant } = body as {
-        allowedIntegrations?: string[]
-        tenant?: string
+      const body = (req.json ? await req.json() : {}) as {
+        integration?: string
+        tenant?: number | string
       }
-      if (!tenant) return Response.json({ error: 'tenant is required' }, { status: 400 })
-      if (!canAccessTenant(req.user, tenant)) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 })
-      }
+      const tenant = guardTenantParam(
+        req,
+        body.tenant !== undefined && body.tenant !== null ? String(body.tenant) : undefined,
+      )
+      const user = req.user!
+
       const nango = await getClient(opts)
       const session = await nango.createConnectSession({
+        // Restrict the session to the single requested integration when given
+        allowed_integrations: body.integration ? [body.integration] : undefined,
         end_user: {
-          id: String(req.user.id),
-          email: 'email' in req.user ? (req.user.email ?? undefined) : undefined,
+          id: String(user.id),
+          email: 'email' in user && typeof user.email === 'string' ? user.email : undefined,
         },
+        // Tenant scoping: the auth webhook reads this back as endUser.organization.id
         organization: { id: String(tenant) },
-        allowed_integrations: allowedIntegrations,
       })
-      return Response.json(session.data)
+
+      // WHITE-LABEL: token + expiry ONLY. session.data.connect_link points at
+      // the vendor-hosted UI and must never reach the customer.
+      return Response.json({ expiresAt: session.data.expires_at, token: session.data.token })
     },
   },
   {
+    // Tenant's connections — served from OUR collection, no live vendor call
     path: '/integrations/connections',
     method: 'get',
     handler: async (req) => {
-      if (!req.user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-      const tenant = req.query?.tenant as string
-      if (!tenant) return Response.json({ error: 'tenant query param required' }, { status: 400 })
-      if (!canAccessTenant(req.user, tenant)) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 })
-      }
-      const nango = await getClient(opts)
-      const { connections } = await nango.listConnections()
-      // connect sessions tag connections with the tenant as end user org
-      const scoped = connections.filter(
-        (c) => (c as { end_user?: { organization?: { id?: string } } }).end_user?.organization?.id === String(tenant),
+      const tenant = guardTenantParam(
+        req,
+        typeof req.query?.tenant === 'string' ? req.query.tenant : undefined,
       )
-      return Response.json({ connections: scoped })
+      const docs = await findTenantIntegrations(req, tenant)
+      return Response.json({ connections: docs.map(mapConnection) })
     },
   },
   {
-    // Inbound Nango webhooks — signature-verified, ack fast (no auth: Nango calls this)
+    // Disconnect: revoke upstream first, then remove our doc
+    path: '/integrations/connections/:id',
+    method: 'delete',
+    handler: async (req) => {
+      const tenant = guardTenantParam(
+        req,
+        typeof req.query?.tenant === 'string' ? req.query.tenant : undefined,
+      )
+      const rawID = req.routeParams?.id
+      if (rawID === undefined || rawID === null || rawID === '') {
+        throw new APIError('Connection id is required', 400, { code: 'id_required' })
+      }
+
+      const integrationsAPI = req.payload as unknown as IntegrationsLocalAPI
+      let doc: IntegrationDoc
+      try {
+        // On behalf of the caller — the multi-tenant plugin injects the scope
+        // (api-key principals fall back to the explicit tenant check below)
+        doc = await integrationsAPI.findByID({
+          collection: 'integrations',
+          depth: 0,
+          id: coerceIdValue(String(rawID)),
+          req,
+          ...principalScopedFindArgs(req),
+        })
+      } catch {
+        throw new APIError('Connection not found', 404, { code: 'not_found' })
+      }
+      if (String(extractRelationID(doc.tenant)) !== String(tenant)) {
+        throw new APIError('Connection not found', 404, { code: 'not_found' })
+      }
+
+      const nango = await getClient(opts)
+      try {
+        await nango.deleteConnection(doc.integrationKey, doc.connectionId)
+      } catch (err) {
+        const status = (err as { response?: { status?: number } }).response?.status
+        if (status !== 404) {
+          // Upstream still holds the connection — do NOT orphan it silently
+          req.payload.logger.error({ err, msg: 'integration disconnect failed' })
+          throw new APIError('Failed to disconnect the integration', 502, {
+            code: 'disconnect_failed',
+          })
+        }
+        // 404 upstream = already revoked there; still remove our record
+      }
+
+      // System context: guard already ran and the upstream connection is gone
+      await integrationsAPI.delete({ collection: 'integrations', id: doc.id, req })
+      return Response.json({ disconnected: true })
+    },
+  },
+  {
+    // Same-origin logo proxy — vendor CDN URLs never appear in customer JSON/UI
+    path: '/integrations/logo/:key',
+    method: 'get',
+    handler: async (req) => {
+      const key =
+        typeof req.routeParams?.key === 'string' ? decodeURIComponent(req.routeParams.key) : ''
+      if (!key) throw new APIError('Not found', 404, { code: 'not_found' })
+
+      const providers = await getCatalogProviders(opts)
+      const logoUrl = providers.find((provider) => provider.name === key)?.logo_url
+      if (!logoUrl) throw new APIError('Not found', 404, { code: 'not_found' })
+
+      const upstream = await fetch(logoUrl)
+      if (!upstream.ok || !upstream.body) {
+        throw new APIError('Not found', 404, { code: 'not_found' })
+      }
+      return new Response(upstream.body, {
+        headers: {
+          'cache-control': 'public, max-age=86400',
+          'content-type': upstream.headers.get('content-type') ?? 'image/svg+xml',
+        },
+      })
+    },
+  },
+  {
+    // Inbound webhooks — no session auth; HMAC-verified over the RAW body
+    // (verifyIncomingWebhookRequest: HMAC-SHA256 + timing-safe compare; the
+    // deprecated verifyWebhookSignature is length-extension vulnerable)
     path: '/integrations/webhook',
     method: 'post',
     handler: async (req) => {
-      const signature = req.headers.get('x-nango-signature')
-      if (!signature) return Response.json({ error: 'Missing signature' }, { status: 401 })
+      if (typeof req.text !== 'function') {
+        throw new APIError('Invalid request', 400, { code: 'invalid_request' })
+      }
+      const raw = await req.text()
 
-      const body = req.json ? await req.json() : {}
       const nango = await getClient(opts)
-      if (!nango.verifyWebhookSignature(signature, body)) {
-        return Response.json({ error: 'Invalid signature' }, { status: 401 })
+      if (!nango.verifyIncomingWebhookRequest(raw, Object.fromEntries(req.headers.entries()))) {
+        throw new APIError('Invalid signature', 401, { code: 'invalid_signature' })
       }
 
-      // Keep the handler fast: log and ack; heavy ingestion belongs to a
-      // jobs-queue task keyed by (providerConfigKey, connectionId)
-      req.payload.logger.info({ msg: 'Nango webhook received', type: (body as { type?: string }).type })
+      // Parse ONLY after the signature checks out
+      let body: NangoWebhookBody
+      try {
+        body = JSON.parse(raw) as NangoWebhookBody
+      } catch {
+        throw new APIError('Invalid payload', 400, { code: 'invalid_payload' })
+      }
+
+      if (body.type === 'auth') {
+        await handleAuthWebhook(req, opts, body)
+      } else if (body.type === 'sync' && body.success) {
+        // Heavy ingestion belongs to the jobs queue — ack fast
+        await queueIngestion(req, body)
+      }
+
       return Response.json({ received: true })
     },
   },
@@ -110,5 +448,18 @@ export const nangoPlugin =
     return {
       ...config,
       endpoints: [...(config.endpoints ?? []), ...integrationEndpoints(opts)],
+      jobs: {
+        ...(config.jobs ?? {}),
+        tasks: [
+          ...(config.jobs?.tasks ?? []),
+          // TaskConfig is generic over generated TypedJobs — until the
+          // orchestrator regenerates payload-types this structural task
+          // narrows through the base TaskConfig shape.
+          createIngestIntegrationRecordsTask({
+            host: opts.host,
+            secretKey: opts.secretKey,
+          }) as unknown as TaskConfig,
+        ],
+      },
     }
   }

@@ -11,3 +11,4 @@ allowBuilds:
   workerd: true
 minimumReleaseAgeExclude:
   - '@rubixstudios/payload-typesense@1.6.11'
+ignoreWorkspaceRootCheck: true
