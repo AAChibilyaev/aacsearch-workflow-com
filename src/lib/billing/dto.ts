@@ -268,25 +268,40 @@ export const toUsageDTO = (usage: CustomerUsageObject): UsageDTO => ({
  * Map a billing-backend invoice to a white-label DTO. Only the customer-safe
  * fields are copied — no `lago_id`, `external_customer_id`, or vendor URLs —
  * so the invoices list can never leak the billing provider.
+ *
+ * `downloadUrl` points at OUR proxy endpoint (never the backend `file_url`).
+ * It is built only when `tenant` is supplied and an id could be derived.
  */
-export const toInvoiceDTO = (invoice: {
-  currency?: null | string
-  invoice_type?: null | string
-  issuing_date?: null | string
-  number?: null | string
-  payment_status?: null | string
-  sequential_id?: null | number | string
-  status?: null | string
-  total_amount_cents?: null | number
-}): InvoiceDTO => ({
-  currency: invoice.currency ?? 'USD',
-  id: String(invoice.sequential_id ?? invoice.number ?? ''),
-  issuedAt: invoice.issuing_date ?? null,
-  number: invoice.number ?? '',
-  paymentStatus: invoice.payment_status ?? 'pending',
-  status: invoice.status ?? 'finalized',
-  totalCents: invoice.total_amount_cents ?? 0,
-})
+export const toInvoiceDTO = (
+  invoice: {
+    currency?: null | string
+    invoice_type?: null | string
+    issuing_date?: null | string
+    number?: null | string
+    payment_status?: null | string
+    sequential_id?: null | number | string
+    status?: null | string
+    total_amount_cents?: null | number
+  },
+  tenant?: null | number | string,
+): InvoiceDTO => {
+  const id = String(invoice.sequential_id ?? invoice.number ?? '')
+  const downloadUrl =
+    id.length > 0 && tenant !== undefined && tenant !== null && String(tenant).length > 0
+      ? `/api/billing/invoices/${encodeURIComponent(id)}/download?tenant=${encodeURIComponent(String(tenant))}`
+      : ''
+  return {
+    currency: invoice.currency ?? 'USD',
+    downloadUrl,
+    id,
+    issuedAt: invoice.issuing_date ?? null,
+    issuingDate: invoice.issuing_date ?? null,
+    number: invoice.number ?? '',
+    paymentStatus: invoice.payment_status ?? 'pending',
+    status: invoice.status ?? 'finalized',
+    totalCents: invoice.total_amount_cents ?? 0,
+  }
+}
 
 export const normalizeBillingStatus = (value: unknown): BillingStatus =>
   typeof value === 'string' && (BILLING_STATUSES as string[]).includes(value)

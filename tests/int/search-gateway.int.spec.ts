@@ -22,6 +22,27 @@ import {
   type ScopedKeyExtraParams,
 } from '@/lib/search/client'
 import { searchGatewayPlugin } from '@/plugins/searchGateway'
+import {
+  type TenantSearchSettings,
+  buildAnalyticsDestinationSchemas,
+  buildAnalyticsRules,
+  buildCurationItem,
+  buildCurationItems,
+  buildPresetValue,
+  buildQueryBy,
+  buildStopwords,
+  clampAlpha,
+  isEmptyPreset,
+  splitCsv,
+  syncTenantSearchSettings,
+  tenantCurationSetName,
+  tenantNoHitsQueriesCollection,
+  tenantNoHitsRuleName,
+  tenantPopularQueriesCollection,
+  tenantPopularRuleName,
+  tenantPresetName,
+  tenantStopwordSetId,
+} from '@/lib/search/settingsSync'
 
 // White-label: customer-visible JSON must never contain backend vendor names
 const VENDOR_STRINGS = /lago|nango|typesense|getlago|nango\.dev/i
@@ -439,6 +460,392 @@ describe('white-label: no vendor strings in customer-visible DTOs', () => {
   })
 })
 
+describe('settingsSync name helpers', () => {
+  it('names every per-tenant engine object deterministically', () => {
+    expect(tenantCurationSetName(42)).toBe('tenant_42')
+    expect(tenantStopwordSetId('abc')).toBe('tenant_abc')
+    expect(tenantPresetName(7)).toBe('tenant_7')
+    expect(tenantPopularRuleName(7)).toBe('tenant_7_popular')
+    expect(tenantNoHitsRuleName(7)).toBe('tenant_7_nohits')
+    expect(tenantPopularQueriesCollection(7)).toBe('tenant_7_popular_queries')
+    expect(tenantNoHitsQueriesCollection(7)).toBe('tenant_7_nohits_queries')
+  })
+})
+
+describe('splitCsv / clampAlpha', () => {
+  it('splitCsv trims, drops empties and de-duplicates preserving order', () => {
+    expect(splitCsv(' a, b ,a,,c ')).toEqual(['a', 'b', 'c'])
+    expect(splitCsv('')).toEqual([])
+    expect(splitCsv(null)).toEqual([])
+    expect(splitCsv(undefined)).toEqual([])
+  })
+
+  it('clampAlpha clamps to [0,1] and defaults to 0.3', () => {
+    expect(clampAlpha(0.8)).toBe(0.8)
+    expect(clampAlpha(-1)).toBe(0)
+    expect(clampAlpha(5)).toBe(1)
+    expect(clampAlpha(undefined)).toBe(0.3)
+    expect(clampAlpha('x')).toBe(0.3)
+    expect(clampAlpha(Number.NaN)).toBe(0.3)
+  })
+})
+
+describe('buildQueryBy — query_by + aligned query_by_weights', () => {
+  it('joins searchable fields and aligns weights, defaulting a missing weight to 1', () => {
+    const out = buildQueryBy({
+      searchableFields: [
+        { field: 'title', weight: 3 },
+        { field: ' body ', weight: null },
+        { field: 'tags', weight: 5 },
+      ],
+    })
+    expect(out.query_by).toBe('title,body,tags')
+    expect(out.query_by_weights).toBe('3,1,5')
+  })
+
+  it('omits weights entirely when no row carries one', () => {
+    const out = buildQueryBy({ searchableFields: [{ field: 'title' }, { field: 'body' }] })
+    expect(out.query_by).toBe('title,body')
+    expect(out.query_by_weights).toBeUndefined()
+  })
+
+  it('falls back to legacy searchFields when searchableFields is empty', () => {
+    const out = buildQueryBy({
+      searchableFields: [],
+      searchFields: [{ field: 'name' }, { field: 'sku' }],
+    })
+    expect(out.query_by).toBe('name,sku')
+    expect(out.query_by_weights).toBeUndefined()
+  })
+
+  it('drops blank fields', () => {
+    expect(buildQueryBy({ searchableFields: [{ field: '  ' }, { field: 'title' }] }).query_by).toBe(
+      'title',
+    )
+  })
+})
+
+describe('buildPresetValue — default search params', () => {
+  it('maps typo tolerance and clamps num_typos to [0,2]', () => {
+    const value = buildPresetValue({
+      typoTolerance: { minLen1Typo: 4, minLen2Typo: 7, numTypos: 5, typoTokensThreshold: 2 },
+    })
+    expect(value.num_typos).toBe(2)
+    expect(value.min_len_1typo).toBe(4)
+    expect(value.min_len_2typo).toBe(7)
+    expect(value.typo_tokens_threshold).toBe(2)
+  })
+
+  it('builds sort_by from the default sort plus tie-breakers', () => {
+    expect(
+      buildPresetValue({ ranking: { defaultSortingField: 'popularity:desc' } }).sort_by,
+    ).toBe('popularity:desc')
+    expect(
+      buildPresetValue({
+        ranking: { defaultSortingField: 'popularity:desc', pinnedTieBreakers: 'rating:desc' },
+      }).sort_by,
+    ).toBe('popularity:desc, rating:desc')
+  })
+
+  it('adds a hybrid vector_query and folds the embedding field into query_by when semantic is on', () => {
+    const value = buildPresetValue({
+      searchableFields: [
+        { field: 'title', weight: 2 },
+        { field: 'body', weight: 1 },
+      ],
+      semantic: { enableSemanticSearch: true, hybridAlpha: 0.7 },
+    })
+    expect(value.query_by).toBe('title,body,embedding')
+    // weights stay aligned with the appended embedding field
+    expect(value.query_by_weights).toBe('2,1,1')
+    expect(value.vector_query).toBe('embedding:([], alpha: 0.7)')
+  })
+
+  it('uses embedding-only query_by when semantic is on but no keyword fields set', () => {
+    const value = buildPresetValue({ semantic: { enableSemanticSearch: true } })
+    expect(value.query_by).toBe('embedding')
+    expect(value.vector_query).toBe('embedding:([], alpha: 0.3)')
+  })
+
+  it('is empty (and isEmptyPreset true) for empty settings', () => {
+    const value = buildPresetValue({})
+    expect(value).toEqual({})
+    expect(isEmptyPreset(value)).toBe(true)
+    expect(isEmptyPreset({ num_typos: 1 })).toBe(false)
+  })
+})
+
+describe('buildCurationItem / buildCurationItems', () => {
+  it('maps a query rule with pinned/hidden CSV to includes/excludes with 1-based positions', () => {
+    const item = buildCurationItem(
+      { hiddenDocIds: '9', match: 'exact', pinnedDocIds: '3, 7 ,3', query: 'shoes' },
+      0,
+    )
+    expect(item).toEqual({
+      excludes: [{ id: '9' }],
+      id: 'item_0',
+      includes: [
+        { id: '3', position: 1 },
+        { id: '7', position: 2 },
+      ],
+      rule: { match: 'exact', query: 'shoes' },
+    })
+  })
+
+  it('defaults match to exact and honours contains', () => {
+    expect(buildCurationItem({ pinnedDocIds: '1', query: 'a' }, 0)?.rule).toEqual({
+      match: 'exact',
+      query: 'a',
+    })
+    expect(
+      buildCurationItem({ match: 'contains', pinnedDocIds: '1', query: 'a' }, 1)?.rule,
+    ).toEqual({ match: 'contains', query: 'a' })
+  })
+
+  it('uses filter_by as the rule trigger when there is no query', () => {
+    const item = buildCurationItem({ filterBy: 'on_sale:=true', pinnedDocIds: '1' }, 2)
+    expect(item?.rule).toEqual({ filter_by: 'on_sale:=true' })
+    expect(item?.filter_by).toBeUndefined()
+  })
+
+  it('applies filter_by to a query-triggered rule as an applied filter', () => {
+    const item = buildCurationItem({ filterBy: 'brand:=nike', pinnedDocIds: '1', query: 'shoes' }, 3)
+    expect(item?.rule).toEqual({ match: 'exact', query: 'shoes' })
+    expect(item?.filter_by).toBe('brand:=nike')
+  })
+
+  it('drops no-op rows (no trigger, or a trigger with no action)', () => {
+    expect(buildCurationItem({}, 0)).toBeNull()
+    // query trigger but nothing pinned/hidden and no applied filter = no-op
+    expect(buildCurationItem({ query: 'shoes' }, 0)).toBeNull()
+    // filter trigger with no pins/hides = no-op
+    expect(buildCurationItem({ filterBy: 'x:=1' }, 0)).toBeNull()
+  })
+
+  it('buildCurationItems maps and drops no-ops, keeping index-based ids', () => {
+    const items = buildCurationItems([
+      { query: 'shoes' }, // dropped (no-op)
+      { pinnedDocIds: '5', query: 'boots' }, // kept
+    ])
+    expect(items).toHaveLength(1)
+    expect(items[0].id).toBe('item_1')
+    expect(items[0].includes).toEqual([{ id: '5', position: 1 }])
+  })
+
+  it('handles null/undefined input', () => {
+    expect(buildCurationItems(null)).toEqual([])
+    expect(buildCurationItems(undefined)).toEqual([])
+  })
+})
+
+describe('buildStopwords', () => {
+  it('trims, drops empties and de-duplicates', () => {
+    expect(buildStopwords([{ word: 'the' }, { word: ' a ' }, { word: 'the' }, { word: '' }])).toEqual(
+      ['the', 'a'],
+    )
+  })
+
+  it('handles null/undefined input', () => {
+    expect(buildStopwords(null)).toEqual([])
+    expect(buildStopwords(undefined)).toEqual([])
+  })
+})
+
+describe('buildAnalyticsDestinationSchemas / buildAnalyticsRules', () => {
+  const bothOn: TenantSearchSettings = {
+    analytics: { enableNoHitsTracking: true, enableQuerySuggestions: true },
+  }
+
+  it('builds destination collections with q:string + count:int32 gated on the toggles', () => {
+    expect(buildAnalyticsDestinationSchemas(7, bothOn)).toEqual([
+      {
+        fields: [
+          { name: 'q', type: 'string' },
+          { name: 'count', type: 'int32' },
+        ],
+        name: 'tenant_7_popular_queries',
+      },
+      {
+        fields: [
+          { name: 'q', type: 'string' },
+          { name: 'count', type: 'int32' },
+        ],
+        name: 'tenant_7_nohits_queries',
+      },
+    ])
+    expect(buildAnalyticsDestinationSchemas(7, {})).toEqual([])
+    expect(
+      buildAnalyticsDestinationSchemas(7, { analytics: { enableQuerySuggestions: true } }),
+    ).toHaveLength(1)
+  })
+
+  it('builds popular_queries + nohits_queries rules with the right schema', () => {
+    const rules = buildAnalyticsRules(7, bothOn)
+    expect(rules).toHaveLength(2)
+    const popular = rules.find((r) => r.type === 'popular_queries')
+    expect(popular).toMatchObject({
+      collection: 'documents',
+      event_type: 'search',
+      name: 'tenant_7_popular',
+      params: {
+        capture_search_requests: true,
+        destination_collection: 'tenant_7_popular_queries',
+        limit: 1000,
+      },
+      type: 'popular_queries',
+    })
+    const nohits = rules.find((r) => r.type === 'nohits_queries')
+    expect(nohits).toMatchObject({
+      collection: 'documents',
+      event_type: 'search',
+      name: 'tenant_7_nohits',
+      params: { destination_collection: 'tenant_7_nohits_queries' },
+      type: 'nohits_queries',
+    })
+  })
+
+  it('honours a custom source collection and the toggles', () => {
+    expect(buildAnalyticsRules(7, bothOn, { sourceCollection: 'products' })[0].collection).toBe(
+      'products',
+    )
+    expect(buildAnalyticsRules(7, {})).toEqual([])
+    expect(
+      buildAnalyticsRules(7, { analytics: { enableNoHitsTracking: true } }).map((r) => r.type),
+    ).toEqual(['nohits_queries'])
+  })
+})
+
+describe('white-label: settingsSync builder outputs carry no vendor strings', () => {
+  it('preset / curation / stopwords / analytics payloads are vendor-neutral', () => {
+    const settings: TenantSearchSettings = {
+      analytics: { enableNoHitsTracking: true, enableQuerySuggestions: true },
+      curation: [{ hiddenDocIds: '9', pinnedDocIds: '1,2', query: 'shoes' }],
+      ranking: { defaultSortingField: 'popularity:desc' },
+      searchableFields: [{ field: 'title', weight: 2 }],
+      semantic: { embeddingModel: 'ts/e5-small', enableSemanticSearch: true, hybridAlpha: 0.5 },
+      stopwords: [{ word: 'the' }],
+      synonyms: [{ root: '', synonymList: 'couch,sofa' }],
+      typoTolerance: { numTypos: 1 },
+    }
+    const combined = JSON.stringify({
+      curation: buildCurationItems(settings.curation),
+      destinations: buildAnalyticsDestinationSchemas('t1', settings),
+      preset: buildPresetValue(settings),
+      rules: buildAnalyticsRules('t1', settings),
+      stopwords: buildStopwords(settings.stopwords),
+    })
+    expect(combined).not.toMatch(VENDOR_STRINGS)
+  })
+})
+
+describe('GET /search/analytics — guards + neutral empty result', () => {
+  const logger = { error: () => {}, warn: () => {} }
+
+  const analyticsHandler = () => {
+    const cfg = searchGatewayPlugin({
+      billing: {},
+      host: 'search.example.com',
+      searchOnlyKey: 'search-only-key',
+    })({ collections: [], endpoints: [] } as unknown as Config) as Config
+    const ep = (cfg.endpoints ?? []).find(
+      (e) => e.path === '/search/analytics' && e.method === 'get',
+    )
+    if (!ep) throw new Error('endpoint /search/analytics not found')
+    return ep.handler
+  }
+
+  const makeReq = (over: Record<string, unknown>): PayloadRequest =>
+    ({
+      json: async () => ({}),
+      payload: { logger },
+      query: {},
+      user: null,
+      ...over,
+    }) as unknown as PayloadRequest
+
+  it('rejects a missing principal with 401', async () => {
+    const res = await analyticsHandler()(makeReq({ query: { tenant: '7' } }))
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual(GATEWAY_ERRORS.unauthorized)
+  })
+
+  it('rejects a revoked api-key with 401 (auth does not check revocation)', async () => {
+    const res = await analyticsHandler()(
+      makeReq({
+        query: { tenant: '7' },
+        user: {
+          collection: 'api-keys',
+          id: 'k1',
+          revokedAt: '2000-01-01T00:00:00.000Z',
+          scopes: ['search:read'],
+          tenant: 7,
+        },
+      }),
+    )
+    expect(res.status).toBe(401)
+  })
+
+  it('requires a tenant (400)', async () => {
+    const res = await analyticsHandler()(
+      makeReq({ user: { collection: 'api-keys', id: 'k2', scopes: ['search:read'], tenant: 7 } }),
+    )
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual(GATEWAY_ERRORS.tenantRequired)
+  })
+
+  it('rejects a foreign tenant with 403', async () => {
+    const res = await analyticsHandler()(
+      makeReq({
+        query: { tenant: '999' },
+        user: { collection: 'api-keys', id: 'k3', scopes: ['search:read'], tenant: 7 },
+      }),
+    )
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual(GATEWAY_ERRORS.forbidden)
+  })
+
+  it('rejects an api-key without search:read scope with 403', async () => {
+    const res = await analyticsHandler()(
+      makeReq({
+        query: { tenant: '7' },
+        user: { collection: 'api-keys', id: 'k4', scopes: ['documents:read'], tenant: 7 },
+      }),
+    )
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual(GATEWAY_ERRORS.forbiddenScope)
+  })
+
+  it('returns a neutral, vendor-free empty result when the engine is unavailable', async () => {
+    const host = process.env.TYPESENSE_HOST
+    const apiKey = process.env.TYPESENSE_API_KEY
+    delete process.env.TYPESENSE_HOST
+    delete process.env.TYPESENSE_API_KEY
+    try {
+      const res = await analyticsHandler()(
+        makeReq({
+          query: { tenant: '7' },
+          user: { collection: 'api-keys', id: 'k5', scopes: ['search:read'], tenant: 7 },
+        }),
+      )
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as {
+        noHitsQueries: unknown[]
+        popularQueries: unknown[]
+        totalSearches: number
+        updatedAt: string
+      }
+      expect(body.popularQueries).toEqual([])
+      expect(body.noHitsQueries).toEqual([])
+      expect(body.totalSearches).toBe(0)
+      expect(typeof body.updatedAt).toBe('string')
+      expect(JSON.stringify(body)).not.toMatch(VENDOR_STRINGS)
+    } finally {
+      if (host !== undefined) process.env.TYPESENSE_HOST = host
+      if (apiKey !== undefined) process.env.TYPESENSE_API_KEY = apiKey
+    }
+  })
+})
+
 // Live round-trip against a real engine — only when env is configured
 describe.skipIf(!process.env.TYPESENSE_HOST || !process.env.TYPESENSE_API_KEY)(
   'live search engine round-trip',
@@ -461,6 +868,49 @@ describe.skipIf(!process.env.TYPESENSE_HOST || !process.env.TYPESENSE_API_KEY)(
       expect(readBack.items).toHaveLength(1)
       expect(readBack.items[0].synonyms).toContain('couch')
       await client.synonymSets(setName).delete()
+    }, 30_000)
+
+    it('syncs curation/stopwords/preset for a tenant and tears them down', async () => {
+      const { getAdminSearchClient } = await import('@/lib/search/client')
+      const client = await getAdminSearchClient()
+      const tenant = 'int_sync'
+      const settings: TenantSearchSettings = {
+        curation: [{ hiddenDocIds: '9', match: 'exact', pinnedDocIds: '1,2', query: 'shoes' }],
+        ranking: { defaultSortingField: 'popularity:desc' },
+        searchableFields: [
+          { field: 'title', weight: 3 },
+          { field: 'body', weight: 1 },
+        ],
+        stopwords: [{ word: 'the' }, { word: 'a' }],
+        typoTolerance: { numTypos: 1 },
+      }
+      await syncTenantSearchSettings(client, tenant, settings)
+
+      const curation = await client.curationSets(tenantCurationSetName(tenant)).retrieve()
+      expect(curation.items).toHaveLength(1)
+      expect(curation.items[0].includes).toEqual([
+        { id: '1', position: 1 },
+        { id: '2', position: 2 },
+      ])
+
+      const preset = await client.presets(tenantPresetName(tenant)).retrieve()
+      expect((preset.value as { query_by?: string }).query_by).toBe('title,body')
+      expect((preset.value as { query_by_weights?: string }).query_by_weights).toBe('3,1')
+
+      const stopwords = await client.stopwords(tenantStopwordSetId(tenant)).retrieve()
+      expect(JSON.stringify(stopwords)).toContain('the')
+
+      // teardown: empty settings drops every per-tenant set
+      await syncTenantSearchSettings(client, tenant, {})
+      await client
+        .curationSets(tenantCurationSetName(tenant))
+        .retrieve()
+        .then(
+          (): never => {
+            throw new Error('curation set should have been deleted')
+          },
+          (): void => undefined,
+        )
     }, 30_000)
 
     it('performs a tenant-scoped multi-search (per-search errors stay inside results)', async () => {

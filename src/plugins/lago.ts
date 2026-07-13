@@ -1,4 +1,4 @@
-import type { LagoWebhookPayload } from 'lago-javascript-client'
+import type { LagoWebhookPayload, WalletObject } from 'lago-javascript-client'
 import type { CollectionAfterChangeHook, Config, Endpoint, PayloadRequest, Plugin } from 'payload'
 
 import { isSuperAdmin } from '@/access/isSuperAdmin'
@@ -8,11 +8,14 @@ import {
   toInvoiceDTO,
   toPlanDTO,
   toUsageDTO,
+  toWalletDTO,
+  toWalletTransactionDTO,
   flattenEntitlements,
 } from '@/lib/billing/dto'
 import { clearEntitlementsCache } from '@/lib/billing/entitlements'
 import { emitUsageEvent, getLagoClient } from '@/lib/billing/usage'
 import { getPrincipalTenantIDs } from '@/lib/principal'
+import { getUserTenantIDs } from '@/utilities/getUserTenantIDs'
 
 import type { BillingStatus, EntitlementsRecord, PlanDTO, TenantBillingMirror } from '@/lib/billing/dto'
 
@@ -46,10 +49,21 @@ export type LagoPluginOptions = {
   webhookIssuer?: string
 }
 
-/** user must be super-admin or belong to the tenant they are asking about */
+/** user must be super-admin or belong to the tenant they are asking about (read) */
 const canAccessTenant = (user: unknown, tenantID: number | string): boolean => {
   if (isSuperAdmin(user)) return true
   return getPrincipalTenantIDs(user).some((id) => String(id) === String(tenantID))
+}
+
+/**
+ * Mutating billing actions (top-up, subscribe, cancel) require a tenant-admin
+ * of the tenant, or a super-admin. Api-key principals carry no `tenants`
+ * membership, so getUserTenantIDs returns [] for them — they are denied here
+ * by design (billing changes are a human-admin action, not a service action).
+ */
+const canAdminTenant = (user: unknown, tenantID: number | string): boolean => {
+  if (isSuperAdmin(user)) return true
+  return getUserTenantIDs(user, 'tenant-admin').some((id) => String(id) === String(tenantID))
 }
 
 const resolveIssuer = (opts: LagoPluginOptions): string => {
@@ -469,6 +483,31 @@ const syncTenantToLago =
 const PLANS_CACHE_TTL_MS = 60_000
 let plansCache: { expiresAt: number; value: PlanDTO[] } | null = null
 
+/**
+ * The tenant's prepaid wallet. Prefers the first `active` wallet, falling back
+ * to the newest of any status. Returns null when the tenant has no wallet.
+ */
+const findActiveWallet = async (
+  opts: LagoPluginOptions,
+  tenant: string,
+): Promise<null | WalletObject> => {
+  const client = await getLagoClient(opts)
+  const { data } = await client.wallets.findAllWallets({
+    external_customer_id: tenant,
+    per_page: 50,
+  })
+  const wallets = data.wallets ?? []
+  return wallets.find((w) => w.status === 'active') ?? wallets[0] ?? null
+}
+
+/** Only expose a payment URL that is a provider (Stripe) surface, never the
+ *  billing backend's own domain — belt-and-braces white-labeling. */
+const isSafeCheckoutUrl = (url: unknown): url is string =>
+  typeof url === 'string' && url.length > 0 && !/lago|getlago/i.test(url)
+
+/** Safe filename token for Content-Disposition (invoice ids are numeric/slug). */
+const safeFilenameToken = (value: string): string => value.replace(/[^\w.-]/g, '_').slice(0, 64)
+
 export const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
   {
     // Plans/tariffs — read live from the billing backend, mapped to
@@ -580,7 +619,8 @@ export const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
           external_customer_id: String(tenant),
           per_page: 50,
         })
-        const invoices = (data.invoices ?? []).map(toInvoiceDTO)
+        // Pass tenant so each DTO carries a downloadUrl to OUR proxy endpoint
+        const invoices = (data.invoices ?? []).map((invoice) => toInvoiceDTO(invoice, tenant))
         return Response.json({ invoices })
       } catch (err) {
         req.payload.logger.error({ err, msg: 'billing invoices fetch failed' })
@@ -589,6 +629,261 @@ export const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
     },
     method: 'get',
     path: '/billing/invoices',
+  },
+  {
+    // Invoice PDF proxy — streams the document from the platform origin so the
+    // backend `file_url` never reaches the browser. Read-scoped: own tenant.
+    handler: async (req) => {
+      if (!req.user || !isApiKeyPrincipalValid(req.user)) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const tenant = req.query?.tenant as string | undefined
+      if (!tenant) return Response.json({ error: 'tenant query param required' }, { status: 400 })
+      if (!canAccessTenant(req.user, tenant)) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      const invoiceId = req.routeParams?.id
+      if (typeof invoiceId !== 'string' || invoiceId.length === 0) {
+        return Response.json({ error: 'Not found' }, { status: 404 })
+      }
+      try {
+        const client = await getLagoClient(opts)
+        // Resolve the invoice WITHIN this tenant's invoices only — this both
+        // maps our public id back to the backend record AND enforces ownership.
+        const { data } = await client.invoices.findAllInvoices({
+          external_customer_id: String(tenant),
+          per_page: 100,
+        })
+        const match = (data.invoices ?? []).find(
+          (invoice) => toInvoiceDTO(invoice, tenant).id === invoiceId,
+        )
+        if (!match) return Response.json({ error: 'Not found' }, { status: 404 })
+
+        // Prefer a freshly generated file_url; fall back to the listed one.
+        let fileUrl: string | undefined = match.file_url
+        try {
+          const { data: full } = await client.invoices.downloadInvoice(match.lago_id)
+          fileUrl = full.invoice?.file_url ?? fileUrl
+        } catch {
+          // generation endpoint unavailable — use the listed file_url
+        }
+        if (!fileUrl) return Response.json({ error: 'Not found' }, { status: 404 })
+
+        const pdf = await fetch(fileUrl)
+        if (!pdf.ok || !pdf.body) {
+          return Response.json({ error: 'Not found' }, { status: 404 })
+        }
+        return new Response(pdf.body, {
+          headers: {
+            'cache-control': 'private, no-store',
+            'content-disposition': `inline; filename="invoice-${safeFilenameToken(invoiceId)}.pdf"`,
+            'content-type': 'application/pdf',
+          },
+        })
+      } catch (err) {
+        req.payload.logger.error({ err, msg: 'billing invoice download failed' })
+        return Response.json({ error: 'Billing service unavailable' }, { status: 502 })
+      }
+    },
+    method: 'get',
+    path: '/billing/invoices/:id/download',
+  },
+  {
+    // Prepaid wallet snapshot — own tenant. null when the tenant has no wallet.
+    handler: async (req) => {
+      if (!req.user || !isApiKeyPrincipalValid(req.user)) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const tenant = req.query?.tenant as string | undefined
+      if (!tenant) return Response.json({ error: 'tenant query param required' }, { status: 400 })
+      if (!canAccessTenant(req.user, tenant)) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      try {
+        const wallet = await findActiveWallet(opts, String(tenant))
+        return Response.json({ wallet: wallet ? toWalletDTO(wallet) : null })
+      } catch (err) {
+        req.payload.logger.error({ err, msg: 'billing wallet fetch failed' })
+        return Response.json({ error: 'Billing service unavailable' }, { status: 502 })
+      }
+    },
+    method: 'get',
+    path: '/billing/wallet',
+  },
+  {
+    // Wallet ledger — own tenant. Empty list when there is no wallet.
+    handler: async (req) => {
+      if (!req.user || !isApiKeyPrincipalValid(req.user)) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const tenant = req.query?.tenant as string | undefined
+      if (!tenant) return Response.json({ error: 'tenant query param required' }, { status: 400 })
+      if (!canAccessTenant(req.user, tenant)) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      try {
+        const wallet = await findActiveWallet(opts, String(tenant))
+        if (!wallet) return Response.json({ transactions: [] })
+        const client = await getLagoClient(opts)
+        const { data } = await client.wallets.findAllWalletTransactions(wallet.lago_id, {
+          per_page: 50,
+        })
+        const transactions = (data.wallet_transactions ?? []).map(toWalletTransactionDTO)
+        return Response.json({ transactions })
+      } catch (err) {
+        req.payload.logger.error({ err, msg: 'billing wallet transactions fetch failed' })
+        return Response.json({ error: 'Billing service unavailable' }, { status: 502 })
+      }
+    },
+    method: 'get',
+    path: '/billing/wallet/transactions',
+  },
+  {
+    // Wallet top-up — tenant-admin only. Converts the requested cents into
+    // prepaid credits (via the wallet rate), then returns a provider checkout
+    // URL when payment is required, or { accepted: true } otherwise.
+    handler: async (req) => {
+      if (!req.user || !isApiKeyPrincipalValid(req.user)) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const body = req.json ? await req.json() : {}
+      const { amountCents, tenant } = body as { amountCents?: unknown; tenant?: number | string }
+      if (!tenant) return Response.json({ error: 'tenant is required' }, { status: 400 })
+      if (typeof amountCents !== 'number' || !Number.isFinite(amountCents) || amountCents <= 0) {
+        return Response.json({ error: 'amountCents must be a positive number' }, { status: 400 })
+      }
+      if (!canAdminTenant(req.user, tenant)) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      try {
+        const wallet = await findActiveWallet(opts, String(tenant))
+        if (!wallet) return Response.json({ error: 'No wallet available' }, { status: 404 })
+
+        const rate = Number(wallet.rate_amount) || 1
+        const paidCredits = amountCents / 100 / rate
+        const client = await getLagoClient(opts)
+        const { data } = await client.walletTransactions.createWalletTransaction({
+          wallet_transaction: {
+            paid_credits: String(paidCredits),
+            wallet_id: wallet.lago_id,
+          },
+        })
+
+        const transactionId = data.wallet_transactions?.[0]?.lago_id
+        if (transactionId) {
+          try {
+            const { data: payment } =
+              await client.walletTransactions.walletTransactionPaymentUrl(transactionId)
+            const url = payment.wallet_transaction_payment_details?.payment_url
+            if (isSafeCheckoutUrl(url)) return Response.json({ checkoutUrl: url })
+          } catch {
+            // no payment provider linked — the top-up was still recorded
+          }
+        }
+        return Response.json({ accepted: true })
+      } catch (err) {
+        req.payload.logger.error({ err, msg: 'billing wallet top-up failed' })
+        return Response.json({ error: 'Billing service unavailable' }, { status: 502 })
+      }
+    },
+    method: 'post',
+    path: '/billing/wallet/topup',
+  },
+  {
+    // Subscribe the tenant to a plan — tenant-admin only. Idempotent: the
+    // deterministic external_id upserts, so re-posting the same plan is a no-op.
+    handler: async (req) => {
+      if (!req.user || !isApiKeyPrincipalValid(req.user)) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const body = req.json ? await req.json() : {}
+      const { planCode, tenant } = body as { planCode?: unknown; tenant?: number | string }
+      if (!tenant || typeof planCode !== 'string' || planCode.length === 0) {
+        return Response.json({ error: 'tenant and planCode are required' }, { status: 400 })
+      }
+      if (!canAdminTenant(req.user, tenant)) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      try {
+        const client = await getLagoClient(opts)
+        const { data } = await client.subscriptions.createSubscription({
+          subscription: {
+            external_customer_id: String(tenant),
+            external_id: `${tenant}:${planCode}`,
+            plan_code: planCode,
+          },
+        })
+        const subscription = data.subscription
+        // Optimistically mirror the new plan onto the tenant so the UI reflects
+        // it immediately — the webhook (authoritative) reconciles it later, but
+        // must not be a hard dependency for the customer to see their plan.
+        const sub = subscription as null | (SubscriptionLike & { trial_ended_at?: null | string })
+        await updateTenantBilling(
+          req,
+          String(tenant),
+          {
+            entitlements: sub
+              ? await resolveSubscriptionEntitlements(req, opts, {
+                  external_customer_id: String(tenant),
+                  external_id: `${tenant}:${planCode}`,
+                  plan: sub.plan,
+                  plan_code: planCode,
+                })
+              : {},
+            plan: planCode,
+            planName: sub?.plan?.name ?? planCode,
+            status: sub?.trial_ended_at ? 'trialing' : 'active',
+            trialEndsAt: sub?.trial_ended_at ?? null,
+          },
+          'subscribe',
+        ).catch((err) =>
+          req.payload.logger.warn({ err, msg: 'subscribe: optimistic mirror update failed' }),
+        )
+        return Response.json({
+          checkoutUrl: null,
+          subscription: {
+            code: subscription?.plan_code ?? planCode,
+            status: subscription?.status ?? 'active',
+          },
+        })
+      } catch (err) {
+        req.payload.logger.error({ err, msg: 'billing subscribe failed' })
+        return Response.json({ error: 'Billing service unavailable' }, { status: 502 })
+      }
+    },
+    method: 'post',
+    path: '/billing/subscribe',
+  },
+  {
+    // Cancel — tenant-admin only. Terminates every active subscription for the
+    // tenant. Idempotent: succeeds with { canceled: true } even if none exist.
+    handler: async (req) => {
+      if (!req.user || !isApiKeyPrincipalValid(req.user)) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const body = req.json ? await req.json() : {}
+      const { tenant } = body as { tenant?: number | string }
+      if (!tenant) return Response.json({ error: 'tenant is required' }, { status: 400 })
+      if (!canAdminTenant(req.user, tenant)) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      try {
+        const client = await getLagoClient(opts)
+        // Default listing returns only active subscriptions
+        const { data } = await client.subscriptions.findAllSubscriptions({
+          external_customer_id: String(tenant),
+        })
+        for (const subscription of data.subscriptions ?? []) {
+          await client.subscriptions.destroySubscription(subscription.external_id)
+        }
+        return Response.json({ canceled: true })
+      } catch (err) {
+        req.payload.logger.error({ err, msg: 'billing cancel failed' })
+        return Response.json({ error: 'Billing service unavailable' }, { status: 502 })
+      }
+    },
+    method: 'post',
+    path: '/billing/cancel',
   },
   {
     // Usage metering — idempotent by deterministic transaction id.

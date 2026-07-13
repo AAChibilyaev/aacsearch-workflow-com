@@ -19,10 +19,13 @@ import {
   isSearchLocale,
   mergeSearchTenantFilter,
   sanitizeSearchResponse,
-  synonymRowsToItems,
-  tenantSynonymSetName,
-  type SynonymRow,
 } from '@/lib/search/client'
+import {
+  type TenantSearchSettings,
+  syncTenantSearchSettings,
+  tenantNoHitsQueriesCollection,
+  tenantPopularQueriesCollection,
+} from '@/lib/search/settingsSync'
 
 /**
  * AACSearch public search gateway — the API surface @aacsearch/sdk talks to.
@@ -34,9 +37,12 @@ import {
  *  - POST /v1/keys/scoped   SDK-compatible scoped-key issuance (client-sent
  *                           search_key is ignored; env parent key is used)
  *  - GET  /v1/health        liveness probe
+ *  - GET  /search/analytics tenant popular / no-hit queries (neutral, empty
+ *                           when analytics is disabled or unavailable)
  *
- * Also injects an afterChange hook on tenant-settings that mirrors the
- * `synonyms` rows into the engine synonym set `tenant_<id>`.
+ * Also injects an afterChange hook on tenant-settings that pushes the tenant's
+ * FULL search configuration (synonyms, curation, stopwords, preset, analytics
+ * rules) to the engine via `syncTenantSearchSettings`.
  *
  * Pure config transformer; disabled (config returned unchanged) when the
  * engine host env is absent. The plugin owns no DB-persisted schema, so the
@@ -445,51 +451,148 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
         }
       },
     },
+    {
+      // Tenant search analytics — reads the tenant's popular / no-hit query
+      // destination collections. Neutral, white-label result; returns empty
+      // arrays (never an error) when analytics is disabled or unavailable so
+      // the panel can render a clean "no data yet" state.
+      path: '/search/analytics',
+      method: 'get',
+      handler: async (req) => {
+        if (!req.user) return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+        // useAPIKey auth ignores our revokedAt/expiresAt — enforce it here.
+        if (!isApiKeyPrincipalValid(req.user)) {
+          return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+        }
+        const tenant = typeof req.query?.tenant === 'string' ? req.query.tenant : ''
+        if (!tenant) return Response.json(GATEWAY_ERRORS.tenantRequired, { status: 400 })
+        if (!canAccessTenant(req.user, tenant)) {
+          return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
+        }
+        if (!hasScope(req.user, 'search:read')) {
+          return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
+        }
+
+        const emptyAnalytics = () => ({
+          noHitsQueries: [] as AnalyticsQuery[],
+          popularQueries: [] as AnalyticsQuery[],
+          totalSearches: 0,
+          updatedAt: new Date().toISOString(),
+        })
+
+        try {
+          const client = await getAdminSearchClient()
+          const readQueries = async (collectionName: string): Promise<AnalyticsQuery[]> => {
+            try {
+              const res = await client
+                .collections<{ count: number; q: string }>(collectionName)
+                .documents()
+                .search({ per_page: 20, q: '*', query_by: 'q', sort_by: 'count:desc' })
+              return (res.hits ?? [])
+                .map((hit) => ({
+                  count: Number(hit.document.count ?? 0),
+                  q: String(hit.document.q ?? ''),
+                }))
+                .filter((row) => row.q.length > 0)
+            } catch {
+              // destination collection missing (analytics never enabled) ⇒ empty
+              return []
+            }
+          }
+
+          const [popularQueries, noHitsQueries] = await Promise.all([
+            readQueries(tenantPopularQueriesCollection(tenant)),
+            readQueries(tenantNoHitsQueriesCollection(tenant)),
+          ])
+          const totalSearches = popularQueries.reduce(
+            (sum, row) => sum + (Number.isFinite(row.count) ? row.count : 0),
+            0,
+          )
+          return Response.json({
+            noHitsQueries,
+            popularQueries,
+            totalSearches,
+            updatedAt: new Date().toISOString(),
+          })
+        } catch (err) {
+          req.payload.logger.error({ err, msg: 'search analytics read failed' })
+          // best-effort: never surface an engine failure to the customer
+          return Response.json(emptyAnalytics())
+        }
+      },
+    },
   ]
 }
 
-type TenantSettingsDoc = {
-  synonyms?: SynonymRow[] | null
+/** One aggregated analytics query row in the neutral analytics DTO. */
+type AnalyticsQuery = { count: number; q: string }
+
+type TenantSettingsDoc = TenantSearchSettings & {
   tenant?: { id: number | string } | number | string | null
 }
 
 /**
- * Mirror tenant-settings synonym rows into the engine synonym set
- * `tenant_<id>` whenever they change. Failures only log — search
- * configuration must never block a settings save.
+ * Fields whose change should trigger a re-sync to the engine. An edit to an
+ * unrelated field (e.g. `brandColor`) leaves the signature unchanged and is a
+ * no-op, so the engine is never touched needlessly.
  */
-const syncTenantSynonyms = (): CollectionAfterChangeHook =>
+const SYNC_FIELDS = [
+  'analytics',
+  'curation',
+  'facetFields',
+  'ranking',
+  'searchableFields',
+  'searchFields',
+  'semantic',
+  'stopwords',
+  'synonyms',
+  'typoTolerance',
+] as const
+
+/** Stable signature of ONLY the sync-relevant fields. */
+const syncSignature = (doc: unknown): string => {
+  if (!doc || typeof doc !== 'object') return ''
+  const record = doc as Record<string, unknown>
+  const picked: Record<string, unknown> = {}
+  for (const key of SYNC_FIELDS) picked[key] = record[key] ?? null
+  return JSON.stringify(picked)
+}
+
+const extractTenantId = (value: unknown): null | number | string => {
+  if (value === null || value === undefined || value === '') return null
+  if (typeof value === 'string' || typeof value === 'number') return value
+  if (typeof value === 'object' && 'id' in value) {
+    const id = (value as { id: unknown }).id
+    return typeof id === 'string' || typeof id === 'number' ? id : null
+  }
+  return null
+}
+
+/**
+ * Push a tenant's FULL search configuration to the engine whenever the
+ * tenant-settings document changes. Delegates to `syncTenantSearchSettings`,
+ * which upserts every per-tenant engine object (synonym set, curation set,
+ * stopword set, preset, analytics rules) idempotently and NEVER throws — search
+ * configuration must never block a settings save. Guarded with `req.context`;
+ * the sync only writes to the engine (never back to Payload) so it cannot loop,
+ * and the guard is belt-and-braces.
+ */
+const syncTenantSettingsHook = (): CollectionAfterChangeHook =>
   async ({ doc, previousDoc, req }) => {
     try {
-      // re-entrancy guard (req.context) so a same-request update can't loop
       const context = req.context as Record<string, unknown>
-      if (context.aacSynonymSyncing) return doc
+      if (context.aacSearchSettingsSyncing) return doc
+      if (syncSignature(previousDoc) === syncSignature(doc)) return doc
 
       const settings = doc as TenantSettingsDoc
-      const before = JSON.stringify((previousDoc as TenantSettingsDoc | undefined)?.synonyms ?? null)
-      const after = JSON.stringify(settings.synonyms ?? null)
-      if (before === after) return doc
+      const tenantId = extractTenantId(settings.tenant)
+      if (tenantId === null) return doc
 
-      const tenantRef = settings.tenant
-      const tenantId =
-        tenantRef && typeof tenantRef === 'object' ? tenantRef.id : (tenantRef ?? undefined)
-      if (tenantId === undefined || tenantId === null || tenantId === '') return doc
-
-      context.aacSynonymSyncing = true
-      const items = synonymRowsToItems(settings.synonyms)
+      context.aacSearchSettingsSyncing = true
       const client = await getAdminSearchClient()
-      const setName = tenantSynonymSetName(String(tenantId))
-      if (items.length === 0) {
-        // all synonyms removed — drop the set (missing set is fine)
-        await client
-          .synonymSets(setName)
-          .delete()
-          .catch(() => {/* ignore */})
-      } else {
-        await client.synonymSets(setName).upsert({ items })
-      }
+      await syncTenantSearchSettings(client, tenantId, settings, { logger: req.payload.logger })
     } catch (err) {
-      req.payload.logger.error({ err, msg: 'tenant synonym sync failed' })
+      req.payload.logger.error({ err, msg: 'tenant search settings sync failed' })
     }
     return doc
   }
@@ -507,7 +610,7 @@ export const searchGatewayPlugin =
               ...collection,
               hooks: {
                 ...collection.hooks,
-                afterChange: [...(collection.hooks?.afterChange ?? []), syncTenantSynonyms()],
+                afterChange: [...(collection.hooks?.afterChange ?? []), syncTenantSettingsHook()],
               },
             }
           : collection,

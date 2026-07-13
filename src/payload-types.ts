@@ -1496,25 +1496,154 @@ export interface Integration {
 export interface TenantSetting {
   id: number;
   tenant?: (number | null) | Tenant;
+  /**
+   * Fields users can search, most important first. Weight boosts a field: a higher number makes matches in that field rank higher.
+   */
+  searchableFields?:
+    | {
+        field: string;
+        /**
+         * Higher = more important (default 1).
+         */
+        weight?: number | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Legacy simple field list. Prefer "Searchable fields" above; this is used only when that is empty.
+   */
   searchFields?:
     | {
         field: string;
         id?: string | null;
       }[]
     | null;
+  /**
+   * Fields shown as filters (facets) next to results, e.g. brand or category.
+   */
   facetFields?:
     | {
         field: string;
         id?: string | null;
       }[]
     | null;
+  /**
+   * How forgiving search is of spelling mistakes.
+   */
+  typoTolerance?: {
+    /**
+     * Maximum typos allowed per word (0–2). Default 2.
+     */
+    numTypos?: number | null;
+    /**
+     * A word must be at least this long before 1 typo is allowed. Default 4.
+     */
+    minLen1Typo?: number | null;
+    /**
+     * A word must be at least this long before 2 typos are allowed. Default 7.
+     */
+    minLen2Typo?: number | null;
+    /**
+     * Only look for typo matches when a search returns fewer than this many results. Default 1.
+     */
+    typoTokensThreshold?: number | null;
+  };
+  /**
+   * How results are ordered.
+   */
+  ranking?: {
+    /**
+     * Default order for results, e.g. "popularity:desc" or "price:asc". Leave empty to sort purely by relevance.
+     */
+    defaultSortingField?: string | null;
+    /**
+     * Extra tie-breaker order applied when the default sort is equal, e.g. "rating:desc".
+     */
+    pinnedTieBreakers?: string | null;
+  };
+  /**
+   * AI-powered search that understands meaning, not just keywords.
+   */
+  semantic?: {
+    /**
+     * Also match results by meaning, blended with keyword matches.
+     */
+    enableSemanticSearch?: boolean | null;
+    /**
+     * Which AI model builds the meaning index. Compact is fastest; high-quality is more accurate.
+     */
+    embeddingModel?: ('ts/e5-small' | 'ts/all-MiniLM-L12-v2' | 'openai/text-embedding-3-small') | null;
+    /**
+     * Balance between meaning and keywords: 0 = keywords only, 1 = meaning only. Default 0.3.
+     */
+    hybridAlpha?: number | null;
+  };
+  /**
+   * Hand-tune results for specific searches: pin some results to the top or hide others.
+   */
+  curation?:
+    | {
+        /**
+         * The search term this rule applies to, e.g. "shoes". Leave empty to trigger by filter instead.
+         */
+        query?: string | null;
+        /**
+         * Whether the search term must match exactly or just contain the words.
+         */
+        match?: ('exact' | 'contains') | null;
+        /**
+         * Result IDs to pin to the top, in order, comma-separated.
+         */
+        pinnedDocIds?: string | null;
+        /**
+         * Result IDs to hide, comma-separated.
+         */
+        hiddenDocIds?: string | null;
+        /**
+         * Optional filter, e.g. "in_stock:=true". Used as the applied filter for a query rule, or as the trigger when no search term is set.
+         */
+        filterBy?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Common words to ignore while searching, e.g. "the", "a", "of".
+   */
+  stopwords?:
+    | {
+        word: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Words treated as equivalent. Leave "Root" empty for two-way synonyms; set it for one-way (root → synonyms).
+   */
   synonyms?:
     | {
-        root: string;
+        root?: string | null;
+        /**
+         * Comma-separated equivalent words, e.g. "couch, sofa, settee".
+         */
         synonymList: string;
         id?: string | null;
       }[]
     | null;
+  /**
+   * Learn from what your users search for.
+   */
+  analytics?: {
+    /**
+     * Track popular searches to power suggestions and reports.
+     */
+    enableQuerySuggestions?: boolean | null;
+    /**
+     * Record searches that returned no results, so you can fix gaps in your content.
+     */
+    enableNoHitsTracking?: boolean | null;
+  };
+  /**
+   * Accent color for your search widget, e.g. "#2563eb".
+   */
   brandColor?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -3396,6 +3525,13 @@ export interface CollectionDefinitionsSelect<T extends boolean = true> {
  */
 export interface TenantSettingsSelect<T extends boolean = true> {
   tenant?: T;
+  searchableFields?:
+    | T
+    | {
+        field?: T;
+        weight?: T;
+        id?: T;
+      };
   searchFields?:
     | T
     | {
@@ -3408,12 +3544,55 @@ export interface TenantSettingsSelect<T extends boolean = true> {
         field?: T;
         id?: T;
       };
+  typoTolerance?:
+    | T
+    | {
+        numTypos?: T;
+        minLen1Typo?: T;
+        minLen2Typo?: T;
+        typoTokensThreshold?: T;
+      };
+  ranking?:
+    | T
+    | {
+        defaultSortingField?: T;
+        pinnedTieBreakers?: T;
+      };
+  semantic?:
+    | T
+    | {
+        enableSemanticSearch?: T;
+        embeddingModel?: T;
+        hybridAlpha?: T;
+      };
+  curation?:
+    | T
+    | {
+        query?: T;
+        match?: T;
+        pinnedDocIds?: T;
+        hiddenDocIds?: T;
+        filterBy?: T;
+        id?: T;
+      };
+  stopwords?:
+    | T
+    | {
+        word?: T;
+        id?: T;
+      };
   synonyms?:
     | T
     | {
         root?: T;
         synonymList?: T;
         id?: T;
+      };
+  analytics?:
+    | T
+    | {
+        enableQuerySuggestions?: T;
+        enableNoHitsTracking?: T;
       };
   brandColor?: T;
   updatedAt?: T;

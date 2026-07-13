@@ -56,11 +56,7 @@ class ApiCall
     }
 
     /**
-     * Route requests: PayloadCMS API paths go direct; Typesense paths via /v1/proxy.
-     * PayloadCMS paths start with /integrations/, /billing/, /v1/, /api/ or are collection paths.
-     * Typesense paths: /collections, /synonyms, /keys, /overrides, /presets, /analytics,
-     * /conversations, /nl_search, /stemming, /stopwords, /health, /metrics.json,
-     * /stats.json, /debug, /operations, /multi_search.
+     * Route requests: PayloadCMS-native paths go direct; AACSearch Engine paths via /v1/proxy.
      */
     private function proxy(string $method, string $path, array $query = [], mixed $body = null): mixed
     {
@@ -74,7 +70,7 @@ class ApiCall
             return $this->directRequest($method, $path, $query, $body);
         }
 
-        // Typesense engine paths — through /v1/proxy.
+        // AACSearch Engine paths — through /v1/proxy.
         // Tenant is auto-detected server-side from the API key.
         return $this->directRequest('POST', '/v1/proxy', [], [
             'method' => $method,

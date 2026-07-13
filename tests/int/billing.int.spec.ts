@@ -1,5 +1,10 @@
 // @vitest-environment node
-import type { CustomerUsageObject, PlanObject } from 'lago-javascript-client'
+import type {
+  CustomerUsageObject,
+  PlanObject,
+  WalletObject,
+  WalletTransactionObject,
+} from 'lago-javascript-client'
 import type { CollectionBeforeChangeHook, Config } from 'payload'
 
 import { createLocalReq, getPayload, Payload } from 'payload'
@@ -13,8 +18,11 @@ import {
   flattenEntitlements,
   normalizeBillingStatus,
   toBillingSummaryDTO,
+  toInvoiceDTO,
   toPlanDTO,
   toUsageDTO,
+  toWalletDTO,
+  toWalletTransactionDTO,
 } from '@/lib/billing/dto'
 import {
   clearEntitlementsCache,
@@ -100,13 +108,52 @@ describe('billing DTO mappers', () => {
     const dto = toPlanDTO(backendPlan)
     expect(dto).toEqual({
       amountCents: 4900,
+      charges: [],
       code: 'pro',
       currency: 'USD',
       description: 'For growing teams',
       entitlements: { ai_search: true, max_documents: 100 },
       interval: 'monthly',
       name: 'Pro',
+      trialPeriodDays: 0,
     })
+  })
+
+  it('maps plan charges + trial period, dropping backend charge ids', () => {
+    const planWithCharges = {
+      ...(backendPlan as unknown as Record<string, unknown>),
+      charges: [
+        {
+          billable_metric_code: 'search_requests',
+          charge_model: 'package',
+          code: 'search_requests_charge',
+          created_at: '2026-01-01T00:00:00Z',
+          invoice_display_name: 'Search requests',
+          lago_billable_metric_id: '1a901a90-1a90-1a90-1a90-1a901a901a95',
+          lago_id: '1a901a90-1a90-1a90-1a90-1a901a901a94',
+        },
+        {
+          billable_metric_code: 'ai_tokens',
+          charge_model: 'standard',
+          code: null,
+          created_at: '2026-01-01T00:00:00Z',
+          invoice_display_name: null,
+          lago_billable_metric_id: '1a901a90-1a90-1a90-1a90-1a901a901a97',
+          lago_id: '1a901a90-1a90-1a90-1a90-1a901a901a96',
+        },
+      ],
+      trial_period: 14,
+    } as unknown as PlanObject
+
+    const dto = toPlanDTO(planWithCharges)
+    expect(dto.trialPeriodDays).toBe(14)
+    expect(dto.charges).toEqual([
+      { code: 'search_requests_charge', name: 'Search requests', pricingType: 'package', unit: 'search_requests' },
+      { code: 'ai_tokens', name: 'ai_tokens', pricingType: 'standard', unit: 'ai_tokens' },
+    ])
+    // The backend charge/metric uuids must not survive the mapping
+    expect(JSON.stringify(dto)).not.toMatch(VENDOR_RE)
+    expect(JSON.stringify(dto)).not.toContain('1a901a90-1a90-1a90-1a90-1a901a901a94')
   })
 
   it('maps backend usage to the UsageDTO contract', () => {
@@ -159,6 +206,90 @@ describe('billing DTO mappers', () => {
     )
     expect(JSON.stringify(plans)).not.toMatch(VENDOR_RE)
     expect(JSON.stringify(summary)).not.toMatch(VENDOR_RE)
+  })
+
+  it('maps a backend wallet to the WalletDTO contract (credits numeric, no ids)', () => {
+    const backendWallet = {
+      balance_cents: 5000,
+      created_at: '2026-07-01T00:00:00Z',
+      credits_balance: '50.0',
+      currency: 'USD',
+      external_customer_id: '1',
+      lago_customer_id: '1a901a90-1a90-1a90-1a90-1a901a901a90',
+      lago_id: '1a901a90-1a90-1a90-1a90-1a901a901a91',
+      name: 'Prepaid',
+      ongoing_balance_cents: 4200,
+      rate_amount: '1.0',
+      status: 'active',
+    } as unknown as WalletObject
+
+    const dto = toWalletDTO(backendWallet)
+    expect(dto).toEqual({
+      balanceCents: 5000,
+      creditsBalance: 50,
+      currency: 'USD',
+      name: 'Prepaid',
+      status: 'active',
+    })
+    expect(JSON.stringify(dto)).not.toMatch(VENDOR_RE)
+    expect(JSON.stringify(dto)).not.toContain('1a901a90-1a90-1a90-1a90-1a901a901a90')
+  })
+
+  it('maps a wallet transaction to the WalletTransactionDTO contract', () => {
+    const backendTx = {
+      amount: '20.0',
+      created_at: '2026-07-05T10:00:00Z',
+      credit_amount: '20.0',
+      lago_id: '1a901a90-1a90-1a90-1a90-1a901a901a92',
+      lago_invoice_id: '1a901a90-1a90-1a90-1a90-1a901a901a93',
+      lago_wallet_id: '1a901a90-1a90-1a90-1a90-1a901a901a94',
+      settled_at: '2026-07-05T10:01:00Z',
+      status: 'settled',
+      transaction_status: 'purchased',
+      transaction_type: 'inbound',
+    } as unknown as WalletTransactionObject
+
+    const dto = toWalletTransactionDTO(backendTx)
+    expect(dto).toEqual({
+      amountCents: 2000,
+      createdAt: '2026-07-05T10:00:00Z',
+      credits: 20,
+      id: '1a901a90-1a90-1a90-1a90-1a901a901a92',
+      settledAt: '2026-07-05T10:01:00Z',
+      status: 'settled',
+      type: 'inbound',
+    })
+    // Only the neutral transaction uuid survives — the wallet/invoice ids drop
+    expect(JSON.stringify(dto)).not.toMatch(VENDOR_RE)
+    expect(JSON.stringify(dto)).not.toContain('1a901a901a94')
+    expect(JSON.stringify(dto)).not.toContain('1a901a901a93')
+  })
+
+  it('invoice DTO carries a proxied downloadUrl (never a vendor file_url)', () => {
+    const backendInvoice = {
+      currency: 'USD',
+      external_customer_id: '7',
+      file_url: 'https://api.getlago.com/invoices/secret.pdf',
+      issuing_date: '2026-07-01',
+      lago_id: '1a901a90-1a90-1a90-1a90-1a901a901a90',
+      number: 'ACME-001-002',
+      payment_status: 'succeeded',
+      sequential_id: 42,
+      status: 'finalized',
+      total_amount_cents: 4900,
+    }
+
+    const dto = toInvoiceDTO(backendInvoice, '7')
+    expect(dto.id).toBe('42')
+    expect(dto.downloadUrl).toBe('/api/billing/invoices/42/download?tenant=7')
+    expect(dto.issuingDate).toBe('2026-07-01')
+    expect(dto.issuedAt).toBe('2026-07-01')
+    expect(JSON.stringify(dto)).not.toMatch(VENDOR_RE)
+    // The backend file_url must never appear in the DTO
+    expect(JSON.stringify(dto)).not.toContain('secret.pdf')
+
+    // Without a tenant the mapper stays pure and emits no download link
+    expect(toInvoiceDTO(backendInvoice).downloadUrl).toBe('')
   })
 
   it('flattens unwrapped subscription entitlements (overrides win via value)', () => {
@@ -412,12 +543,14 @@ describe('billing endpoint auth guards', () => {
   const fakeReq = (over: {
     body?: Record<string, unknown>
     query?: Record<string, unknown>
+    routeParams?: Record<string, unknown>
     user: unknown
   }): PayloadRequest =>
     ({
       json: async () => over.body ?? {},
       payload: { logger: loggerStub },
       query: over.query ?? {},
+      routeParams: over.routeParams ?? {},
       user: over.user,
     }) as unknown as PayloadRequest
 
@@ -477,6 +610,60 @@ describe('billing endpoint auth guards', () => {
       user: revokedApiKey,
     })
     expect(summary.status).toBe(401)
+  })
+
+  // --- Mutating billing actions: tenant-admin (or super-admin) only ---
+
+  const mutations: Array<{ body: Record<string, unknown>; path: string }> = [
+    { body: { amountCents: 1000, tenant: '1' }, path: '/billing/wallet/topup' },
+    { body: { planCode: 'pro', tenant: '1' }, path: '/billing/subscribe' },
+    { body: { tenant: '1' }, path: '/billing/cancel' },
+  ]
+
+  for (const { body, path } of mutations) {
+    it(`${path} rejects an invalid (revoked) api key (401)`, async () => {
+      const res = await call(path, { body, user: revokedApiKey })
+      expect(res.status).toBe(401)
+    })
+
+    it(`${path} denies a non-tenant-admin user (403)`, async () => {
+      const res = await call(path, { body, user: tenantUser })
+      expect(res.status).toBe(403)
+    })
+
+    it(`${path} denies a service api key — mutations are a human-admin action (403)`, async () => {
+      const res = await call(path, { body, user: validApiKey })
+      expect(res.status).toBe(403)
+    })
+  }
+
+  it('/billing/wallet/topup rejects a non-positive amount (400)', async () => {
+    const res = await call('/billing/wallet/topup', {
+      body: { amountCents: 0, tenant: '1' },
+      user: superAdmin,
+    })
+    expect(res.status).toBe(400)
+  })
+
+  // --- Invoice PDF proxy: read-scoped, own tenant only ---
+
+  it('/billing/invoices/:id/download rejects an unauthenticated caller (401)', async () => {
+    const res = await call('/billing/invoices/:id/download', {
+      query: { tenant: '1' },
+      routeParams: { id: '42' },
+      user: null,
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('/billing/invoices/:id/download rejects a cross-tenant api key (403)', async () => {
+    // key is scoped to tenant 1 but asks for tenant 2's invoice
+    const res = await call('/billing/invoices/:id/download', {
+      query: { tenant: '2' },
+      routeParams: { id: '42' },
+      user: validApiKey,
+    })
+    expect(res.status).toBe(403)
   })
 })
 
