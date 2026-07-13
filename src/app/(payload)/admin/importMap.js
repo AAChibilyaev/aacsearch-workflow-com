@@ -31,6 +31,7 @@ import { PreviewComponent as PreviewComponent_a8a977ebc872c5d5ea7ee689724c0860 }
 import { ExportListMenuItem as ExportListMenuItem_cdf7e044479f899a31f804427d568b36 } from '@payloadcms/plugin-import-export/rsc'
 import { ImportListMenuItem as ImportListMenuItem_cdf7e044479f899a31f804427d568b36 } from '@payloadcms/plugin-import-export/rsc'
 import { AssignTenantFieldTrigger as AssignTenantFieldTrigger_1d0591e3cf4f332c83a86da13a0de59a } from '@payloadcms/plugin-multi-tenant/client'
+import { DocumentDataField as DocumentDataField_d7853548a6a57ef05fbcbd399ba4e341 } from '../../../components/fields/DocumentDataField'
 import { TOTPField as TOTPField_4eaf6cb33cfb75be01716613e3c9a512 } from 'payload-totp/rsc'
 import { AltTextField as AltTextField_0a0a871430f540863f89f94882312cf1 } from '@jhb.software/payload-alt-text-plugin/client'
 import { BulkGenerateAltTextsButton as BulkGenerateAltTextsButton_0a0a871430f540863f89f94882312cf1 } from '@jhb.software/payload-alt-text-plugin/client'
@@ -70,9 +71,11 @@ import { InstructionsProvider as InstructionsProvider_4490b89d4413c1ffaecdacfe72
 import { TOTPProvider as TOTPProvider_4eaf6cb33cfb75be01716613e3c9a512 } from 'payload-totp/rsc'
 import { TOTPSetup as TOTPSetup_4eaf6cb33cfb75be01716613e3c9a512 } from 'payload-totp/rsc'
 import { TOTPVerify as TOTPVerify_4eaf6cb33cfb75be01716613e3c9a512 } from 'payload-totp/rsc'
+import { AiSearchView as AiSearchView_137f4c26e962ef8542c8d6826941dc59 } from '../../../components/views/AiSearch'
 import { BillingView as BillingView_e5ae7e3966f5465c4344dac4dd93dbf9 } from '../../../components/views/Billing'
 import { EngineView as EngineView_3e4c1795292b42b2063bc0fc36051845 } from '../../../components/views/Engine'
 import { IntegrationsView as IntegrationsView_9e1735bac833ebc9ae622ee38570363b } from '../../../components/views/Integrations'
+import { RelevanceView as RelevanceView_1b935389e81c6be1c3f65ee70ceddf3c } from '../../../components/views/Relevance'
 import { SearchView as SearchView_835c202eebadc702ec7d12e425f24683 } from '../../../components/views/Search'
 import { AltTextHealthWidget as AltTextHealthWidget_a35949d21b38efe8500764b5b0b3638b } from '@jhb.software/payload-alt-text-plugin/server'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
@@ -112,6 +115,7 @@ export const importMap = {
   "@payloadcms/plugin-import-export/rsc#ExportListMenuItem": ExportListMenuItem_cdf7e044479f899a31f804427d568b36,
   "@payloadcms/plugin-import-export/rsc#ImportListMenuItem": ImportListMenuItem_cdf7e044479f899a31f804427d568b36,
   "@payloadcms/plugin-multi-tenant/client#AssignTenantFieldTrigger": AssignTenantFieldTrigger_1d0591e3cf4f332c83a86da13a0de59a,
+  "/components/fields/DocumentDataField#DocumentDataField": DocumentDataField_d7853548a6a57ef05fbcbd399ba4e341,
   "payload-totp/rsc#TOTPField": TOTPField_4eaf6cb33cfb75be01716613e3c9a512,
   "@jhb.software/payload-alt-text-plugin/client#AltTextField": AltTextField_0a0a871430f540863f89f94882312cf1,
   "@jhb.software/payload-alt-text-plugin/client#BulkGenerateAltTextsButton": BulkGenerateAltTextsButton_0a0a871430f540863f89f94882312cf1,
@@ -151,9 +155,11 @@ export const importMap = {
   "payload-totp/rsc#TOTPProvider": TOTPProvider_4eaf6cb33cfb75be01716613e3c9a512,
   "payload-totp/rsc#TOTPSetup": TOTPSetup_4eaf6cb33cfb75be01716613e3c9a512,
   "payload-totp/rsc#TOTPVerify": TOTPVerify_4eaf6cb33cfb75be01716613e3c9a512,
+  "/components/views/AiSearch#AiSearchView": AiSearchView_137f4c26e962ef8542c8d6826941dc59,
   "/components/views/Billing#BillingView": BillingView_e5ae7e3966f5465c4344dac4dd93dbf9,
   "/components/views/Engine#EngineView": EngineView_3e4c1795292b42b2063bc0fc36051845,
   "/components/views/Integrations#IntegrationsView": IntegrationsView_9e1735bac833ebc9ae622ee38570363b,
+  "/components/views/Relevance#RelevanceView": RelevanceView_1b935389e81c6be1c3f65ee70ceddf3c,
   "/components/views/Search#SearchView": SearchView_835c202eebadc702ec7d12e425f24683,
   "@jhb.software/payload-alt-text-plugin/server#AltTextHealthWidget": AltTextHealthWidget_a35949d21b38efe8500764b5b0b3638b,
   "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1

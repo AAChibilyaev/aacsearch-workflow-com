@@ -171,6 +171,35 @@ const dict = {
     ru: 'Администрирование уровня платформы. Видно только супер-администраторам.',
   },
   toastDone: { en: 'Done', ru: 'Готово' },
+  analyticsName: { en: 'Name', ru: 'Название' },
+  analyticsParams: { en: 'Parameters', ru: 'Параметры' },
+  analyticsRulesEmpty: { en: 'No analytics rules yet.', ru: 'Правил аналитики пока нет.' },
+  analyticsRulesHint: {
+    en: 'Rules that turn search activity into ranking signals (e.g. popular-query boosting). Diagnostic view — delete only.',
+    ru: 'Правила, превращающие активность поиска в сигналы ранжирования (например, продвижение популярных запросов). Диагностический раздел — только удаление.',
+  },
+  analyticsRulesTitle: { en: 'Analytics rules', ru: 'Правила аналитики' },
+  analyticsType: { en: 'Type', ru: 'Тип' },
+  stemmingEmpty: { en: 'No stemming dictionaries yet.', ru: 'Словарей стемминга пока нет.' },
+  stemmingHint: {
+    en: 'Dictionaries that teach the search engine word variants (e.g. plurals, conjugations) so a search for one form also matches the others.',
+    ru: 'Словари, которые обучают поисковый движок вариантам слов (например, множественному числу, спряжениям), чтобы поиск одной формы находил и остальные.',
+  },
+  stemmingId: { en: 'Dictionary ID', ru: 'ID словаря' },
+  stemmingImport: { en: 'Import', ru: 'Импортировать' },
+  stemmingImportHint: {
+    en: 'Paste JSONL — one JSON object per line, each mapping a root word to its variants — then import it under the dictionary ID above.',
+    ru: 'Вставьте JSONL — по одному JSON-объекту на строку, каждый сопоставляет корень слова с его вариантами — затем импортируйте под указанным выше ID словаря.',
+  },
+  stemmingImportPlaceholder: {
+    en: 'One JSON object per line…',
+    ru: 'По одному JSON-объекту на строку…',
+  },
+  stemmingImportTitle: { en: 'Import dictionary', ru: 'Импорт словаря' },
+  stemmingTitle: { en: 'Stemming dictionaries', ru: 'Словари стемминга' },
+  stemmingWords: { en: 'Words', ru: 'Слов' },
+  tabAnalyticsRules: { en: 'Analytics rules', ru: 'Правила аналитики' },
+  tabStemming: { en: 'Stemming', ru: 'Стемминг' },
 } as const
 
 export type EngineMessageKey = keyof typeof dict

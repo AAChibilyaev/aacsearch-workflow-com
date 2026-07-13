@@ -1,11 +1,10 @@
 import { getPayload } from 'payload'
 import React from 'react'
-import { cookies } from 'next/headers'
-import Link from 'next/link'
 
 import config from '@payload-config'
 import { SiteHeader } from '@/components/SiteHeader'
 import { SiteFooter } from '@/components/SiteFooter'
+import { Button } from '@/components/ui/button'
 import { getLocale, LOCALES, type Locale } from '@/lib/locale'
 import './styles.css'
 
@@ -40,26 +39,21 @@ export default async function RootLayout(props: { children: React.ReactNode }) {
             <body>
                 {header ? (
                     <SiteHeader header={header}>
-                        {/* Locale switcher — sets cookie, reloads */}
-                        <form action="/api/set-locale" method="post" style={{ display: 'flex', gap: 4 }}>
+                        {/* Locale switcher — sets cookie, reloads. shadcn Button (renders
+                            a submit <button>, passes name/value through to the POST) */}
+                        <form action="/api/set-locale" method="post" className="flex gap-1">
                             {LOCALES.map((loc) => (
-                                <button
+                                <Button
                                     key={loc}
-                                    type="submit"
                                     name="locale"
+                                    size="sm"
+                                    title={NAMES[loc]}
+                                    type="submit"
                                     value={loc}
-                                    style={{
-                                        background: 'none',
-                                        border: loc === locale ? '1px solid currentColor' : 'none',
-                                        borderRadius: 4,
-                                        padding: '4px 8px',
-                                        cursor: 'pointer',
-                                        fontSize: 13,
-                                        opacity: loc === locale ? 1 : 0.5,
-                                    }}
+                                    variant={loc === locale ? 'outline' : 'ghost'}
                                 >
                                     {NAMES[loc].slice(0, 2).toUpperCase()}
-                                </button>
+                                </Button>
                             ))}
                         </form>
                     </SiteHeader>

@@ -403,7 +403,7 @@ describe('bounded entitlements cache (eviction + expiry)', () => {
   })
 
   it('evicts the oldest entry when the max size is exceeded', () => {
-    let now = 0
+    const now = 0
     const cache = createBoundedTtlCache<number>(60_000, 3, () => now)
 
     cache.set('a', 1)
@@ -420,7 +420,7 @@ describe('bounded entitlements cache (eviction + expiry)', () => {
   })
 
   it('recency bump on read protects a freshly-read key from eviction', () => {
-    let now = 0
+    const now = 0
     const cache = createBoundedTtlCache<number>(60_000, 3, () => now)
 
     cache.set('a', 1)

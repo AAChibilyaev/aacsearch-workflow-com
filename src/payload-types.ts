@@ -2466,6 +2466,21 @@ export interface TenantSetting {
    * Accent color for your search widget, e.g. "#2563eb".
    */
   brandColor?: string | null;
+  /**
+   * Let visitors ask questions in plain language and get a synthesized answer.
+   */
+  aiSearch?: {
+    enableNlSearch?: boolean | null;
+    /**
+     * Which configured AI model to use (set up by your platform administrator).
+     */
+    nlModelId?: string | null;
+    enableConversationalSearch?: boolean | null;
+    /**
+     * Which configured conversation model to use (set up by your platform administrator).
+     */
+    conversationModelId?: string | null;
+  };
   updatedAt: string;
   createdAt: string;
 }
@@ -5130,6 +5145,14 @@ export interface TenantSettingsSelect<T extends boolean = true> {
         enableNoHitsTracking?: T;
       };
   brandColor?: T;
+  aiSearch?:
+    | T
+    | {
+        enableNlSearch?: T;
+        nlModelId?: T;
+        enableConversationalSearch?: T;
+        conversationModelId?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
 }

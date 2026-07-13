@@ -4,24 +4,25 @@ import { useConfig } from '@payloadcms/ui'
 import { formatAdminURL } from 'payload/shared'
 import React from 'react'
 
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
-  buttonStyle,
-  cardStyle,
-  codeStyle,
-  dangerButtonStyle,
-  inputStyle,
-  mutedStyle,
-  primaryButtonStyle,
-  tableStyle,
-  tdStyle,
-  thStyle,
-  t,
-  type ProxyResult,
-} from './shared'
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
+import { t, type ProxyResult } from './shared'
 
 type Props = { lang: string }
 
-type TabKey = 'overview' | 'collections' | 'aliases' | 'keys' | 'operations'
+type TabKey = 'aliases' | 'analyticsRules' | 'collections' | 'keys' | 'operations' | 'overview' | 'stemming'
 
 type HealthResponse = { ok?: boolean }
 type CollectionSummary = { fields?: unknown[]; name?: string; num_documents?: number }
@@ -34,6 +35,10 @@ type KeyEntry = {
   value_prefix?: string
 }
 type KeyCreated = KeyEntry & { value?: string }
+type StemmingDictionaryEntry = { id?: string } & Record<string, unknown>
+type StemmingListResponse = { dictionaries?: StemmingDictionaryEntry[] } | StemmingDictionaryEntry[]
+type AnalyticsRuleEntry = { name?: string; params?: unknown; type?: string }
+type AnalyticsRulesResponse = { rules?: AnalyticsRuleEntry[] }
 
 /** Thin client for the generic engine proxy (`POST /api/v1/proxy`). Never
  * calls the engine directly — every request goes through the gateway's
@@ -54,7 +59,7 @@ const useProxy = (apiURL: (path: `/${string}`) => string) =>
           headers: { 'Content-Type': 'application/json' },
           method: 'POST',
         })
-        const json = (await res.json().catch(() => null)) as
+        const json = (await res.json().catch((): null => null)) as
           | { error?: string }
           | T
           | null
@@ -73,24 +78,6 @@ const useProxy = (apiURL: (path: `/${string}`) => string) =>
     [apiURL],
   )
 
-const TabButton: React.FC<{ active: boolean; label: string; onClick: () => void }> = ({
-  active,
-  label,
-  onClick,
-}) => (
-  <button
-    onClick={onClick}
-    style={{
-      ...buttonStyle,
-      background: active ? 'var(--theme-elevation-800, #1a1a1a)' : buttonStyle.background,
-      color: active ? '#fff' : buttonStyle.color,
-    }}
-    type="button"
-  >
-    {label}
-  </button>
-)
-
 const Overview: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }> = ({
   apiURL,
   lang,
@@ -101,9 +88,7 @@ const Overview: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string 
     kind: 'loading',
   })
 
-  const load = React.useCallback(() => {
-    setHealth({ kind: 'loading' })
-    setMetrics({ kind: 'loading' })
+  const fetchOverview = React.useCallback(() => {
     void proxy<HealthResponse>('/health').then((res) =>
       setHealth(res.ok ? { data: res.value ?? {}, kind: 'ready' } : { kind: 'error', message: res.error ?? '' }),
     )
@@ -114,7 +99,15 @@ const Overview: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string 
     )
   }, [proxy])
 
-  React.useEffect(load, [load])
+  const load = React.useCallback(() => {
+    setHealth({ kind: 'loading' })
+    setMetrics({ kind: 'loading' })
+    fetchOverview()
+  }, [fetchOverview])
+
+  React.useEffect(() => {
+    fetchOverview()
+  }, [fetchOverview])
 
   const metricRows =
     metrics.kind === 'ready'
@@ -124,48 +117,49 @@ const Overview: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string 
       : []
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <div style={cardStyle}>
-        <div style={{ alignItems: 'center', display: 'flex', gap: '0.6rem', justifyContent: 'space-between' }}>
-          <h3 style={{ margin: 0 }}>{t(lang, 'healthTitle')}</h3>
-          <button onClick={load} style={buttonStyle} type="button">
-            {t(lang, 'refresh')}
-          </button>
-        </div>
-        <div style={{ marginTop: '0.6rem' }}>
+    <div className="flex flex-col gap-3">
+      <Card>
+        <CardHeader>
+          <CardTitle>{t(lang, 'healthTitle')}</CardTitle>
+          <CardAction>
+            <Button onClick={load} size="sm" type="button" variant="outline">
+              {t(lang, 'refresh')}
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
           {health.kind === 'loading' ? (
-            <span style={mutedStyle}>{t(lang, 'loading')}</span>
+            <span className="text-muted-foreground">{t(lang, 'loading')}</span>
           ) : health.kind === 'error' ? (
-            <span style={{ color: 'var(--theme-error-500, #c0392b)' }}>{t(lang, 'healthDegraded')}</span>
+            <Badge variant="destructive">{t(lang, 'healthDegraded')}</Badge>
           ) : (
-            <span
-              style={{
-                color: health.data.ok ? 'var(--theme-success-500, #3faf68)' : 'var(--theme-error-500, #c0392b)',
-                fontWeight: 600,
-              }}
-            >
+            <Badge variant={health.data.ok ? 'default' : 'destructive'}>
               {health.data.ok ? t(lang, 'healthHealthy') : t(lang, 'healthDegraded')}
-            </span>
+            </Badge>
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      <div style={cardStyle}>
-        <h4 style={{ margin: '0 0 0.6rem' }}>{t(lang, 'tabOverview')}</h4>
-        {metrics.kind === 'loading' ? (
-          <span style={mutedStyle}>{t(lang, 'loading')}</span>
-        ) : metrics.kind === 'error' || metricRows.length === 0 ? (
-          <span style={mutedStyle}>—</span>
-        ) : (
-          <div style={{ display: 'grid', gap: '0.3rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-            {metricRows.map(([key, value]) => (
-              <div key={key} style={{ fontSize: '0.8rem' }}>
-                <span style={mutedStyle}>{key}</span>: <strong>{String(value)}</strong>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t(lang, 'tabOverview')}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {metrics.kind === 'loading' ? (
+            <span className="text-muted-foreground">{t(lang, 'loading')}</span>
+          ) : metrics.kind === 'error' || metricRows.length === 0 ? (
+            <span className="text-muted-foreground">—</span>
+          ) : (
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-1">
+              {metricRows.map(([key, value]) => (
+                <div className="text-sm" key={key}>
+                  <span className="text-muted-foreground">{key}</span>: <strong>{String(value)}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -177,8 +171,7 @@ const Collections: React.FC<{ apiURL: (path: `/${string}`) => string; lang: stri
   const proxy = useProxy(apiURL)
   const [state, setState] = React.useState<ProxyResult<CollectionSummary[]>>({ kind: 'loading' })
 
-  const load = React.useCallback(() => {
-    setState({ kind: 'loading' })
+  const fetchCollections = React.useCallback(() => {
     void proxy<CollectionSummary[]>('/collections').then((res) =>
       setState(
         res.ok
@@ -188,48 +181,55 @@ const Collections: React.FC<{ apiURL: (path: `/${string}`) => string; lang: stri
     )
   }, [proxy])
 
-  React.useEffect(load, [load])
+  const load = React.useCallback(() => {
+    setState({ kind: 'loading' })
+    fetchCollections()
+  }, [fetchCollections])
+
+  React.useEffect(() => {
+    fetchCollections()
+  }, [fetchCollections])
 
   return (
-    <div style={cardStyle}>
-      <div style={{ alignItems: 'baseline', display: 'flex', justifyContent: 'space-between' }}>
-        <div>
-          <h3 style={{ margin: '0 0 0.2rem' }}>{t(lang, 'collectionsTitle')}</h3>
-          <p style={{ ...mutedStyle, margin: 0, fontSize: '0.8rem' }}>{t(lang, 'collectionsHint')}</p>
-        </div>
-        <button onClick={load} style={buttonStyle} type="button">
-          {t(lang, 'refresh')}
-        </button>
-      </div>
-      <div style={{ marginTop: '0.75rem' }}>
+    <Card>
+      <CardHeader>
+        <CardTitle>{t(lang, 'collectionsTitle')}</CardTitle>
+        <CardDescription>{t(lang, 'collectionsHint')}</CardDescription>
+        <CardAction>
+          <Button onClick={load} size="sm" type="button" variant="outline">
+            {t(lang, 'refresh')}
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
         {state.kind === 'loading' ? (
-          <span style={mutedStyle}>{t(lang, 'loading')}</span>
+          <span className="text-muted-foreground">{t(lang, 'loading')}</span>
         ) : state.kind === 'error' ? (
-          <span style={mutedStyle}>{t(lang, 'errorGeneric')}</span>
+          <span className="text-muted-foreground">{t(lang, 'errorGeneric')}</span>
         ) : state.data.length === 0 ? (
-          <span style={mutedStyle}>{t(lang, 'collectionsEmpty')}</span>
+          <span className="text-muted-foreground">{t(lang, 'collectionsEmpty')}</span>
         ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>{t(lang, 'colName')}</th>
-                <th style={thStyle}>{t(lang, 'colDocs')}</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t(lang, 'colName')}</TableHead>
+                <TableHead>{t(lang, 'colDocs')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {state.data.map((row, index) => (
-                <tr key={row.name ?? index}>
-                  <td style={tdStyle}>
+                <TableRow key={row.name ?? index}>
+                  <TableCell>
                     <code>{row.name ?? '—'}</code>
-                  </td>
-                  <td style={tdStyle}>{row.num_documents ?? 0}</td>
-                </tr>
+                  </TableCell>
+                  <TableCell>{row.num_documents ?? 0}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -243,8 +243,7 @@ const Aliases: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }
   const [target, setTarget] = React.useState('')
   const [busy, setBusy] = React.useState(false)
 
-  const load = React.useCallback(() => {
-    setState({ kind: 'loading' })
+  const fetchAliases = React.useCallback(() => {
     void proxy<{ aliases?: AliasEntry[] }>('/aliases').then((res) =>
       setState(
         res.ok
@@ -254,7 +253,14 @@ const Aliases: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }
     )
   }, [proxy])
 
-  React.useEffect(load, [load])
+  const load = React.useCallback(() => {
+    setState({ kind: 'loading' })
+    fetchAliases()
+  }, [fetchAliases])
+
+  React.useEffect(() => {
+    fetchAliases()
+  }, [fetchAliases])
 
   const create = async () => {
     if (!name.trim() || !target.trim()) return
@@ -277,68 +283,72 @@ const Aliases: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }
   }
 
   return (
-    <div style={cardStyle}>
-      <h3 style={{ margin: '0 0 0.2rem' }}>{t(lang, 'aliasesTitle')}</h3>
-      <p style={{ ...mutedStyle, margin: '0 0 0.75rem', fontSize: '0.8rem' }}>{t(lang, 'aliasesHint')}</p>
+    <Card>
+      <CardHeader>
+        <CardTitle>{t(lang, 'aliasesTitle')}</CardTitle>
+        <CardDescription>{t(lang, 'aliasesHint')}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-2">
+          <Input
+            className="max-w-[220px]"
+            onChange={(event) => setName(event.target.value)}
+            placeholder={t(lang, 'aliasName')}
+            value={name}
+          />
+          <Input
+            className="max-w-[260px]"
+            onChange={(event) => setTarget(event.target.value)}
+            placeholder={t(lang, 'aliasTargetCollection')}
+            value={target}
+          />
+          <Button disabled={busy} onClick={() => void create()} type="button">
+            {t(lang, 'aliasCreate')}
+          </Button>
+        </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
-        <input
-          onChange={(event) => setName(event.target.value)}
-          placeholder={t(lang, 'aliasName')}
-          style={{ ...inputStyle, maxWidth: 220 }}
-          value={name}
-        />
-        <input
-          onChange={(event) => setTarget(event.target.value)}
-          placeholder={t(lang, 'aliasTargetCollection')}
-          style={{ ...inputStyle, maxWidth: 260 }}
-          value={target}
-        />
-        <button disabled={busy} onClick={() => void create()} style={primaryButtonStyle} type="button">
-          {t(lang, 'aliasCreate')}
-        </button>
-      </div>
-
-      {state.kind === 'loading' ? (
-        <span style={mutedStyle}>{t(lang, 'loading')}</span>
-      ) : state.kind === 'error' ? (
-        <span style={mutedStyle}>{t(lang, 'errorGeneric')}</span>
-      ) : state.data.length === 0 ? (
-        <span style={mutedStyle}>{t(lang, 'aliasesEmpty')}</span>
-      ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              <th style={thStyle}>{t(lang, 'aliasName')}</th>
-              <th style={thStyle}>{t(lang, 'aliasTargetCollection')}</th>
-              <th style={thStyle} />
-            </tr>
-          </thead>
-          <tbody>
-            {state.data.map((row, index) => (
-              <tr key={row.name ?? index}>
-                <td style={tdStyle}>
-                  <code>{row.name ?? '—'}</code>
-                </td>
-                <td style={tdStyle}>
-                  <code>{row.collection_name ?? '—'}</code>
-                </td>
-                <td style={tdStyle}>
-                  <button
-                    disabled={busy}
-                    onClick={() => row.name && void remove(row.name)}
-                    style={dangerButtonStyle}
-                    type="button"
-                  >
-                    {t(lang, 'delete')}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+        {state.kind === 'loading' ? (
+          <span className="text-muted-foreground">{t(lang, 'loading')}</span>
+        ) : state.kind === 'error' ? (
+          <span className="text-muted-foreground">{t(lang, 'errorGeneric')}</span>
+        ) : state.data.length === 0 ? (
+          <span className="text-muted-foreground">{t(lang, 'aliasesEmpty')}</span>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t(lang, 'aliasName')}</TableHead>
+                <TableHead>{t(lang, 'aliasTargetCollection')}</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {state.data.map((row, index) => (
+                <TableRow key={row.name ?? index}>
+                  <TableCell>
+                    <code>{row.name ?? '—'}</code>
+                  </TableCell>
+                  <TableCell>
+                    <code>{row.collection_name ?? '—'}</code>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      disabled={busy}
+                      onClick={() => row.name && void remove(row.name)}
+                      size="sm"
+                      type="button"
+                      variant="destructive"
+                    >
+                      {t(lang, 'delete')}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -351,8 +361,7 @@ const Keys: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }> =
   const [busy, setBusy] = React.useState(false)
   const [created, setCreated] = React.useState<KeyCreated | null>(null)
 
-  const load = React.useCallback(() => {
-    setState({ kind: 'loading' })
+  const fetchKeys = React.useCallback(() => {
     void proxy<{ keys?: KeyEntry[] }>('/keys').then((res) =>
       setState(
         res.ok ? { data: res.value?.keys ?? [], kind: 'ready' } : { kind: 'error', message: res.error ?? '' },
@@ -360,7 +369,14 @@ const Keys: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }> =
     )
   }, [proxy])
 
-  React.useEffect(load, [load])
+  const load = React.useCallback(() => {
+    setState({ kind: 'loading' })
+    fetchKeys()
+  }, [fetchKeys])
+
+  React.useEffect(() => {
+    fetchKeys()
+  }, [fetchKeys])
 
   const create = async () => {
     setBusy(true)
@@ -394,81 +410,305 @@ const Keys: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }> =
   }
 
   return (
-    <div style={cardStyle}>
-      <h3 style={{ margin: '0 0 0.2rem' }}>{t(lang, 'keysTitle')}</h3>
-      <p style={{ ...mutedStyle, margin: '0 0 0.75rem', fontSize: '0.8rem' }}>{t(lang, 'keysHint')}</p>
+    <Card>
+      <CardHeader>
+        <CardTitle>{t(lang, 'keysTitle')}</CardTitle>
+        <CardDescription>{t(lang, 'keysHint')}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {created?.value && (
+          <div className="rounded-md border border-[var(--theme-success-500,#3faf68)] bg-[var(--theme-success-50,#eefaf1)] p-3">
+            <p className="mb-1 font-medium">{t(lang, 'keyCreatedOnce')}</p>
+            <code className="block overflow-x-auto whitespace-pre rounded-md bg-muted px-2 py-1.5 font-mono text-sm">
+              {created.value}
+            </code>
+          </div>
+        )}
 
-      {created?.value && (
-        <div
-          style={{
-            ...cardStyle,
-            background: 'var(--theme-success-50, #eefaf1)',
-            marginBottom: '0.75rem',
-          }}
-        >
-          <p style={{ fontWeight: 600, margin: '0 0 0.35rem' }}>{t(lang, 'keyCreatedOnce')}</p>
-          <code style={codeStyle}>{created.value}</code>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-2">
+          <Input
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder={t(lang, 'keyDescription')}
+            value={description}
+          />
+          <Input
+            onChange={(event) => setActions(event.target.value)}
+            placeholder={`${t(lang, 'keyActions')} (documents:search, *)`}
+            value={actions}
+          />
+          <Input
+            onChange={(event) => setCollectionsInput(event.target.value)}
+            placeholder={`${t(lang, 'keyCollections')} (*)`}
+            value={collectionsInput}
+          />
         </div>
-      )}
+        <p className="text-xs text-muted-foreground">{t(lang, 'keyCreateHint')}</p>
+        <Button className="w-fit" disabled={busy} onClick={() => void create()} type="button">
+          {t(lang, 'keyCreate')}
+        </Button>
 
-      <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', marginBottom: '0.4rem' }}>
-        <input
-          onChange={(event) => setDescription(event.target.value)}
-          placeholder={t(lang, 'keyDescription')}
-          style={inputStyle}
-          value={description}
-        />
-        <input
-          onChange={(event) => setActions(event.target.value)}
-          placeholder={`${t(lang, 'keyActions')} (documents:search, *)`}
-          style={inputStyle}
-          value={actions}
-        />
-        <input
-          onChange={(event) => setCollectionsInput(event.target.value)}
-          placeholder={`${t(lang, 'keyCollections')} (*)`}
-          style={inputStyle}
-          value={collectionsInput}
-        />
-      </div>
-      <p style={{ ...mutedStyle, fontSize: '0.75rem', margin: '0 0 0.6rem' }}>{t(lang, 'keyCreateHint')}</p>
-      <button disabled={busy} onClick={() => void create()} style={{ ...primaryButtonStyle, marginBottom: '0.9rem' }} type="button">
-        {t(lang, 'keyCreate')}
-      </button>
+        {state.kind === 'loading' ? (
+          <span className="text-muted-foreground">{t(lang, 'loading')}</span>
+        ) : state.kind === 'error' ? (
+          <span className="text-muted-foreground">{t(lang, 'errorGeneric')}</span>
+        ) : state.data.length === 0 ? (
+          <span className="text-muted-foreground">{t(lang, 'keysEmpty')}</span>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t(lang, 'keyDescription')}</TableHead>
+                <TableHead>{t(lang, 'keyActions')}</TableHead>
+                <TableHead>{t(lang, 'keyCollections')}</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {state.data.map((row, index) => (
+                <TableRow key={row.id ?? index}>
+                  <TableCell>{row.description || '—'}</TableCell>
+                  <TableCell>{(row.actions ?? []).join(', ') || '—'}</TableCell>
+                  <TableCell>{(row.collections ?? []).join(', ') || '—'}</TableCell>
+                  <TableCell>
+                    <Button
+                      disabled={busy}
+                      onClick={() => void remove(row.id)}
+                      size="sm"
+                      type="button"
+                      variant="destructive"
+                    >
+                      {t(lang, 'delete')}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
-      {state.kind === 'loading' ? (
-        <span style={mutedStyle}>{t(lang, 'loading')}</span>
-      ) : state.kind === 'error' ? (
-        <span style={mutedStyle}>{t(lang, 'errorGeneric')}</span>
-      ) : state.data.length === 0 ? (
-        <span style={mutedStyle}>{t(lang, 'keysEmpty')}</span>
-      ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              <th style={thStyle}>{t(lang, 'keyDescription')}</th>
-              <th style={thStyle}>{t(lang, 'keyActions')}</th>
-              <th style={thStyle}>{t(lang, 'keyCollections')}</th>
-              <th style={thStyle} />
-            </tr>
-          </thead>
-          <tbody>
-            {state.data.map((row, index) => (
-              <tr key={row.id ?? index}>
-                <td style={tdStyle}>{row.description || '—'}</td>
-                <td style={tdStyle}>{(row.actions ?? []).join(', ') || '—'}</td>
-                <td style={tdStyle}>{(row.collections ?? []).join(', ') || '—'}</td>
-                <td style={tdStyle}>
-                  <button disabled={busy} onClick={() => void remove(row.id)} style={dangerButtonStyle} type="button">
-                    {t(lang, 'delete')}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+const Stemming: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }> = ({
+  apiURL,
+  lang,
+}) => {
+  const proxy = useProxy(apiURL)
+  const [state, setState] = React.useState<ProxyResult<StemmingDictionaryEntry[]>>({ kind: 'loading' })
+  const [importId, setImportId] = React.useState('')
+  const [jsonl, setJsonl] = React.useState('')
+  const [busy, setBusy] = React.useState(false)
+
+  const fetchDictionaries = React.useCallback(() => {
+    void proxy<StemmingListResponse>('/stemming/dictionaries').then((res) => {
+      if (!res.ok) {
+        setState({ kind: 'error', message: res.error ?? '' })
+        return
+      }
+      const value = res.value
+      const list = Array.isArray(value) ? value : (value?.dictionaries ?? [])
+      setState({ data: list, kind: 'ready' })
+    })
+  }, [proxy])
+
+  const load = React.useCallback(() => {
+    setState({ kind: 'loading' })
+    fetchDictionaries()
+  }, [fetchDictionaries])
+
+  React.useEffect(() => {
+    fetchDictionaries()
+  }, [fetchDictionaries])
+
+  const importDictionary = async () => {
+    if (!importId.trim() || !jsonl.trim()) return
+    setBusy(true)
+    await proxy('/stemming/dictionaries/import', 'POST', jsonl, { id: importId.trim() })
+    setBusy(false)
+    setJsonl('')
+    load()
+  }
+
+  const remove = async (id: string) => {
+    if (!window.confirm(t(lang, 'confirmDangerous'))) return
+    setBusy(true)
+    await proxy(`/stemming/dictionaries/${encodeURIComponent(id)}`, 'DELETE')
+    setBusy(false)
+    load()
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t(lang, 'stemmingTitle')}</CardTitle>
+        <CardDescription>{t(lang, 'stemmingHint')}</CardDescription>
+        <CardAction>
+          <Button onClick={load} size="sm" type="button" variant="outline">
+            {t(lang, 'refresh')}
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2 rounded-md border border-input p-3">
+          <div className="font-medium">{t(lang, 'stemmingImportTitle')}</div>
+          <p className="text-xs text-muted-foreground">{t(lang, 'stemmingImportHint')}</p>
+          <Input
+            className="max-w-[220px]"
+            onChange={(event) => setImportId(event.target.value)}
+            placeholder={t(lang, 'stemmingId')}
+            value={importId}
+          />
+          <textarea
+            className="min-h-[120px] w-full rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            onChange={(event) => setJsonl(event.target.value)}
+            placeholder={t(lang, 'stemmingImportPlaceholder')}
+            value={jsonl}
+          />
+          <Button
+            className="w-fit"
+            disabled={busy}
+            onClick={() => void importDictionary()}
+            type="button"
+          >
+            {t(lang, 'stemmingImport')}
+          </Button>
+        </div>
+
+        {state.kind === 'loading' ? (
+          <span className="text-muted-foreground">{t(lang, 'loading')}</span>
+        ) : state.kind === 'error' ? (
+          <span className="text-muted-foreground">{t(lang, 'errorGeneric')}</span>
+        ) : state.data.length === 0 ? (
+          <span className="text-muted-foreground">{t(lang, 'stemmingEmpty')}</span>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t(lang, 'stemmingId')}</TableHead>
+                <TableHead>{t(lang, 'stemmingWords')}</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {state.data.map((row, index) => (
+                <TableRow key={row.id ?? index}>
+                  <TableCell>
+                    <code>{row.id ?? '—'}</code>
+                  </TableCell>
+                  <TableCell>{Array.isArray(row.words) ? row.words.length : '—'}</TableCell>
+                  <TableCell>
+                    <Button
+                      disabled={busy}
+                      onClick={() => row.id && void remove(row.id)}
+                      size="sm"
+                      type="button"
+                      variant="destructive"
+                    >
+                      {t(lang, 'delete')}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+const AnalyticsRules: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }> = ({
+  apiURL,
+  lang,
+}) => {
+  const proxy = useProxy(apiURL)
+  const [state, setState] = React.useState<ProxyResult<AnalyticsRuleEntry[]>>({ kind: 'loading' })
+  const [busy, setBusy] = React.useState(false)
+
+  const fetchRules = React.useCallback(() => {
+    void proxy<AnalyticsRulesResponse>('/analytics/rules').then((res) =>
+      setState(
+        res.ok ? { data: res.value?.rules ?? [], kind: 'ready' } : { kind: 'error', message: res.error ?? '' },
+      ),
+    )
+  }, [proxy])
+
+  const load = React.useCallback(() => {
+    setState({ kind: 'loading' })
+    fetchRules()
+  }, [fetchRules])
+
+  React.useEffect(() => {
+    fetchRules()
+  }, [fetchRules])
+
+  const remove = async (name: string) => {
+    if (!window.confirm(t(lang, 'confirmDangerous'))) return
+    setBusy(true)
+    await proxy(`/analytics/rules/${encodeURIComponent(name)}`, 'DELETE')
+    setBusy(false)
+    load()
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t(lang, 'analyticsRulesTitle')}</CardTitle>
+        <CardDescription>{t(lang, 'analyticsRulesHint')}</CardDescription>
+        <CardAction>
+          <Button onClick={load} size="sm" type="button" variant="outline">
+            {t(lang, 'refresh')}
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {state.kind === 'loading' ? (
+          <span className="text-muted-foreground">{t(lang, 'loading')}</span>
+        ) : state.kind === 'error' ? (
+          <span className="text-muted-foreground">{t(lang, 'errorGeneric')}</span>
+        ) : state.data.length === 0 ? (
+          <span className="text-muted-foreground">{t(lang, 'analyticsRulesEmpty')}</span>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t(lang, 'analyticsName')}</TableHead>
+                <TableHead>{t(lang, 'analyticsType')}</TableHead>
+                <TableHead>{t(lang, 'analyticsParams')}</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {state.data.map((row, index) => (
+                <TableRow key={row.name ?? index}>
+                  <TableCell>
+                    <code>{row.name ?? '—'}</code>
+                  </TableCell>
+                  <TableCell>{row.type ?? '—'}</TableCell>
+                  <TableCell>
+                    <code className="block max-w-[320px] truncate">
+                      {row.params !== undefined ? JSON.stringify(row.params) : '—'}
+                    </code>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      disabled={busy}
+                      onClick={() => row.name && void remove(row.name)}
+                      size="sm"
+                      type="button"
+                      variant="destructive"
+                    >
+                      {t(lang, 'delete')}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -491,67 +731,63 @@ const Operations: React.FC<{ apiURL: (path: `/${string}`) => string; lang: strin
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <div style={cardStyle}>
-        <h3 style={{ margin: '0 0 0.2rem' }}>{t(lang, 'operationsTitle')}</h3>
-        <p style={{ ...mutedStyle, margin: '0 0 0.75rem', fontSize: '0.8rem' }}>{t(lang, 'operationsHint')}</p>
-        {message && <p style={{ fontSize: '0.8rem', margin: '0 0 0.6rem' }}>{message}</p>}
+    <Card>
+      <CardHeader>
+        <CardTitle>{t(lang, 'operationsTitle')}</CardTitle>
+        <CardDescription>{t(lang, 'operationsHint')}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {message && <p className="text-sm">{message}</p>}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-          <div>
-            <div style={{ fontWeight: 600 }}>{t(lang, 'snapshot')}</div>
-            <p style={{ ...mutedStyle, fontSize: '0.8rem', margin: '0.15rem 0 0.4rem' }}>
-              {t(lang, 'snapshotHint')}
-            </p>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <input
-                onChange={(event) => setSnapshotPath(event.target.value)}
-                style={{ ...inputStyle, maxWidth: 320 }}
-                value={snapshotPath}
-              />
-              <button
-                disabled={busy === 'snapshot'}
-                onClick={() => void run('snapshot', '/operations/snapshot', { snapshot_path: snapshotPath })}
-                style={buttonStyle}
-                type="button"
-              >
-                {t(lang, 'run')}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontWeight: 600 }}>{t(lang, 'compactDb')}</div>
-            <p style={{ ...mutedStyle, fontSize: '0.8rem', margin: '0.15rem 0 0.4rem' }}>
-              {t(lang, 'compactDbHint')}
-            </p>
-            <button
-              disabled={busy === 'compact'}
-              onClick={() => void run('compact', '/operations/db/compact')}
-              style={buttonStyle}
+        <div className="flex flex-col gap-1">
+          <div className="font-medium">{t(lang, 'snapshot')}</div>
+          <p className="text-sm text-muted-foreground">{t(lang, 'snapshotHint')}</p>
+          <div className="flex gap-2">
+            <Input
+              className="max-w-[320px]"
+              onChange={(event) => setSnapshotPath(event.target.value)}
+              value={snapshotPath}
+            />
+            <Button
+              disabled={busy === 'snapshot'}
+              onClick={() => void run('snapshot', '/operations/snapshot', { snapshot_path: snapshotPath })}
               type="button"
+              variant="outline"
             >
               {t(lang, 'run')}
-            </button>
-          </div>
-
-          <div>
-            <div style={{ fontWeight: 600 }}>{t(lang, 'clearCache')}</div>
-            <p style={{ ...mutedStyle, fontSize: '0.8rem', margin: '0.15rem 0 0.4rem' }}>
-              {t(lang, 'clearCacheHint')}
-            </p>
-            <button
-              disabled={busy === 'cache'}
-              onClick={() => void run('cache', '/operations/cache/clear')}
-              style={buttonStyle}
-              type="button"
-            >
-              {t(lang, 'run')}
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
-    </div>
+
+        <div className="flex flex-col gap-1">
+          <div className="font-medium">{t(lang, 'compactDb')}</div>
+          <p className="text-sm text-muted-foreground">{t(lang, 'compactDbHint')}</p>
+          <Button
+            className="w-fit"
+            disabled={busy === 'compact'}
+            onClick={() => void run('compact', '/operations/db/compact')}
+            type="button"
+            variant="outline"
+          >
+            {t(lang, 'run')}
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <div className="font-medium">{t(lang, 'clearCache')}</div>
+          <p className="text-sm text-muted-foreground">{t(lang, 'clearCacheHint')}</p>
+          <Button
+            className="w-fit"
+            disabled={busy === 'cache'}
+            onClick={() => void run('cache', '/operations/cache/clear')}
+            type="button"
+            variant="outline"
+          >
+            {t(lang, 'run')}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -565,28 +801,38 @@ export const EnginePanel: React.FC<Props> = ({ lang }) => {
   const [tab, setTab] = React.useState<TabKey>('overview')
 
   return (
-    <div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.9rem' }}>
-        <TabButton active={tab === 'overview'} label={t(lang, 'tabOverview')} onClick={() => setTab('overview')} />
-        <TabButton
-          active={tab === 'collections'}
-          label={t(lang, 'tabCollections')}
-          onClick={() => setTab('collections')}
-        />
-        <TabButton active={tab === 'aliases'} label={t(lang, 'tabAliases')} onClick={() => setTab('aliases')} />
-        <TabButton active={tab === 'keys'} label={t(lang, 'tabKeys')} onClick={() => setTab('keys')} />
-        <TabButton
-          active={tab === 'operations'}
-          label={t(lang, 'tabOperations')}
-          onClick={() => setTab('operations')}
-        />
-      </div>
+    <Tabs onValueChange={(value) => setTab(value as TabKey)} value={tab}>
+      <TabsList className="h-auto flex-wrap justify-start">
+        <TabsTrigger value="overview">{t(lang, 'tabOverview')}</TabsTrigger>
+        <TabsTrigger value="collections">{t(lang, 'tabCollections')}</TabsTrigger>
+        <TabsTrigger value="aliases">{t(lang, 'tabAliases')}</TabsTrigger>
+        <TabsTrigger value="keys">{t(lang, 'tabKeys')}</TabsTrigger>
+        <TabsTrigger value="stemming">{t(lang, 'tabStemming')}</TabsTrigger>
+        <TabsTrigger value="analyticsRules">{t(lang, 'tabAnalyticsRules')}</TabsTrigger>
+        <TabsTrigger value="operations">{t(lang, 'tabOperations')}</TabsTrigger>
+      </TabsList>
 
-      {tab === 'overview' && <Overview apiURL={apiURL} lang={lang} />}
-      {tab === 'collections' && <Collections apiURL={apiURL} lang={lang} />}
-      {tab === 'aliases' && <Aliases apiURL={apiURL} lang={lang} />}
-      {tab === 'keys' && <Keys apiURL={apiURL} lang={lang} />}
-      {tab === 'operations' && <Operations apiURL={apiURL} lang={lang} />}
-    </div>
+      <TabsContent value="overview">
+        <Overview apiURL={apiURL} lang={lang} />
+      </TabsContent>
+      <TabsContent value="collections">
+        <Collections apiURL={apiURL} lang={lang} />
+      </TabsContent>
+      <TabsContent value="aliases">
+        <Aliases apiURL={apiURL} lang={lang} />
+      </TabsContent>
+      <TabsContent value="keys">
+        <Keys apiURL={apiURL} lang={lang} />
+      </TabsContent>
+      <TabsContent value="stemming">
+        <Stemming apiURL={apiURL} lang={lang} />
+      </TabsContent>
+      <TabsContent value="analyticsRules">
+        <AnalyticsRules apiURL={apiURL} lang={lang} />
+      </TabsContent>
+      <TabsContent value="operations">
+        <Operations apiURL={apiURL} lang={lang} />
+      </TabsContent>
+    </Tabs>
   )
 }

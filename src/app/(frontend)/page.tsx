@@ -4,6 +4,7 @@ import React from 'react'
 
 import config from '@payload-config'
 import { RenderBlocks } from '@/blocks/RenderBlocks'
+import { Button } from '@/components/ui/button'
 import { getLocale, type Locale } from '@/lib/locale'
 
 const LOCALE_LABELS: Record<string, Locale> = { en: 'en', ru: 'ru', de: 'de' }
@@ -59,15 +60,12 @@ export default async function HomePage() {
             <h1 className="text-4xl font-semibold tracking-tight">{t.heading}</h1>
             <p className="mt-4 text-lg text-muted-foreground">{t.sub}</p>
             <div className="mt-8 flex items-center justify-center gap-4">
-                <Link
-                    className="rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground"
-                    href="/admin"
-                >
-                    {t.cta1}
-                </Link>
-                <Link className="rounded-full border border-border px-5 py-2.5 text-sm font-medium" href="/api/docs">
-                    {t.cta2}
-                </Link>
+                <Button asChild className="rounded-full" size="lg">
+                    <Link href="/admin">{t.cta1}</Link>
+                </Button>
+                <Button asChild className="rounded-full" size="lg" variant="outline">
+                    <Link href="/api/docs">{t.cta2}</Link>
+                </Button>
             </div>
         </section>
     )

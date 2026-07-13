@@ -33,6 +33,7 @@ import { lagoPlugin } from './plugins/lago'
 import { nangoPlugin } from './plugins/nango'
 import { searchScopedKeyPlugin } from './plugins/searchScopedKey'
 import { searchGatewayPlugin } from './plugins/searchGateway'
+import { localeAwareDocsPlugin } from './plugins/localeAwareOpenApi'
 import { entitlementsPlugin } from './lib/billing/entitlements'
 import { ApiKeys } from './collections/ApiKeys'
 import { Integrations } from './collections/Integrations'
@@ -91,6 +92,12 @@ export default buildConfig({
         Logo: '/components/graphics/Logo#Logo',
       },
       views: {
+        aiSearch: {
+          Component: '/components/views/AiSearch#AiSearchView',
+          exact: true,
+          meta: { title: 'AI search' },
+          path: '/ai-search',
+        },
         billing: {
           Component: '/components/views/Billing#BillingView',
           exact: true,
@@ -108,6 +115,12 @@ export default buildConfig({
           exact: true,
           meta: { title: 'Integrations' },
           path: '/integrations',
+        },
+        relevance: {
+          Component: '/components/views/Relevance#RelevanceView',
+          exact: true,
+          meta: { title: 'Relevance' },
+          path: '/relevance',
         },
         search: {
           Component: '/components/views/Search#SearchView',
@@ -439,6 +452,8 @@ export default buildConfig({
       openapiVersion: '3.0',
     }),
     scalar({}),
+    // Locale-aware API docs at /api/docs-i18n?locale=ru|de
+    localeAwareDocsPlugin(),
     // Security audit trail — tracks privilege-sensitive events (role changes,
     // API-key issuance/revocation, tenant lifecycle). Log collection is
     // super-admin only (hidden from tenant users; no tenant field of its own,

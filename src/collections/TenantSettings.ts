@@ -457,5 +457,67 @@ export const TenantSettings: CollectionConfig = {
       },
       label: { en: 'Brand color', ru: 'Цвет бренда' },
     },
+
+    // ── AI search (natural-language / conversational) ──────────────────────
+    // Tenant opt-in only: this picks a model by an opaque id string that a
+    // platform super-admin configured in the cluster-level model registry
+    // (see src/components/views/AiSearch). The tenant never sees the
+    // model's third-party LLM API key — only its id/label. Data only for
+    // now; no sync hook wired here.
+    {
+      name: 'aiSearch',
+      type: 'group',
+      admin: {
+        description: {
+          en: 'Let visitors ask questions in plain language and get a synthesized answer.',
+          ru: 'Позвольте посетителям задавать вопросы обычным языком и получать обобщённый ответ.',
+        },
+      },
+      fields: [
+        {
+          name: 'enableNlSearch',
+          type: 'checkbox',
+          defaultValue: false,
+          label: {
+            en: 'Enable natural-language search',
+            ru: 'Включить поиск на естественном языке',
+          },
+        },
+        {
+          name: 'nlModelId',
+          type: 'text',
+          admin: {
+            condition: (_data, siblingData) => Boolean(siblingData?.enableNlSearch),
+            description: {
+              en: 'Which configured AI model to use (set up by your platform administrator).',
+              ru: 'Какую настроенную ИИ-модель использовать (настраивается администратором платформы).',
+            },
+          },
+          label: { en: 'AI model', ru: 'ИИ-модель' },
+        },
+        {
+          name: 'enableConversationalSearch',
+          type: 'checkbox',
+          defaultValue: false,
+          label: {
+            en: 'Enable conversational search (chat-style)',
+            ru: 'Включить диалоговый поиск (в формате чата)',
+          },
+        },
+        {
+          name: 'conversationModelId',
+          type: 'text',
+          admin: {
+            condition: (_data, siblingData) => Boolean(siblingData?.enableConversationalSearch),
+            description: {
+              en: 'Which configured conversation model to use (set up by your platform administrator).',
+              ru: 'Какую настроенную модель диалога использовать (настраивается администратором платформы).',
+            },
+          },
+          label: { en: 'Conversation model', ru: 'Модель диалога' },
+        },
+      ],
+      label: { en: 'AI search', ru: 'ИИ-поиск' },
+    },
   ],
 }

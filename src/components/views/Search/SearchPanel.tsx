@@ -5,6 +5,16 @@ import { formatAdminURL } from 'payload/shared'
 import React from 'react'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 import { foundLabel, t } from './i18n'
 
@@ -57,67 +67,12 @@ export type CollectionOption = { label: string; slug: string }
 /** Fields we never surface as a hit "preview" line (internal / already shown). */
 const INTERNAL_HIT_FIELDS = new Set(['id', 'locale', 'sort', 'tenant', 'text', 'title'])
 
-const cardStyle: React.CSSProperties = {
-  background: 'var(--theme-elevation-25, transparent)',
-  border: '1px solid var(--theme-elevation-100, #e3e3e3)',
-  borderRadius: 6,
-  padding: 'calc(var(--base, 20px) * 0.9)',
-}
-
-const mutedStyle: React.CSSProperties = { color: 'var(--theme-elevation-600, #6b6b6b)' }
-
-const inputStyle: React.CSSProperties = {
-  background: 'var(--theme-input-bg, var(--theme-elevation-0, #fff))',
-  border: '1px solid var(--theme-elevation-150, #ccc)',
-  borderRadius: 4,
-  color: 'var(--theme-text, inherit)',
-  padding: '0.45rem 0.6rem',
-  width: '100%',
-}
-
-const buttonStyle: React.CSSProperties = {
-  background: 'var(--theme-elevation-100, #ededed)',
-  border: '1px solid var(--theme-elevation-150, #ccc)',
-  borderRadius: 4,
-  color: 'var(--theme-text, inherit)',
-  cursor: 'pointer',
-  fontSize: '0.85rem',
-  padding: '0.4rem 0.9rem',
-}
-
-const codeStyle: React.CSSProperties = {
-  background: 'var(--theme-elevation-50, #f3f3f3)',
-  borderRadius: 4,
-  color: 'var(--theme-text, inherit)',
-  display: 'block',
-  fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-  fontSize: '0.8rem',
-  overflowX: 'auto',
-  padding: '0.5rem 0.6rem',
-  whiteSpace: 'pre',
-}
-
 /** Horizontal count bar for a popular-query row. */
 const CountBar: React.FC<{ pct: number }> = ({ pct }) => {
   const clamped = Math.max(2, Math.min(100, pct))
   return (
-    <div
-      style={{
-        background: 'var(--theme-elevation-100, #ededed)',
-        borderRadius: 999,
-        height: 6,
-        overflow: 'hidden',
-        width: '100%',
-      }}
-    >
-      <div
-        style={{
-          background: 'var(--theme-success-500, #3faf68)',
-          borderRadius: 999,
-          height: '100%',
-          width: `${clamped}%`,
-        }}
-      />
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+      <div className="h-full rounded-full bg-primary" style={{ width: `${clamped}%` }} />
     </div>
   )
 }
@@ -228,7 +183,12 @@ export const SearchPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpti
   React.useEffect(() => {
     if (!tenant) return
     let cancelled = false
-    setKeyState({ kind: 'loading' })
+    // Deferred a tick so this reset never fires synchronously inside the
+    // effect body (react-hooks/set-state-in-effect) — still runs before the
+    // fetch below can possibly resolve.
+    queueMicrotask(() => {
+      if (!cancelled) setKeyState({ kind: 'loading' })
+    })
     const run = async () => {
       try {
         const url = `${apiURL('/search/key')}?tenant=${encodeURIComponent(tenant)}&locale=${searchLocale}`
@@ -254,12 +214,20 @@ export const SearchPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpti
   React.useEffect(() => {
     if (!tenant) return
     const q = query.trim()
-    if (!q) {
-      setSearchState({ kind: 'idle' })
-      return
-    }
     let cancelled = false
-    setSearchState({ kind: 'loading' })
+    // Both resets deferred a tick so neither fires synchronously inside the
+    // effect body (react-hooks/set-state-in-effect).
+    if (!q) {
+      queueMicrotask(() => {
+        if (!cancelled) setSearchState({ kind: 'idle' })
+      })
+      return () => {
+        cancelled = true
+      }
+    }
+    queueMicrotask(() => {
+      if (!cancelled) setSearchState({ kind: 'loading' })
+    })
     const timer = setTimeout(() => {
       const run = async () => {
         try {
@@ -325,29 +293,30 @@ export const SearchPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpti
 
   if (!tenant) {
     return (
-      <div style={cardStyle}>
-        <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'noTenant')}</p>
-      </div>
+      <Card>
+        <CardContent>
+          <p className="m-0 text-muted-foreground">{t(lang, 'noTenant')}</p>
+        </CardContent>
+      </Card>
     )
   }
 
   const tenantSelect =
     tenantOptions.length > 1 ? (
-      <div style={{ marginBottom: 'calc(var(--base, 20px) * 0.75)' }}>
-        <label style={{ ...mutedStyle, display: 'block', fontSize: '0.85rem', marginBottom: 4 }}>
-          {t(lang, 'workspace')}
-        </label>
-        <select
-          onChange={(event) => setTenant(event.target.value)}
-          style={{ ...inputStyle, maxWidth: 320 }}
-          value={tenant}
-        >
-          {tenantOptions.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+      <div className="mb-4">
+        <label className="mb-1 block text-sm text-muted-foreground">{t(lang, 'workspace')}</label>
+        <Select onValueChange={(value) => setTenant(value)} value={tenant}>
+          <SelectTrigger className="w-full max-w-80">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {tenantOptions.map((option) => (
+              <SelectItem key={option.id} value={option.id}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     ) : null
 
@@ -370,321 +339,232 @@ export const SearchPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpti
     <div>
       {tenantSelect}
 
-      <div
-        style={{ display: 'flex', flexDirection: 'column', gap: 'calc(var(--base, 20px) * 0.75)' }}
-      >
+      <div className="flex flex-col gap-4">
         {/* ── Analytics ─────────────────────────────────────────────────── */}
-        <div style={cardStyle}>
-          <div
-            style={{
-              alignItems: 'baseline',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.5rem',
-              justifyContent: 'space-between',
-              marginBottom: '0.75rem',
-            }}
-          >
-            <h3 style={{ margin: 0 }}>{t(lang, 'analyticsTitle')}</h3>
-            {analyticsReady?.updatedAt && (
-              <span style={{ ...mutedStyle, fontSize: '0.8rem' }}>
-                {t(lang, 'lastUpdated')}: {formatDateTime(analyticsReady.updatedAt)}
-              </span>
-            )}
-          </div>
-
-          {analyticsLoading ? (
-            <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'loading')}</p>
-          ) : analyticsError ? (
-            <div>
-              <h4 style={{ margin: '0 0 0.35rem' }}>{t(lang, 'errorTitle')}</h4>
-              <p style={{ ...mutedStyle, margin: '0 0 0.75rem' }}>{t(lang, 'errorHint')}</p>
-              <button
-                onClick={() => setReloadKey((key) => key + 1)}
-                style={buttonStyle}
-                type="button"
-              >
-                {t(lang, 'retry')}
-              </button>
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <CardTitle>{t(lang, 'analyticsTitle')}</CardTitle>
+              {analyticsReady?.updatedAt && (
+                <span className="text-xs text-muted-foreground">
+                  {t(lang, 'lastUpdated')}: {formatDateTime(analyticsReady.updatedAt)}
+                </span>
+              )}
             </div>
-          ) : analyticsEmpty ? (
-            <div>
-              <p style={{ fontWeight: 600, margin: '0 0 0.25rem' }}>{t(lang, 'noAnalytics')}</p>
-              <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'noAnalyticsHint')}</p>
-            </div>
-          ) : analyticsReady ? (
-            <>
-              <div style={{ marginBottom: '1rem' }}>
-                <div style={{ ...mutedStyle, fontSize: '0.85rem' }}>
-                  {t(lang, 'totalSearches')}
-                </div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 600 }}>
-                  {formatNumber(analyticsReady.totalSearches)}
-                </div>
+          </CardHeader>
+          <CardContent>
+            {analyticsLoading ? (
+              <p className="m-0 text-muted-foreground">{t(lang, 'loading')}</p>
+            ) : analyticsError ? (
+              <div>
+                <h4 className="mt-0 mb-1.5">{t(lang, 'errorTitle')}</h4>
+                <p className="mt-0 mb-3 text-muted-foreground">{t(lang, 'errorHint')}</p>
+                <Button
+                  onClick={() => setReloadKey((key) => key + 1)}
+                  type="button"
+                  variant="outline"
+                >
+                  {t(lang, 'retry')}
+                </Button>
               </div>
+            ) : analyticsEmpty ? (
+              <div>
+                <p className="mt-0 mb-1 font-semibold">{t(lang, 'noAnalytics')}</p>
+                <p className="m-0 text-muted-foreground">{t(lang, 'noAnalyticsHint')}</p>
+              </div>
+            ) : analyticsReady ? (
+              <>
+                <div className="mb-4">
+                  <div className="text-sm text-muted-foreground">{t(lang, 'totalSearches')}</div>
+                  <div className="text-2xl font-semibold">
+                    {formatNumber(analyticsReady.totalSearches)}
+                  </div>
+                </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gap: 'calc(var(--base, 20px) * 0.75)',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                }}
-              >
-                {/* Popular queries */}
-                <div>
-                  <h4 style={{ margin: '0 0 0.6rem' }}>{t(lang, 'popularTitle')}</h4>
-                  {analyticsReady.popularQueries.length === 0 ? (
-                    <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'popularEmpty')}</p>
-                  ) : (
-                    <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                      {analyticsReady.popularQueries.map((entry, index) => (
-                        <li key={`${entry.q}-${index}`} style={{ padding: '0.35rem 0' }}>
-                          <div
-                            style={{
-                              display: 'flex',
-                              gap: '0.75rem',
-                              justifyContent: 'space-between',
-                              marginBottom: 4,
-                            }}
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-4">
+                  {/* Popular queries */}
+                  <div>
+                    <h4 className="mt-0 mb-2.5">{t(lang, 'popularTitle')}</h4>
+                    {analyticsReady.popularQueries.length === 0 ? (
+                      <p className="m-0 text-muted-foreground">{t(lang, 'popularEmpty')}</p>
+                    ) : (
+                      <ul className="m-0 list-none p-0">
+                        {analyticsReady.popularQueries.map((entry, index) => (
+                          <li key={`${entry.q}-${index}`} className="py-1.5">
+                            <div className="mb-1 flex justify-between gap-3">
+                              <span className="truncate">{entry.q || '—'}</span>
+                              <span className="shrink-0 text-muted-foreground">
+                                {formatNumber(entry.count)}
+                              </span>
+                            </div>
+                            <CountBar pct={(entry.count / popularMax) * 100} />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {/* No-hits queries (content gaps) */}
+                  <div>
+                    <h4 className="mt-0 mb-1.5">{t(lang, 'noHitsTitle')}</h4>
+                    <p className="mt-0 mb-2.5 text-xs text-muted-foreground">
+                      {t(lang, 'noHitsHint')}
+                    </p>
+                    {analyticsReady.noHitsQueries.length === 0 ? (
+                      <p className="m-0 text-muted-foreground">{t(lang, 'noHitsEmpty')}</p>
+                    ) : (
+                      <ul className="m-0 list-none p-0">
+                        {analyticsReady.noHitsQueries.map((entry, index) => (
+                          <li
+                            key={`${entry.q}-${index}`}
+                            className="flex items-center justify-between gap-3 border-b border-border py-1.5"
                           >
-                            <span
-                              style={{
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {entry.q || '—'}
-                            </span>
-                            <span style={{ ...mutedStyle, flexShrink: 0 }}>
+                            <span className="truncate">{entry.q || '—'}</span>
+                            <span className="shrink-0 text-muted-foreground">
                               {formatNumber(entry.count)}
                             </span>
-                          </div>
-                          <CountBar pct={(entry.count / popularMax) * 100} />
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
-
-                {/* No-hits queries (content gaps) */}
-                <div>
-                  <h4 style={{ margin: '0 0 0.35rem' }}>{t(lang, 'noHitsTitle')}</h4>
-                  <p style={{ ...mutedStyle, fontSize: '0.8rem', margin: '0 0 0.6rem' }}>
-                    {t(lang, 'noHitsHint')}
-                  </p>
-                  {analyticsReady.noHitsQueries.length === 0 ? (
-                    <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'noHitsEmpty')}</p>
-                  ) : (
-                    <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                      {analyticsReady.noHitsQueries.map((entry, index) => (
-                        <li
-                          key={`${entry.q}-${index}`}
-                          style={{
-                            alignItems: 'center',
-                            borderBottom: '1px solid var(--theme-elevation-50, #f3f3f3)',
-                            display: 'flex',
-                            gap: '0.75rem',
-                            justifyContent: 'space-between',
-                            padding: '0.4rem 0',
-                          }}
-                        >
-                          <span
-                            style={{
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {entry.q || '—'}
-                          </span>
-                          <span style={{ ...mutedStyle, flexShrink: 0 }}>
-                            {formatNumber(entry.count)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-            </>
-          ) : null}
-        </div>
+              </>
+            ) : null}
+          </CardContent>
+        </Card>
 
         {/* ── Playground ────────────────────────────────────────────────── */}
-        <div style={cardStyle}>
-          <h3 style={{ margin: '0 0 0.25rem' }}>{t(lang, 'playgroundTitle')}</h3>
-          <p style={{ ...mutedStyle, margin: '0 0 0.75rem' }}>{t(lang, 'playgroundHint')}</p>
-
-          <div
-            style={{
-              display: 'grid',
-              gap: '0.6rem',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-              marginBottom: '0.6rem',
-            }}
-          >
-            <div>
-              <label
-                style={{ ...mutedStyle, display: 'block', fontSize: '0.8rem', marginBottom: 4 }}
-              >
-                {t(lang, 'collectionLabel')}
-              </label>
-              <select
-                onChange={(event) => setCollection(event.target.value)}
-                style={inputStyle}
-                value={collection}
-              >
-                {collections.map((option) => (
-                  <option key={option.slug} value={option.slug}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label
-                style={{ ...mutedStyle, display: 'block', fontSize: '0.8rem', marginBottom: 4 }}
-              >
-                {t(lang, 'queryByLabel')}
-              </label>
-              <input
-                onChange={(event) => setQueryBy(event.target.value)}
-                placeholder="title, description"
-                style={inputStyle}
-                type="text"
-                value={queryBy}
-              />
-            </div>
-          </div>
-
-          <input
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t(lang, 'queryPlaceholder')}
-            style={{ ...inputStyle, marginBottom: '0.75rem' }}
-            type="search"
-            value={query}
-          />
-
-          {searchState.kind === 'idle' ? (
-            <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'searchStart')}</p>
-          ) : searchState.kind === 'loading' ? (
-            <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'searching')}</p>
-          ) : searchState.kind === 'error' ? (
-            <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'searchUnavailable')}</p>
-          ) : searchState.hits.length === 0 ? (
-            <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'searchNoHits')}</p>
-          ) : (
-            <>
-              <div style={{ ...mutedStyle, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                {foundLabel(lang, searchState.found)}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t(lang, 'playgroundTitle')}</CardTitle>
+            <CardDescription>{t(lang, 'playgroundHint')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-2.5 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-2.5">
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  {t(lang, 'collectionLabel')}
+                </label>
+                <Select onValueChange={(value) => setCollection(value)} value={collection}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {collections.map((option) => (
+                      <SelectItem key={option.slug} value={option.slug}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                {searchState.hits.map((hit, index) => {
-                  const fields = previewFields(hit.document)
-                  return (
-                    <li
-                      key={index}
-                      style={{
-                        borderBottom: '1px solid var(--theme-elevation-50, #f3f3f3)',
-                        padding: '0.55rem 0',
-                      }}
-                    >
-                      <div style={{ fontWeight: 600 }}>{hitTitle(hit.document)}</div>
-                      {fields.length > 0 && (
-                        <div style={{ ...mutedStyle, fontSize: '0.8rem', marginTop: 2 }}>
-                          {fields.map(([key, value], fieldIndex) => (
-                            <span key={key}>
-                              {fieldIndex > 0 && ' · '}
-                              {key}: {value}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
-            </>
-          )}
-        </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  {t(lang, 'queryByLabel')}
+                </label>
+                <Input
+                  onChange={(event) => setQueryBy(event.target.value)}
+                  placeholder="title, description"
+                  type="text"
+                  value={queryBy}
+                />
+              </div>
+            </div>
+
+            <Input
+              className="mb-3"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t(lang, 'queryPlaceholder')}
+              type="search"
+              value={query}
+            />
+
+            {searchState.kind === 'idle' ? (
+              <p className="m-0 text-muted-foreground">{t(lang, 'searchStart')}</p>
+            ) : searchState.kind === 'loading' ? (
+              <p className="m-0 text-muted-foreground">{t(lang, 'searching')}</p>
+            ) : searchState.kind === 'error' ? (
+              <p className="m-0 text-muted-foreground">{t(lang, 'searchUnavailable')}</p>
+            ) : searchState.hits.length === 0 ? (
+              <p className="m-0 text-muted-foreground">{t(lang, 'searchNoHits')}</p>
+            ) : (
+              <>
+                <div className="mb-2 text-sm text-muted-foreground">
+                  {foundLabel(lang, searchState.found)}
+                </div>
+                <ul className="m-0 list-none p-0">
+                  {searchState.hits.map((hit, index) => {
+                    const fields = previewFields(hit.document)
+                    return (
+                      <li key={index} className="border-b border-border py-2">
+                        <div className="font-semibold">{hitTitle(hit.document)}</div>
+                        {fields.length > 0 && (
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            {fields.map(([key, value], fieldIndex) => (
+                              <span key={key}>
+                                {fieldIndex > 0 && ' · '}
+                                {key}: {value}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </>
+            )}
+          </CardContent>
+        </Card>
 
         {/* ── How to integrate ──────────────────────────────────────────── */}
-        <div style={cardStyle}>
-          <div
-            style={{
-              alignItems: 'center',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              justifyContent: 'space-between',
-              marginBottom: '0.6rem',
-            }}
-          >
-            <h3 style={{ margin: 0 }}>{t(lang, 'integrateTitle')}</h3>
-            {keyState.kind === 'ready' && (
-              <Badge
-                style={{
-                  alignItems: 'center',
-                  background: 'var(--theme-success-100, #e2f4e8)',
-                  border: 'none',
-                  borderRadius: 999,
-                  color: 'var(--theme-success-750, #14713d)',
-                  display: 'inline-flex',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  lineHeight: 1,
-                  padding: '0.4em 0.9em',
-                }}
-              >
-                {t(lang, 'scopedKeyReady')}
-              </Badge>
-            )}
-          </div>
-
-          <p style={{ ...mutedStyle, margin: '0 0 0.75rem' }}>{t(lang, 'integrateHint')}</p>
-
-          <div style={{ marginBottom: '0.75rem' }}>
-            <div style={{ ...mutedStyle, fontSize: '0.8rem', marginBottom: 4 }}>
-              {t(lang, 'keyEndpointLabel')}
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle>{t(lang, 'integrateTitle')}</CardTitle>
+              {keyState.kind === 'ready' && (
+                <Badge className="bg-[var(--theme-success-100,#e2f4e8)] font-semibold text-[var(--theme-success-750,#14713d)]">
+                  {t(lang, 'scopedKeyReady')}
+                </Badge>
+              )}
             </div>
-            <code style={codeStyle}>{keyEndpointText}</code>
-            <p style={{ ...mutedStyle, fontSize: '0.8rem', margin: '0.4rem 0 0' }}>
-              {t(lang, 'keyEndpointHint')}
-            </p>
-          </div>
-
-          {keyState.kind === 'ready' && (
-            <div
-              style={{
-                alignItems: 'center',
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '0.6rem',
-                marginBottom: '0.75rem',
-              }}
-            >
-              <code style={{ ...codeStyle, display: 'inline-block', maxWidth: '100%' }}>
-                {keyState.scopedKey.slice(0, 12)}…
+            <CardDescription>{t(lang, 'integrateHint')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-3">
+              <div className="mb-1 text-xs text-muted-foreground">
+                {t(lang, 'keyEndpointLabel')}
+              </div>
+              <code className="block overflow-x-auto rounded bg-muted px-2 py-1.5 font-mono text-xs whitespace-pre">
+                {keyEndpointText}
               </code>
-              <button onClick={() => void copyKey(keyState.scopedKey)} style={buttonStyle} type="button">
-                {copied ? t(lang, 'copied') : t(lang, 'copy')}
-              </button>
-              <span style={{ ...mutedStyle, fontSize: '0.8rem' }}>
-                {t(lang, 'scopedKeyExpires')}: {formatDateTime(keyState.expiresAt)}
-              </span>
+              <p className="mt-1.5 mb-0 text-xs text-muted-foreground">
+                {t(lang, 'keyEndpointHint')}
+              </p>
             </div>
-          )}
 
-          <a
-            href={apiURL('/docs')}
-            rel="noopener noreferrer"
-            style={{ ...buttonStyle, display: 'inline-block', textDecoration: 'none' }}
-            target="_blank"
-          >
-            {t(lang, 'openReference')}
-          </a>
-        </div>
+            {keyState.kind === 'ready' && (
+              <div className="mb-3 flex flex-wrap items-center gap-2.5">
+                <code className="inline-block max-w-full overflow-x-auto rounded bg-muted px-2 py-1.5 font-mono text-xs whitespace-pre">
+                  {keyState.scopedKey.slice(0, 12)}…
+                </code>
+                <Button onClick={() => void copyKey(keyState.scopedKey)} type="button" variant="outline">
+                  {copied ? t(lang, 'copied') : t(lang, 'copy')}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {t(lang, 'scopedKeyExpires')}: {formatDateTime(keyState.expiresAt)}
+                </span>
+              </div>
+            )}
+
+            <Button asChild variant="outline">
+              <a href={apiURL('/docs')} rel="noopener noreferrer" target="_blank">
+                {t(lang, 'openReference')}
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

@@ -29,6 +29,7 @@ type NavItem = {
 
 const CUSTOMER_ITEMS: NavItem[] = [
   { label: { de: 'Suche', en: 'Search', ru: 'Поиск' }, path: '/search' },
+  { label: { de: 'Relevanz', en: 'Relevance', ru: 'Релевантность' }, path: '/relevance' },
   { label: { de: 'Abrechnung', en: 'Billing', ru: 'Тариф и оплата' }, path: '/billing' },
   { label: { de: 'Integrationen', en: 'Integrations', ru: 'Интеграции' }, path: '/integrations' },
 ]
@@ -38,6 +39,10 @@ const PLATFORM_ITEMS: NavItem[] = [
   {
     label: { de: 'Suchmaschine', en: 'Search engine', ru: 'Поисковый движок' },
     path: '/engine',
+  },
+  {
+    label: { de: 'KI-Suche', en: 'AI search', ru: 'ИИ-поиск' },
+    path: '/ai-search',
   },
   {
     external: true,

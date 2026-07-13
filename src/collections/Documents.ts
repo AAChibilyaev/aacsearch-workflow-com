@@ -250,6 +250,11 @@ export const Documents: CollectionConfig = {
     {
       name: 'data',
       type: 'json',
+      admin: {
+        components: {
+          Field: '/components/fields/DocumentDataField#DocumentDataField',
+        },
+      },
       label: { en: 'Data', ru: 'Данные' },
     },
     {
