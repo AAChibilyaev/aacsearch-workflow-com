@@ -22,7 +22,15 @@ import { t, type ProxyResult } from './shared'
 
 type Props = { lang: string }
 
-type TabKey = 'aliases' | 'analyticsRules' | 'collections' | 'keys' | 'operations' | 'overview' | 'stemming'
+type TabKey =
+  | 'aliases'
+  | 'analyticsRules'
+  | 'collections'
+  | 'keys'
+  | 'operations'
+  | 'overview'
+  | 'reindex'
+  | 'stemming'
 
 type HealthResponse = { ok?: boolean }
 type CollectionSummary = { fields?: unknown[]; name?: string; num_documents?: number }
@@ -39,6 +47,15 @@ type StemmingDictionaryEntry = { id?: string } & Record<string, unknown>
 type StemmingListResponse = { dictionaries?: StemmingDictionaryEntry[] } | StemmingDictionaryEntry[]
 type AnalyticsRuleEntry = { name?: string; params?: unknown; type?: string }
 type AnalyticsRulesResponse = { rules?: AnalyticsRuleEntry[] }
+type ReindexJobEntry = {
+  cursorOffset?: number
+  error?: string
+  id?: number | string
+  sourceCollection?: string
+  status?: string
+  targetCollection?: string
+  totalDocuments?: number
+}
 
 /** Thin client for the generic engine proxy (`POST /api/v1/proxy`). Never
  * calls the engine directly — every request goes through the gateway's
@@ -791,6 +808,196 @@ const Operations: React.FC<{ apiURL: (path: `/${string}`) => string; lang: strin
   )
 }
 
+const reindexStatusLabel = (lang: string, status?: string): string => {
+  switch (status) {
+    case 'completed':
+      return t(lang, 'reindexStatusCompleted')
+    case 'failed':
+      return t(lang, 'reindexStatusFailed')
+    case 'running':
+      return t(lang, 'reindexStatusRunning')
+    default:
+      return t(lang, 'reindexStatusPending')
+  }
+}
+
+/** This tab is deliberately NOT built on `useProxy`: `reindex-jobs` is our
+ * OWN Payload collection (its own access control, super-admin only), read
+ * directly via the normal REST API — never through the `/v1/proxy` engine
+ * gateway. Starting a job posts to the plugin's own `/v1/reindex/start`. */
+const Reindex: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }> = ({
+  apiURL,
+  lang,
+}) => {
+  const [state, setState] = React.useState<ProxyResult<ReindexJobEntry[]>>({ kind: 'loading' })
+  const [sourceCollection, setSourceCollection] = React.useState('')
+  const [targetCollection, setTargetCollection] = React.useState('')
+  const [targetSchema, setTargetSchema] = React.useState('')
+  const [busy, setBusy] = React.useState(false)
+  const [formError, setFormError] = React.useState<null | string>(null)
+
+  const fetchJobs = React.useCallback(() => {
+    void (async () => {
+      try {
+        const res = await fetch(`${apiURL('/reindex-jobs')}?sort=-createdAt&limit=20`, {
+          credentials: 'include',
+        })
+        const json = (await res.json().catch((): null => null)) as
+          | { docs?: ReindexJobEntry[]; error?: string }
+          | null
+        if (!res.ok) {
+          const message =
+            json && typeof json === 'object' && typeof json.error === 'string'
+              ? json.error
+              : String(res.status)
+          setState({ kind: 'error', message })
+          return
+        }
+        setState({ data: json?.docs ?? [], kind: 'ready' })
+      } catch {
+        setState({ kind: 'error', message: 'network' })
+      }
+    })()
+  }, [apiURL])
+
+  const load = React.useCallback(() => {
+    setState({ kind: 'loading' })
+    fetchJobs()
+  }, [fetchJobs])
+
+  React.useEffect(() => {
+    fetchJobs()
+  }, [fetchJobs])
+
+  const start = async () => {
+    if (!sourceCollection.trim() || !targetCollection.trim()) return
+    setBusy(true)
+    setFormError(null)
+    try {
+      const res = await fetch(apiURL('/v1/reindex/start'), {
+        body: JSON.stringify({
+          sourceCollection: sourceCollection.trim(),
+          targetCollection: targetCollection.trim(),
+          targetSchema: targetSchema.trim() || undefined,
+        }),
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      })
+      const json = (await res.json().catch((): null => null)) as { error?: string } | null
+      if (!res.ok) {
+        setFormError(
+          json && typeof json === 'object' && typeof json.error === 'string'
+            ? json.error
+            : t(lang, 'errorGeneric'),
+        )
+        return
+      }
+      setSourceCollection('')
+      setTargetCollection('')
+      setTargetSchema('')
+      load()
+    } catch {
+      setFormError(t(lang, 'errorGeneric'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t(lang, 'reindexTitle')}</CardTitle>
+        <CardDescription>{t(lang, 'reindexHint')}</CardDescription>
+        <CardAction>
+          <Button onClick={load} size="sm" type="button" variant="outline">
+            {t(lang, 'refresh')}
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2 rounded-md border border-input p-3">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2">
+            <Input
+              onChange={(event) => setSourceCollection(event.target.value)}
+              placeholder={t(lang, 'reindexSource')}
+              value={sourceCollection}
+            />
+            <Input
+              onChange={(event) => setTargetCollection(event.target.value)}
+              placeholder={t(lang, 'reindexTarget')}
+              value={targetCollection}
+            />
+          </div>
+          <textarea
+            className="min-h-[80px] w-full rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            onChange={(event) => setTargetSchema(event.target.value)}
+            placeholder={t(lang, 'reindexSchemaOptional')}
+            value={targetSchema}
+          />
+          <p className="text-xs text-muted-foreground">{t(lang, 'reindexSchemaHint')}</p>
+          {formError && <p className="text-sm text-destructive">{formError}</p>}
+          <Button className="w-fit" disabled={busy} onClick={() => void start()} type="button">
+            {t(lang, 'reindexStart')}
+          </Button>
+        </div>
+
+        {state.kind === 'loading' ? (
+          <span className="text-muted-foreground">{t(lang, 'loading')}</span>
+        ) : state.kind === 'error' ? (
+          <span className="text-muted-foreground">{t(lang, 'errorGeneric')}</span>
+        ) : state.data.length === 0 ? (
+          <span className="text-muted-foreground">{t(lang, 'reindexEmpty')}</span>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t(lang, 'reindexColSource')}</TableHead>
+                <TableHead>{t(lang, 'reindexColTarget')}</TableHead>
+                <TableHead>{t(lang, 'reindexColStatus')}</TableHead>
+                <TableHead>{t(lang, 'reindexColProgress')}</TableHead>
+                <TableHead>{t(lang, 'reindexColError')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {state.data.map((row, index) => (
+                <TableRow key={row.id ?? index}>
+                  <TableCell>
+                    <code>{row.sourceCollection ?? '—'}</code>
+                  </TableCell>
+                  <TableCell>
+                    <code>{row.targetCollection ?? '—'}</code>
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={
+                        row.status === 'completed'
+                          ? 'default'
+                          : row.status === 'failed'
+                            ? 'destructive'
+                            : 'outline'
+                      }
+                    >
+                      {reindexStatusLabel(lang, row.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {row.cursorOffset ?? 0}
+                    {typeof row.totalDocuments === 'number' ? ` / ${row.totalDocuments}` : ''}
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-xs text-muted-foreground">{row.error ?? '—'}</span>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export const EnginePanel: React.FC<Props> = ({ lang }) => {
   const { config } = useConfig()
   const apiRoute = config.routes.api
@@ -810,6 +1017,7 @@ export const EnginePanel: React.FC<Props> = ({ lang }) => {
         <TabsTrigger value="stemming">{t(lang, 'tabStemming')}</TabsTrigger>
         <TabsTrigger value="analyticsRules">{t(lang, 'tabAnalyticsRules')}</TabsTrigger>
         <TabsTrigger value="operations">{t(lang, 'tabOperations')}</TabsTrigger>
+        <TabsTrigger value="reindex">{t(lang, 'tabReindex')}</TabsTrigger>
       </TabsList>
 
       <TabsContent value="overview">
@@ -832,6 +1040,9 @@ export const EnginePanel: React.FC<Props> = ({ lang }) => {
       </TabsContent>
       <TabsContent value="operations">
         <Operations apiURL={apiURL} lang={lang} />
+      </TabsContent>
+      <TabsContent value="reindex">
+        <Reindex apiURL={apiURL} lang={lang} />
       </TabsContent>
     </Tabs>
   )

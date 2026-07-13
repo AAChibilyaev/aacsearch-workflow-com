@@ -75,6 +75,8 @@ export interface Config {
     integrations: Integration;
     invoices: Invoice;
     'collection-definitions': CollectionDefinition;
+    'golden-queries': GoldenQuery;
+    'reindex-jobs': ReindexJob;
     'tenant-settings': TenantSetting;
     'api-keys': ApiKey;
     users: User;
@@ -104,6 +106,8 @@ export interface Config {
     integrations: IntegrationsSelect<false> | IntegrationsSelect<true>;
     invoices: InvoicesSelect<false> | InvoicesSelect<true>;
     'collection-definitions': CollectionDefinitionsSelect<false> | CollectionDefinitionsSelect<true>;
+    'golden-queries': GoldenQueriesSelect<false> | GoldenQueriesSelect<true>;
+    'reindex-jobs': ReindexJobsSelect<false> | ReindexJobsSelect<true>;
     'tenant-settings': TenantSettingsSelect<false> | TenantSettingsSelect<true>;
     'api-keys': ApiKeysSelect<false> | ApiKeysSelect<true>;
     users: UsersSelect<false> | UsersSelect<true>;
@@ -149,6 +153,7 @@ export interface Config {
     tasks: {
       createCollectionExport: TaskCreateCollectionExport;
       createCollectionImport: TaskCreateCollectionImport;
+      reindexCollection: TaskReindexCollection;
       'cleanup-payload-auditor-log': TaskCleanupPayloadAuditorLog;
       inline: {
         input: unknown;
@@ -2312,6 +2317,78 @@ export interface Invoice {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "golden-queries".
+ */
+export interface GoldenQuery {
+  id: number;
+  tenant?: (number | null) | Tenant;
+  /**
+   * A short label for this test case, e.g. "Blue shoes should surface the blue sneaker".
+   */
+  name: string;
+  /**
+   * The collection to search, by its friendly slug (as used by the search API).
+   */
+  collection: string;
+  /**
+   * The search query to run.
+   */
+  query: string;
+  /**
+   * Comma-separated fields to search in, e.g. title, description.
+   */
+  queryBy?: string | null;
+  /**
+   * Comma-separated document IDs expected to appear in the top results.
+   */
+  expectedDocIds: string;
+  /**
+   * How many top results count as "in range" for this test.
+   */
+  topN?: number | null;
+  /**
+   * When this test case was last run.
+   */
+  lastRunAt?: string | null;
+  /**
+   * Whether the last run found an expected document in range.
+   */
+  lastRunPassed?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "reindex-jobs".
+ */
+export interface ReindexJob {
+  id: number;
+  /**
+   * Physical engine collection to copy documents FROM.
+   */
+  sourceCollection: string;
+  /**
+   * Physical engine collection to copy documents INTO. Created automatically (using the source schema, unless overridden at start) if it does not already exist.
+   */
+  targetCollection: string;
+  status?: ('pending' | 'running' | 'completed' | 'failed') | null;
+  /**
+   * How many documents have been processed so far.
+   */
+  cursorOffset?: number | null;
+  /**
+   * Snapshot of the source collection document count, taken once when the job starts.
+   */
+  totalDocuments?: number | null;
+  /**
+   * The last error message, if the job failed.
+   */
+  error?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "tenant-settings".
  */
 export interface TenantSetting {
@@ -3103,7 +3180,12 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'createCollectionExport' | 'createCollectionImport' | 'cleanup-payload-auditor-log';
+        taskSlug:
+          | 'inline'
+          | 'createCollectionExport'
+          | 'createCollectionImport'
+          | 'reindexCollection'
+          | 'cleanup-payload-auditor-log';
         taskID: string;
         input?:
           | {
@@ -3136,7 +3218,15 @@ export interface PayloadJob {
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'createCollectionExport' | 'createCollectionImport' | 'cleanup-payload-auditor-log') | null;
+  taskSlug?:
+    | (
+        | 'inline'
+        | 'createCollectionExport'
+        | 'createCollectionImport'
+        | 'reindexCollection'
+        | 'cleanup-payload-auditor-log'
+      )
+    | null;
   queue?: string | null;
   waitUntil?: string | null;
   processing?: boolean | null;
@@ -3182,6 +3272,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'collection-definitions';
         value: number | CollectionDefinition;
+      } | null)
+    | ({
+        relationTo: 'golden-queries';
+        value: number | GoldenQuery;
+      } | null)
+    | ({
+        relationTo: 'reindex-jobs';
+        value: number | ReindexJob;
       } | null)
     | ({
         relationTo: 'tenant-settings';
@@ -5071,6 +5169,37 @@ export interface CollectionDefinitionsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "golden-queries_select".
+ */
+export interface GoldenQueriesSelect<T extends boolean = true> {
+  tenant?: T;
+  name?: T;
+  collection?: T;
+  query?: T;
+  queryBy?: T;
+  expectedDocIds?: T;
+  topN?: T;
+  lastRunAt?: T;
+  lastRunPassed?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "reindex-jobs_select".
+ */
+export interface ReindexJobsSelect<T extends boolean = true> {
+  sourceCollection?: T;
+  targetCollection?: T;
+  status?: T;
+  cursorOffset?: T;
+  totalDocuments?: T;
+  error?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "tenant-settings_select".
  */
 export interface TenantSettingsSelect<T extends boolean = true> {
@@ -5861,6 +5990,8 @@ export interface TaskCreateCollectionExport {
       | 'integrations'
       | 'invoices'
       | 'collection-definitions'
+      | 'golden-queries'
+      | 'reindex-jobs'
       | 'tenant-settings'
       | 'api-keys'
       | 'users'
@@ -5911,6 +6042,21 @@ export interface TaskCreateCollectionImport {
     maxLimit?: number | null;
   };
   output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskReindexCollection".
+ */
+export interface TaskReindexCollection {
+  input: {
+    jobId: number;
+    targetSchema?: string | null;
+  };
+  output: {
+    cursorOffset?: number | null;
+    status?: string | null;
+    totalDocuments?: number | null;
+  };
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

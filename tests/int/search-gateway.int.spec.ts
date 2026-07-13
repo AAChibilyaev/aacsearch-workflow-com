@@ -3,7 +3,7 @@ import type { Config, PayloadRequest } from 'payload'
 
 import { createHmac } from 'node:crypto'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { isApiKeyPrincipalValid } from '@/collections/ApiKeys'
 import {
@@ -419,6 +419,76 @@ describe('search gateway endpoint guards (api-key validity + scope + locale)', (
     )
     expect(res.status).toBe(401)
     expect(await res.json()).toEqual(GATEWAY_ERRORS.unauthorized)
+  })
+})
+
+describe('search gateway proxy — SaaS boundary', () => {
+  const logger = { error: () => {}, warn: () => {} }
+
+  const proxyHandler = () => {
+    const cfg = searchGatewayPlugin({
+      billing: {},
+      host: 'search.example.com',
+      searchOnlyKey: 'search-only-key',
+    })({ collections: [], endpoints: [] } as unknown as Config) as Config
+    const ep = (cfg.endpoints ?? []).find((e) => e.path === '/v1/proxy' && e.method === 'post')
+    if (!ep) throw new Error('endpoint /v1/proxy not found')
+    return ep.handler
+  }
+
+  const makeReq = (over: Record<string, unknown>): PayloadRequest =>
+    ({
+      headers: new Headers(),
+      json: async () => ({}),
+      payload: { logger },
+      query: {},
+      user: null,
+      ...over,
+    }) as unknown as PayloadRequest
+
+  it('denies tenant api-keys reading cluster-level engine keys', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const res = await proxyHandler()(
+      makeReq({
+        json: async () => ({ method: 'GET', path: '/keys', tenant: '7' }),
+        user: {
+          collection: 'api-keys',
+          id: 'proxy-key',
+          scopes: ['collections:read', 'documents:read', 'documents:write', 'search:read'],
+          tenant: 7,
+        },
+      }),
+    )
+
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual(GATEWAY_ERRORS.forbidden)
+    expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
+  })
+
+  it('denies tenant api-keys raw collection lifecycle writes', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const res = await proxyHandler()(
+      makeReq({
+        json: async () => ({
+          body: { name: 'products' },
+          method: 'POST',
+          path: '/collections',
+          tenant: '7',
+        }),
+        user: {
+          collection: 'api-keys',
+          id: 'proxy-key',
+          scopes: ['documents:write', 'search:read'],
+          tenant: 7,
+        },
+      }),
+    )
+
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual(GATEWAY_ERRORS.forbidden)
+    expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
   })
 })
 

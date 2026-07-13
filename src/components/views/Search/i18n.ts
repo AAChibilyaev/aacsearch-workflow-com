@@ -26,6 +26,33 @@ export const dict = {
   noHitsEmpty: { en: 'No empty searches recorded.', ru: 'Запросов без результатов пока нет.' },
   totalSearches: { en: 'Total searches', ru: 'Всего поисков' },
 
+  // Conversion analytics
+  clicksLabel: { en: 'Clicks', ru: 'Клики' },
+  conversionsEmpty: {
+    en: 'No clicks or conversions recorded yet.',
+    ru: 'Кликов и конверсий пока не зафиксировано.',
+  },
+  conversionsHint: {
+    en: 'Clicks and conversions your storefront reports for this workspace.',
+    ru: 'Клики и конверсии, о которых сообщает ваш магазин для этого рабочего пространства.',
+  },
+  conversionsLabel: { en: 'Conversions', ru: 'Конверсии' },
+  conversionsTitle: { en: 'Conversion analytics', ru: 'Аналитика конверсий' },
+  conversionsUnavailable: {
+    en: 'Conversion analytics are temporarily unavailable.',
+    ru: 'Аналитика конверсий временно недоступна.',
+  },
+  logTestClick: { en: 'Log a test click', ru: 'Записать тестовый клик' },
+  logTestClickHint: {
+    en: 'Sends a click event for the first result in the search playground below.',
+    ru: 'Отправляет событие клика для первого результата в песочнице поиска ниже.',
+  },
+  logTestClickNeedsResult: {
+    en: 'Search for something in the playground below to enable this.',
+    ru: 'Выполните поиск в песочнице ниже, чтобы включить эту кнопку.',
+  },
+  testClickLogged: { en: 'Click logged', ru: 'Клик записан' },
+
   // Playground
   collectionLabel: { en: 'Collection', ru: 'Коллекция' },
   playgroundHint: {

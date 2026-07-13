@@ -75,8 +75,13 @@ import { AiSearchView as AiSearchView_137f4c26e962ef8542c8d6826941dc59 } from '.
 import { BillingView as BillingView_e5ae7e3966f5465c4344dac4dd93dbf9 } from '../../../components/views/Billing'
 import { EngineView as EngineView_3e4c1795292b42b2063bc0fc36051845 } from '../../../components/views/Engine'
 import { IntegrationsView as IntegrationsView_9e1735bac833ebc9ae622ee38570363b } from '../../../components/views/Integrations'
+import { QuerySuggestionsView as QuerySuggestionsView_b76bf11f0016581aa3081571b6b18219 } from '../../../components/views/QuerySuggestions'
 import { RelevanceView as RelevanceView_1b935389e81c6be1c3f65ee70ceddf3c } from '../../../components/views/Relevance'
 import { SearchView as SearchView_835c202eebadc702ec7d12e425f24683 } from '../../../components/views/Search'
+import { AnalyticsView as AnalyticsView_68dd62c073c3c45561db41846c33d484 } from '../../../components/views/Analytics'
+import { UsageView as UsageView_86b2ba38fc41696e7ffd083e3cd25777 } from '../../../components/views/Usage'
+import { TeamView as TeamView_8112ab5dfbe5f4d603de83d574f8a647 } from '../../../components/views/Team'
+import { WidgetView as WidgetView_e0b2a55c2309c80884f4640a8deb37e7 } from '../../../components/views/Widget'
 import { AltTextHealthWidget as AltTextHealthWidget_a35949d21b38efe8500764b5b0b3638b } from '@jhb.software/payload-alt-text-plugin/server'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 
@@ -159,8 +164,13 @@ export const importMap = {
   "/components/views/Billing#BillingView": BillingView_e5ae7e3966f5465c4344dac4dd93dbf9,
   "/components/views/Engine#EngineView": EngineView_3e4c1795292b42b2063bc0fc36051845,
   "/components/views/Integrations#IntegrationsView": IntegrationsView_9e1735bac833ebc9ae622ee38570363b,
+  "/components/views/QuerySuggestions#QuerySuggestionsView": QuerySuggestionsView_b76bf11f0016581aa3081571b6b18219,
   "/components/views/Relevance#RelevanceView": RelevanceView_1b935389e81c6be1c3f65ee70ceddf3c,
   "/components/views/Search#SearchView": SearchView_835c202eebadc702ec7d12e425f24683,
+  "/components/views/Analytics#AnalyticsView": AnalyticsView_68dd62c073c3c45561db41846c33d484,
+  "/components/views/Usage#UsageView": UsageView_86b2ba38fc41696e7ffd083e3cd25777,
+  "/components/views/Team#TeamView": TeamView_8112ab5dfbe5f4d603de83d574f8a647,
+  "/components/views/Widget#WidgetView": WidgetView_e0b2a55c2309c80884f4640a8deb37e7,
   "@jhb.software/payload-alt-text-plugin/server#AltTextHealthWidget": AltTextHealthWidget_a35949d21b38efe8500764b5b0b3638b,
   "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1
 }

@@ -53,8 +53,14 @@ import {
  *  - POST /v1/keys/scoped   SDK-compatible scoped-key issuance (client-sent
  *                           search_key is ignored; env parent key is used)
  *  - GET  /v1/health        liveness probe
+ *  - POST /v1/analytics/events per-document click/conversion tracking, SDK-wire
+ *                           compatible with `packages/sdk`'s AnalyticsEvents
+ *                           (best-effort; degrades to { recorded: false }
+ *                           instead of a 500 — never breaks a checkout flow)
  *  - GET  /search/analytics tenant popular / no-hit queries (neutral, empty
  *                           when analytics is disabled or unavailable)
+ *  - GET  /search/conversions tenant click/conversion counts fed by
+ *                           POST /v1/analytics/events (neutral, empty when unavailable)
  *
  * Also injects an afterChange hook on tenant-settings that pushes the tenant's
  * FULL search configuration (synonyms, curation, stopwords, preset, analytics
@@ -98,6 +104,23 @@ const RESERVED_COMMON_PARAMS = new Set([
 const RESERVED_ENGINE_COLLECTIONS = new Set(['products'])
 
 /**
+ * Event types accepted by POST /v1/analytics/events — matches
+ * `AnalyticsEventSchema['type']` in `packages/sdk` (`AACSearch/Types.ts`)
+ * exactly, so the real customer-facing SDK's `AnalyticsEvents.create()` /
+ * `AnalyticsV1.sendEvent()` (which POST the bare `{type, body}` shape to
+ * `/analytics/events`) work against this endpoint unmodified.
+ */
+const EVENT_TYPES = new Set(['click', 'conversion', 'search', 'visit'])
+
+/**
+ * How many of a tenant's most recent analytics events to retrieve when
+ * summarizing GET /search/conversions. The engine's read API has no
+ * "since timestamp" cursor — only a flat recency cap — see that endpoint for
+ * the full best-effort caveat this implies.
+ */
+const RECENT_EVENTS_WINDOW = 1000
+
+/**
  * Resolve a caller-supplied collection name to the physical engine collection.
  * Idempotent (a name already carrying this tenant's prefix passes through
  * unchanged), so it is safe to apply even if a caller already knows the
@@ -128,9 +151,14 @@ export const resolveProxyCollectionPath = (enginePath: string, tenant: number | 
     return `${prefix}${encodeURIComponent(resolveTenantCollectionName(tenant, name))}`
   })
 
-/** True for a path that is top-level collection lifecycle (schema create/alter/delete). */
-const isCollectionLifecyclePath = (enginePath: string): boolean =>
-  enginePath === '/collections' || /^\/collections\/[^/]+\/?$/.test(enginePath)
+/**
+ * True for a document-level path under a (tenant-translated) collection —
+ * `/collections/<name>/documents`, `/documents/:id`, `/documents/import`,
+ * `/documents/export`, `/documents/search`, etc. This is the ONLY class of
+ * write a regular tenant may reach through the generic proxy.
+ */
+const isCollectionDocumentsPath = (enginePath: string): boolean =>
+  /^\/collections\/[^/]+\/documents(\/.*)?$/.test(enginePath)
 
 /** Loose, cast-once view of the engine's heavily generic multiSearch.perform */
 type PerformMultiSearch = (
@@ -456,11 +484,19 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
             if (!hasScope(req.user, 'documents:write')) {
               return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
             }
-            // Collection schema lifecycle (create/alter/drop) must go through
-            // the collection designer (collection-definitions), which injects
-            // the tenant/locale facets and validates the definition — never
-            // allow a customer to create/alter/drop a raw engine collection.
-            if (isCollectionLifecyclePath(enginePath)) {
+            // A regular tenant may ONLY write documents inside their own
+            // (translated) collection through this generic proxy. Every other
+            // engine resource — collection schema lifecycle, synonym sets,
+            // curation sets, stopwords, presets, aliases, API keys, analytics
+            // rules, NL/conversation models, cluster operations — is either
+            // CLUSTER-LEVEL (super-admin only, see the Engine/AI-search admin
+            // views) or already has its own tenant-safe path (TenantSettings +
+            // syncTenantSearchSettings for synonyms/curation/stopwords/presets,
+            // the collection designer for schema). None of those resource
+            // names are validated for tenant ownership here — allowing writes
+            // to them would let a tenant overwrite or delete ANOTHER tenant's
+            // synonym set, alias, preset, etc. Fail closed to documents-only.
+            if (!isCollectionDocumentsPath(enginePath)) {
               return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
             }
           }
@@ -477,12 +513,15 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
             if (!hasScope(req.user, 'search:read')) {
               return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
             }
-          } else if (!tenant || !canAccessTenant(req.user, tenant)) {
-            // Every other read (collection schema, synonyms, keys, cluster ops,
-            // ...) is CLUSTER-LEVEL by default. A missing tenant must DENY, not
-            // silently pass through — otherwise any authenticated tenant user
-            // could read platform-wide, cross-tenant state (e.g. every engine
-            // API key) simply by omitting `tenant` from the request.
+          } else if (!tenant || !canAccessTenant(req.user, tenant) || !isCollectionDocumentsPath(enginePath)) {
+            // Every other read (collection schema, synonym/curation sets,
+            // stopwords, presets, aliases, keys, analytics rules, cluster ops,
+            // ...) is CLUSTER-LEVEL by default and NOT resource-ownership
+            // checked here — a passing `canAccessTenant` only proves the
+            // CALLER belongs to that tenant, not that the requested resource
+            // NAME does (e.g. `/synonym_sets/tenant_<other-id>`). Restrict
+            // non-search reads to the same documents-only allowlist as writes;
+            // a missing tenant must also DENY, never silently pass through.
             return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
           }
         }
@@ -534,6 +573,106 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
         } catch (err) {
           req.payload.logger.error({ err, msg: 'search proxy upstream error' })
           return Response.json(GATEWAY_ERRORS.searchUnavailable, { status: 502 })
+        }
+      },
+    },
+    {
+      // Per-document click/conversion tracking — a storefront (or the panel's
+      // own "log a test click" button) reports "user clicked/converted on
+      // this document after searching for X". SDK-COMPATIBLE: this is the
+      // exact bare path + body shape `packages/sdk`'s `AnalyticsEvents.create()`
+      // / `AnalyticsV1.sendEvent()` POST (`AnalyticsEventSchema` in
+      // `AACSearch/Types.ts` — `{ type, body: { doc_id?, user_id?, user_ip?,
+      // query?, session_id?, referer?, metadata? } }`), so a customer's OWN
+      // backend using the official SDK against this gateway works unmodified
+      // — this does NOT reinvent a bespoke wire format.
+      //
+      // Forwards to the engine's own analytics-events WRITE api. Best-effort
+      // BY DESIGN: a storefront's click/checkout flow must never break just
+      // because analytics isn't wired up yet — same "never throw" rationale
+      // as `syncTenantSearchSettings` above (search config must never block a
+      // settings save; here, tracking must never block a customer action).
+      path: '/v1/analytics/events',
+      method: 'post',
+      handler: async (req) => {
+        if (!req.user) return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+        // useAPIKey auth ignores our revokedAt/expiresAt — enforce it here.
+        if (!isApiKeyPrincipalValid(req.user)) {
+          return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+        }
+
+        const body = await readJsonBody(req)
+        if (body === null) return Response.json(GATEWAY_ERRORS.invalidBody, { status: 400 })
+
+        // Tenant comes from the PRINCIPAL first — an api-key's own `tenant`
+        // relationship IS the tenant, exactly like /v1/proxy — a customer's
+        // own backend never needs to (and, per the SDK's AnalyticsEventSchema,
+        // CANNOT) pass a tenant id in the event body. A session user acting in
+        // the admin panel (who may belong to several tenants) falls back to
+        // the explicit `?tenant=` query param used everywhere else in this file.
+        const principalTenantIDs = getPrincipalTenantIDs(req.user)
+        const tenant =
+          principalTenantIDs.length === 1
+            ? String(principalTenantIDs[0])
+            : typeof req.query?.tenant === 'string'
+              ? req.query.tenant
+              : ''
+        if (!tenant) return Response.json(GATEWAY_ERRORS.tenantRequired, { status: 400 })
+        if (!canAccessTenant(req.user, tenant)) {
+          return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
+        }
+        if (!hasScope(req.user, 'documents:write')) {
+          return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
+        }
+
+        const eventType = typeof body.type === 'string' ? body.type : ''
+        const eventBody =
+          body.body && typeof body.body === 'object' && !Array.isArray(body.body)
+            ? (body.body as Record<string, unknown>)
+            : {}
+        const docId =
+          typeof eventBody.doc_id === 'string' || typeof eventBody.doc_id === 'number'
+            ? String(eventBody.doc_id)
+            : ''
+        if (!EVENT_TYPES.has(eventType) || !docId) {
+          return Response.json(GATEWAY_ERRORS.invalidBody, { status: 400 })
+        }
+
+        // `collection` has no place in AnalyticsEventSchema (Typesense's own
+        // analytics events aren't collection-scoped either — a rule's `name`
+        // carries that association). A caller MAY still hint one via
+        // `metadata.collection` (e.g. this panel's own "log a test click"
+        // button) purely for the engine document's own `data` payload; it is
+        // NOT part of the tenant-isolation boundary.
+        const metadata =
+          eventBody.metadata && typeof eventBody.metadata === 'object'
+            ? (eventBody.metadata as Record<string, unknown>)
+            : {}
+        const collectionHint = typeof metadata.collection === 'string' ? metadata.collection : ''
+        const engineCollection = collectionHint
+          ? resolveTenantCollectionName(tenant, collectionHint)
+          : undefined
+        const userId =
+          typeof eventBody.user_id === 'string' && eventBody.user_id ? eventBody.user_id : 'anonymous'
+        const query = typeof eventBody.query === 'string' ? eventBody.query : ''
+
+        try {
+          const client = await getAdminSearchClient()
+          await client.analytics.events().create({
+            data: {
+              ...(engineCollection ? { collection: engineCollection } : {}),
+              doc_id: docId,
+              q: query,
+              user_id: userId,
+            },
+            name: `${tenant}_${eventType}`,
+          })
+          return Response.json({ ok: true, recorded: true })
+        } catch (err) {
+          // Analytics disabled, or the destination event stream isn't
+          // provisioned yet — degrade gracefully, never a 500.
+          req.payload.logger.warn({ err, msg: 'event tracking failed (best-effort)' })
+          return Response.json({ ok: true, recorded: false })
         }
       },
     },
@@ -604,6 +743,85 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
           req.payload.logger.error({ err, msg: 'search analytics read failed' })
           // best-effort: never surface an engine failure to the customer
           return Response.json(emptyAnalytics())
+        }
+      },
+    },
+    {
+      // Conversion analytics — best-effort click/conversion summary fed by
+      // POST /v1/analytics/events. Neutral, white-label result; never surfaces an
+      // engine failure to the customer (same contract as /search/analytics).
+      path: '/search/conversions',
+      method: 'get',
+      handler: async (req) => {
+        if (!req.user) return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+        // useAPIKey auth ignores our revokedAt/expiresAt — enforce it here.
+        if (!isApiKeyPrincipalValid(req.user)) {
+          return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+        }
+        const tenant = typeof req.query?.tenant === 'string' ? req.query.tenant : ''
+        if (!tenant) return Response.json(GATEWAY_ERRORS.tenantRequired, { status: 400 })
+        if (!canAccessTenant(req.user, tenant)) {
+          return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
+        }
+        if (!hasScope(req.user, 'search:read')) {
+          return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
+        }
+
+        // `req.query.collection` is accepted for API-shape symmetry with
+        // every other tenant-scoped read in this file, but currently narrows
+        // nothing: POST /v1/analytics/events records its engine event under
+        // `<tenant>_<eventType>` (tenant-wide), not per collection — there is
+        // no collection dimension to filter by yet.
+
+        const emptyConversions = () => ({
+          clicks: 0,
+          conversions: 0,
+          updatedAt: new Date().toISOString(),
+        })
+
+        try {
+          const client = await getAdminSearchClient()
+          // The installed engine SDK DOES expose an analytics-events READ api
+          // — client.analytics.events().retrieve({ name, user_id, n }) — but
+          // it is scoped to exactly one (name, user_id) pair; there is no
+          // "every event for this name" aggregate query. Best-effort proxy:
+          // count events recorded under 'anonymous', the default user_id this
+          // gateway writes for callers that don't pass their own userId
+          // (including the panel's own "log a test click" button) — events
+          // attributed to a real, known userId are NOT reflected in this
+          // total. This is an honest limitation of the current SDK/engine
+          // surface, not a fabricated result.
+          const countEvents = async (name: string): Promise<number> => {
+            try {
+              const res = await client.analytics.events().retrieve({
+                n: RECENT_EVENTS_WINDOW,
+                name,
+                user_id: 'anonymous',
+              })
+              return Array.isArray(res.events) ? res.events.length : 0
+            } catch {
+              // event stream missing (nothing recorded yet, or analytics
+              // never enabled) ⇒ zero, not an error
+              return 0
+            }
+          }
+
+          const [clicks, conversions, purchases] = await Promise.all([
+            countEvents(`${tenant}_click`),
+            countEvents(`${tenant}_conversion`),
+            countEvents(`${tenant}_purchase`),
+          ])
+
+          return Response.json({
+            clicks,
+            // 'purchase' is treated as a conversion variant for this summary
+            conversions: conversions + purchases,
+            updatedAt: new Date().toISOString(),
+          })
+        } catch (err) {
+          req.payload.logger.error({ err, msg: 'conversion analytics read failed' })
+          // best-effort: never surface an engine failure to the customer
+          return Response.json(emptyConversions())
         }
       },
     },

@@ -30,8 +30,20 @@ type NavItem = {
 const CUSTOMER_ITEMS: NavItem[] = [
   { label: { de: 'Suche', en: 'Search', ru: 'Поиск' }, path: '/search' },
   { label: { de: 'Relevanz', en: 'Relevance', ru: 'Релевантность' }, path: '/relevance' },
-  { label: { de: 'Abrechnung', en: 'Billing', ru: 'Тариф и оплата' }, path: '/billing' },
+  {
+    label: { de: 'Musterabfragen', en: 'Golden queries', ru: 'Эталонные запросы' },
+    path: '/golden-queries',
+  },
+  {
+    label: { de: 'Suchvorschläge', en: 'Query suggestions', ru: 'Подсказки запросов' },
+    path: '/query-suggestions',
+  },
+  { label: { de: 'Such-Widget', en: 'Search widget', ru: 'Поисковый виджет' }, path: '/widget' },
+  { label: { de: 'Analytik', en: 'Analytics', ru: 'Аналитика' }, path: '/analytics' },
   { label: { de: 'Integrationen', en: 'Integrations', ru: 'Интеграции' }, path: '/integrations' },
+  { label: { de: 'Abrechnung', en: 'Billing', ru: 'Тариф и оплата' }, path: '/billing' },
+  { label: { de: 'Nutzung', en: 'Usage', ru: 'Использование' }, path: '/usage' },
+  { label: { de: 'Team', en: 'Team', ru: 'Команда' }, path: '/team' },
 ]
 
 // Super-admin only — platform surfaces with no sidebar entry.

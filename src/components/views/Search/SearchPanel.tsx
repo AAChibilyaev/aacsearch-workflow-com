@@ -30,6 +30,9 @@ export type SearchAnalytics = {
 /** Shared endpoint contract: GET /api/search/key?tenant=ID&locale=LL */
 type ScopedKeyResponse = { expiresAt: string; scopedKey: string }
 
+/** Shared endpoint contract: GET /api/search/conversions?tenant=ID&collection=SLUG */
+export type ConversionAnalytics = { clicks: number; conversions: number; updatedAt: null | string }
+
 /** Loose view of the multi-search response from POST /api/v1/search */
 type SearchHit = { document?: Record<string, unknown> }
 type SearchResultEntry = { error?: string; found?: number; hits?: SearchHit[] }
@@ -46,6 +49,11 @@ type Props = {
 /** Analytics load result, stamped with the request it belongs to. */
 type AnalyticsResult =
   | { data: SearchAnalytics; kind: 'ready'; stamp: string }
+  | { kind: 'error'; stamp: string }
+
+/** Conversion analytics load result, stamped with the request it belongs to. */
+type ConversionResult =
+  | { data: ConversionAnalytics; kind: 'ready'; stamp: string }
   | { kind: 'error'; stamp: string }
 
 /** Scoped-key bootstrap state (drives the integration helper card). */
@@ -115,7 +123,10 @@ export const SearchPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpti
   const [tenant, setTenant] = React.useState<null | string>(initialTenantId)
   const [reloadKey, setReloadKey] = React.useState(0)
   const [analytics, setAnalytics] = React.useState<AnalyticsResult | null>(null)
+  const [conversions, setConversions] = React.useState<ConversionResult | null>(null)
   const [keyState, setKeyState] = React.useState<KeyState>({ kind: 'loading' })
+  const [loggingClick, setLoggingClick] = React.useState(false)
+  const [clickLogged, setClickLogged] = React.useState(false)
 
   // Playground inputs
   const [collections, setCollections] = React.useState<CollectionOption[]>([
@@ -133,6 +144,7 @@ export const SearchPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpti
   )
 
   const stamp = `${tenant}:${reloadKey}`
+  const conversionsStamp = `${tenant}:${collection}:${reloadKey}`
 
   // ── Analytics ─────────────────────────────────────────────────────────────
   React.useEffect(() => {
@@ -154,6 +166,27 @@ export const SearchPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpti
       cancelled = true
     }
   }, [apiURL, stamp, tenant])
+
+  // ── Conversion analytics (clicks/conversions fed by /v1/analytics/events) ────────────
+  React.useEffect(() => {
+    if (!tenant) return
+    let cancelled = false
+    const run = async () => {
+      try {
+        const url = `${apiURL('/search/conversions')}?tenant=${encodeURIComponent(tenant)}&collection=${encodeURIComponent(collection)}`
+        const res = await fetch(url, { credentials: 'include' })
+        if (!res.ok) throw new Error(String(res.status))
+        const data = (await res.json()) as ConversionAnalytics
+        if (!cancelled) setConversions({ data, kind: 'ready', stamp: conversionsStamp })
+      } catch {
+        if (!cancelled) setConversions({ kind: 'error', stamp: conversionsStamp })
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [apiURL, collection, conversionsStamp, tenant])
 
   // ── Collections (built-in + this tenant's own, by friendly slug) ───────────
   React.useEffect(() => {
@@ -291,6 +324,39 @@ export const SearchPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpti
     }
   }
 
+  /** POST a `click` event for the first hit in the current playground results. */
+  const logTestClick = async (): Promise<void> => {
+    if (searchState.kind !== 'ready' || searchState.hits.length === 0) return
+    const docId = searchState.hits[0]?.document?.id
+    if (typeof docId !== 'string' && typeof docId !== 'number') return
+    setLoggingClick(true)
+    try {
+      // Same wire shape @aacsearch/sdk's AnalyticsEvents.create() sends
+      // (AnalyticsEventSchema: { type, body }) — `metadata.collection` is a
+      // hint only, not part of tenant scoping (tenant comes from the caller's
+      // own principal / the `?tenant=` query param the rest of this file uses).
+      const res = await fetch(`${apiURL('/v1/analytics/events')}?tenant=${encodeURIComponent(tenant)}`, {
+        body: JSON.stringify({
+          body: { doc_id: docId, metadata: { collection } },
+          type: 'click',
+        }),
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      })
+      if (res.ok) {
+        setClickLogged(true)
+        // refresh the conversion-analytics card so the new click shows up
+        setReloadKey((key) => key + 1)
+        setTimeout(() => setClickLogged(false), 1500)
+      }
+    } catch {
+      /* best-effort demo action — no-op on failure */
+    } finally {
+      setLoggingClick(false)
+    }
+  }
+
   if (!tenant) {
     return (
       <Card>
@@ -332,6 +398,14 @@ export const SearchPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpti
     analyticsReady.totalSearches === 0 &&
     analyticsReady.popularQueries.length === 0 &&
     analyticsReady.noHitsQueries.length === 0
+
+  const conversionsLoading = conversions === null || conversions.stamp !== conversionsStamp
+  const conversionsReady =
+    !conversionsLoading && conversions.kind === 'ready' ? conversions.data : null
+  const conversionsError = !conversionsLoading && conversions.kind === 'error'
+  const conversionsEmpty =
+    conversionsReady !== null && conversionsReady.clicks === 0 && conversionsReady.conversions === 0
+  const canLogTestClick = searchState.kind === 'ready' && searchState.hits.length > 0
 
   const keyEndpointText = `GET ${formatAdminURL({ apiRoute, path: '/search/key' })}?tenant=${tenant}&locale=${searchLocale}`
 
@@ -431,6 +505,59 @@ export const SearchPanel: React.FC<Props> = ({ initialTenantId, lang, tenantOpti
                 </div>
               </>
             ) : null}
+          </CardContent>
+        </Card>
+
+        {/* ── Conversion analytics ──────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <CardTitle>{t(lang, 'conversionsTitle')}</CardTitle>
+              {conversionsReady?.updatedAt && (
+                <span className="text-xs text-muted-foreground">
+                  {t(lang, 'lastUpdated')}: {formatDateTime(conversionsReady.updatedAt)}
+                </span>
+              )}
+            </div>
+            <CardDescription>{t(lang, 'conversionsHint')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {conversionsLoading ? (
+              <p className="m-0 text-muted-foreground">{t(lang, 'loading')}</p>
+            ) : conversionsError ? (
+              <p className="m-0 text-muted-foreground">{t(lang, 'conversionsUnavailable')}</p>
+            ) : conversionsEmpty ? (
+              <p className="m-0 text-muted-foreground">{t(lang, 'conversionsEmpty')}</p>
+            ) : conversionsReady ? (
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">{t(lang, 'clicksLabel')}</div>
+                  <div className="text-2xl font-semibold">
+                    {formatNumber(conversionsReady.clicks)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">{t(lang, 'conversionsLabel')}</div>
+                  <div className="text-2xl font-semibold">
+                    {formatNumber(conversionsReady.conversions)}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap items-center gap-2.5">
+              <Button
+                disabled={!canLogTestClick || loggingClick}
+                onClick={() => void logTestClick()}
+                type="button"
+                variant="outline"
+              >
+                {clickLogged ? t(lang, 'testClickLogged') : t(lang, 'logTestClick')}
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                {canLogTestClick ? t(lang, 'logTestClickHint') : t(lang, 'logTestClickNeedsResult')}
+              </span>
+            </div>
           </CardContent>
         </Card>
 

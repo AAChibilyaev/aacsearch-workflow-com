@@ -33,11 +33,14 @@ import { lagoPlugin } from './plugins/lago'
 import { nangoPlugin } from './plugins/nango'
 import { searchScopedKeyPlugin } from './plugins/searchScopedKey'
 import { searchGatewayPlugin } from './plugins/searchGateway'
+import { teamInvitePlugin } from './plugins/teamInvite'
+import { reindexJobsPlugin } from './plugins/reindexJobs'
 import { localeAwareDocsPlugin } from './plugins/localeAwareOpenApi'
 import { entitlementsPlugin } from './lib/billing/entitlements'
 import { ApiKeys } from './collections/ApiKeys'
 import { Integrations } from './collections/Integrations'
 import { CollectionDefinitions } from './collections/CollectionDefinitions'
+import { ReindexJobs } from './collections/ReindexJobs'
 import { TenantSettings } from './collections/TenantSettings'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
@@ -116,6 +119,18 @@ export default buildConfig({
           meta: { title: 'Integrations' },
           path: '/integrations',
         },
+        goldenQueries: {
+          Component: '/components/views/GoldenQueries#GoldenQueriesView',
+          exact: true,
+          meta: { title: 'Golden queries' },
+          path: '/golden-queries',
+        },
+        querySuggestions: {
+          Component: '/components/views/QuerySuggestions#QuerySuggestionsView',
+          exact: true,
+          meta: { title: 'Query suggestions' },
+          path: '/query-suggestions',
+        },
         relevance: {
           Component: '/components/views/Relevance#RelevanceView',
           exact: true,
@@ -127,6 +142,30 @@ export default buildConfig({
           exact: true,
           meta: { title: 'Search' },
           path: '/search',
+        },
+        analytics: {
+          Component: '/components/views/Analytics#AnalyticsView',
+          exact: true,
+          meta: { title: 'Analytics' },
+          path: '/analytics',
+        },
+        usage: {
+          Component: '/components/views/Usage#UsageView',
+          exact: true,
+          meta: { title: 'Usage' },
+          path: '/usage',
+        },
+        team: {
+          Component: '/components/views/Team#TeamView',
+          exact: true,
+          meta: { title: 'Team' },
+          path: '/team',
+        },
+        widget: {
+          Component: '/components/views/Widget#WidgetView',
+          exact: true,
+          meta: { title: 'Search widget' },
+          path: '/widget',
         },
       },
     },
@@ -152,6 +191,7 @@ export default buildConfig({
     Integrations,
     Invoices,
     CollectionDefinitions,
+    ReindexJobs,
     TenantSettings,
     ApiKeys,
     Users,
@@ -366,6 +406,8 @@ export default buildConfig({
     searchScopedKeyPlugin({
       searchOnlyKey: process.env.TYPESENSE_SEARCH_ONLY_KEY,
     }),
+    // Team member invites — reuses Payload auth + forgotPassword email
+    teamInvitePlugin(),
     // AACSearch public search gateway (/api/v1/*): tenant-forced multi-search
     // proxy, SDK-compatible scoped keys, health probe, tenant synonym sync.
     // Disabled (config unchanged) when TYPESENSE_HOST is unset.
@@ -383,6 +425,9 @@ export default buildConfig({
       apiUrl: process.env.AIRBYTE_API_URL,
       workspaceId: process.env.AIRBYTE_WORKSPACE_ID,
     }),
+    // Cluster-ops: chunked reindex of one engine collection into another,
+    // driven from the Engine panel's "Reindex" tab (super-admin only).
+    reindexJobsPlugin(),
     // Stripe: card payments + webhooks (enable with STRIPE_SECRET_KEY)
     ...(process.env.STRIPE_SECRET_KEY
       ? [

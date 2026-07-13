@@ -9,6 +9,8 @@ import * as migration_20260713_141541_media_multitenant from './20260713_141541_
 import * as migration_20260713_142500_wallet_invoices_search_fields from './20260713_142500_wallet_invoices_search_fields';
 import * as migration_20260713_143841_search_designer_capabilities from './20260713_143841_search_designer_capabilities';
 import * as migration_20260713_145957_faq_pricing_testimonials_comparator_blocks from './20260713_145957_faq_pricing_testimonials_comparator_blocks';
+import * as migration_20260713_154608_reindex_jobs from './20260713_154608_reindex_jobs';
+import * as migration_20260713_155649_golden_queries from './20260713_155649_golden_queries';
 
 export const migrations = [
   {
@@ -64,6 +66,16 @@ export const migrations = [
   {
     up: migration_20260713_145957_faq_pricing_testimonials_comparator_blocks.up,
     down: migration_20260713_145957_faq_pricing_testimonials_comparator_blocks.down,
-    name: '20260713_145957_faq_pricing_testimonials_comparator_blocks'
+    name: '20260713_145957_faq_pricing_testimonials_comparator_blocks',
+  },
+  {
+    up: migration_20260713_154608_reindex_jobs.up,
+    down: migration_20260713_154608_reindex_jobs.down,
+    name: '20260713_154608_reindex_jobs',
+  },
+  {
+    up: migration_20260713_155649_golden_queries.up,
+    down: migration_20260713_155649_golden_queries.down,
+    name: '20260713_155649_golden_queries'
   },
 ];
