@@ -1,0 +1,84 @@
+import type { Config, Plugin } from 'payload'
+
+import { isSuperAdmin } from '@/access/isSuperAdmin'
+import { isApiKeyPrincipalValid } from '@/collections/ApiKeys'
+import { getPrincipalTenantIDs } from '@/lib/principal'
+import {
+  GATEWAY_ERRORS,
+  buildScopedKeyParams,
+  generateScopedKey,
+  hasScope,
+  isSearchLocale,
+} from '@/lib/search/client'
+
+/**
+ * Issues per-tenant SCOPED search keys: the tenant (and optional locale)
+ * filter is HMAC-embedded into the key and cannot be stripped client-side.
+ * Computed offline — no engine round-trip.
+ *
+ * Contract (admin UI depends on it): GET /api/search/key?tenant=ID&locale=LL
+ * -> { scopedKey, expiresAt }
+ */
+export type SearchScopedKeyOptions = {
+  /** A search-only engine API key (NOT the admin key) */
+  searchOnlyKey?: string
+}
+
+/** principal (session user OR api-key doc) must be super-admin or belong to the tenant */
+const canAccessTenant = (user: unknown, tenantID: number | string): boolean => {
+  if (isSuperAdmin(user)) return true
+  return getPrincipalTenantIDs(user).some((id) => String(id) === String(tenantID))
+}
+
+export const searchScopedKeyPlugin =
+  (opts: SearchScopedKeyOptions): Plugin =>
+  (config: Config): Config => {
+    if (!opts.searchOnlyKey) return config
+
+    return {
+      ...config,
+      endpoints: [
+        ...(config.endpoints ?? []),
+        {
+          path: '/search/key',
+          method: 'get',
+          handler: async (req) => {
+            if (!req.user) return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+            // useAPIKey auth ignores our revokedAt/expiresAt — enforce it here.
+            if (!isApiKeyPrincipalValid(req.user)) {
+              return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
+            }
+            const tenant = typeof req.query?.tenant === 'string' ? req.query.tenant : ''
+            const localeRaw =
+              typeof req.query?.locale === 'string' && req.query.locale !== ''
+                ? req.query.locale
+                : undefined
+            if (!tenant) return Response.json(GATEWAY_ERRORS.tenantRequired, { status: 400 })
+            if (!canAccessTenant(req.user, tenant)) {
+              return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
+            }
+            if (!hasScope(req.user, 'search:read')) {
+              return Response.json(GATEWAY_ERRORS.forbiddenScope, { status: 403 })
+            }
+            // Reject an out-of-allowlist locale before it reaches the raw
+            // interpolation in buildScopedKeyParams (filter-injection surface).
+            if (localeRaw !== undefined && !isSearchLocale(localeRaw)) {
+              return Response.json(GATEWAY_ERRORS.invalidLocale, { status: 400 })
+            }
+
+            try {
+              const params = buildScopedKeyParams(tenant, localeRaw)
+              const scopedKey = await generateScopedKey(opts.searchOnlyKey as string, params)
+              return Response.json({
+                expiresAt: new Date(params.expires_at * 1000).toISOString(),
+                scopedKey,
+              })
+            } catch (err) {
+              req.payload.logger.error({ err, msg: 'scoped search key generation failed' })
+              return Response.json(GATEWAY_ERRORS.searchUnavailable, { status: 502 })
+            }
+          },
+        },
+      ],
+    }
+  }

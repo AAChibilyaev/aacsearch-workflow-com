@@ -1,62 +1,72 @@
-import { headers as getHeaders } from 'next/headers.js'
-import Image from 'next/image'
 import { getPayload } from 'payload'
+import Link from 'next/link'
 import React from 'react'
-import { fileURLToPath } from 'url'
 
-import config from '@/payload.config'
-import './styles.css'
+import config from '@payload-config'
+import { RenderBlocks } from '@/blocks/RenderBlocks'
+import { Button } from '@/components/ui/button'
+import { getLocale, type Locale } from '@/lib/locale'
+
+const LOCALE_LABELS: Record<string, Locale> = { en: 'en', ru: 'ru', de: 'de' }
+
+export const dynamic = 'force-dynamic'
+
+const HERO: Record<Locale, { heading: string; sub: string; cta1: string; cta2: string }> = {
+    en: {
+        heading: 'Search that understands your data',
+        sub: 'AACSearch is a multi-tenant search SaaS — typo-tolerant search, AI answers, and connectors, managed from one panel.',
+        cta1: 'Open admin',
+        cta2: 'API docs',
+    },
+    ru: {
+        heading: 'Поиск, который понимает ваши данные',
+        sub: 'AACSearch — SaaS для мультиарендного поиска: устойчивый к опечаткам поиск, AI-ответы и коннекторы — всё из одной панели.',
+        cta1: 'Админка',
+        cta2: 'API-документация',
+    },
+    de: {
+        heading: 'Suche, die Ihre Daten versteht',
+        sub: 'AACSearch ist eine mandantenfähige Such-SaaS — typo-tolerante Suche, KI-Antworten und Konnektoren, verwaltet von einer Oberfläche.',
+        cta1: 'Admin öffnen',
+        cta2: 'API-Dokumentation',
+    },
+}
 
 export default async function HomePage() {
-  const headers = await getHeaders()
-  const payloadConfig = await config
-  const payload = await getPayload({ config: payloadConfig })
-  const { user } = await payload.auth({ headers })
+    const locale = await getLocale()
+    const payload = await getPayload({ config })
 
-  const fileURL = `vscode://file/${fileURLToPath(import.meta.url)}`
+    const { docs } = await payload.find({
+        collection: 'pages',
+        where: { slug: { equals: 'home' } },
+        limit: 1,
+        locale: locale as never,
+    })
 
-  return (
-    <div className="home">
-      <div className="content">
-        <picture>
-          <source srcSet="https://raw.githubusercontent.com/payloadcms/payload/main/packages/ui/src/assets/payload-favicon.svg" />
-          <Image
-            alt="Payload Logo"
-            height={65}
-            src="https://raw.githubusercontent.com/payloadcms/payload/main/packages/ui/src/assets/payload-favicon.svg"
-            width={65}
-          />
-        </picture>
-        {!user || !('email' in user) ? (
-          <h1>Welcome to your new project.</h1>
-        ) : (
-          <h1>Welcome back, {user.email}</h1>
-        )}
-        <div className="links">
-          <a
-            className="admin"
-            href={payloadConfig.routes.admin}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            Go to admin panel
-          </a>
-          <a
-            className="docs"
-            href="https://payloadcms.com/docs"
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            Documentation
-          </a>
-        </div>
-      </div>
-      <div className="footer">
-        <p>Update this page by editing</p>
-        <a className="codeLink" href={fileURL}>
-          <code>app/(frontend)/page.tsx</code>
-        </a>
-      </div>
-    </div>
-  )
+    const page = docs[0]
+
+    if (page?.layout?.length) {
+        return (
+            <article className="py-16">
+                <RenderBlocks blocks={page.layout} />
+            </article>
+        )
+    }
+
+    const t = HERO[locale] || HERO.en
+
+    return (
+        <section className="mx-auto max-w-3xl px-6 py-24 text-center">
+            <h1 className="text-4xl font-semibold tracking-tight">{t.heading}</h1>
+            <p className="mt-4 text-lg text-muted-foreground">{t.sub}</p>
+            <div className="mt-8 flex items-center justify-center gap-4">
+                <Button asChild className="rounded-full" size="lg">
+                    <Link href="/admin">{t.cta1}</Link>
+                </Button>
+                <Button asChild className="rounded-full" size="lg" variant="outline">
+                    <Link href="/api/docs">{t.cta2}</Link>
+                </Button>
+            </div>
+        </section>
+    )
 }

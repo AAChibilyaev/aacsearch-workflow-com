@@ -8,5 +8,13 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
     include: ['tests/int/**/*.int.spec.ts'],
+    server: {
+      deps: {
+        // These packages' dist use extensionless / directory ESM imports that
+        // strict Node ESM can't resolve (better-preview → './lexicalFeature/
+        // feature.server'; cmdk → './dist/translations'). Let Vite transform them.
+        inline: ['payload-better-preview', '@veiag/payload-cmdk'],
+      },
+    },
   },
 })

@@ -1,5 +1,16 @@
+packages:
+  - '.'
+  - 'packages/*'
 allowBuilds:
+  '@google/genai': true
+  '@sentry/cli': true
   esbuild: true
+  protobufjs: true
   sharp: true
+  # Pure JS InstantSearch adapter (ships prebuilt dist) — no build step needed
+  typesense-instantsearch-adapter: false
   unrs-resolver: true
   workerd: true
+minimumReleaseAgeExclude:
+  - '@rubixstudios/payload-typesense@1.6.11'
+ignoreWorkspaceRootCheck: true

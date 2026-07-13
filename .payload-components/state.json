@@ -1,0 +1,701 @@
+{
+  "version": 2,
+  "components": {
+    "hero-basic": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "hero-basic",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-11T20:19:24.111Z",
+      "installedFiles": [
+        "src/blocks/HeroBasic/Component.tsx",
+        "src/blocks/HeroBasic/config.ts",
+        "src/blocks/shared/heroFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-11T20:19:24.111Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "feature-grid-basic": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "feature-grid-basic",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:13:57.355Z",
+      "installedFiles": [
+        "src/blocks/FeatureGridBasic/Component.tsx",
+        "src/blocks/FeatureGridBasic/config.ts",
+        "src/blocks/shared/featureFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:13:57.355Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "call-to-action-centered": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "call-to-action-centered",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:14:18.123Z",
+      "installedFiles": [
+        "src/blocks/CallToActionCentered/Component.tsx",
+        "src/blocks/CallToActionCentered/config.ts",
+        "src/blocks/shared/callToActionFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:14:18.123Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "logo-cloud-marquee": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "logo-cloud-marquee",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:23:35.641Z",
+      "installedFiles": [
+        "src/blocks/LogoCloudMarquee/Component.tsx",
+        "src/blocks/LogoCloudMarquee/config.ts",
+        "src/blocks/shared/logoCloudFields.ts",
+        "src/components/ui/infinite-slider.tsx",
+        "src/components/ui/progressive-blur.tsx"
+      ],
+      "lastAttemptAt": "2026-07-13T12:23:35.641Z",
+      "lastError": null,
+      "patchedFiles": [
+        "package.json",
+        "pnpm-lock.yaml",
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-stats": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-stats",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:14:32.176Z",
+      "installedFiles": [
+        "src/blocks/ContentStats/Component.tsx",
+        "src/blocks/ContentStats/config.ts",
+        "src/blocks/shared/contentFields.ts",
+        "src/blocks/shared/contentIcons.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:14:32.176Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "integration-orbit": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "integration-orbit",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:14:42.780Z",
+      "installedFiles": [
+        "src/blocks/IntegrationOrbit/Component.tsx",
+        "src/blocks/IntegrationOrbit/config.ts",
+        "src/blocks/shared/integrationFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:14:42.780Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "feature-split": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "feature-split",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:16:28.881Z",
+      "installedFiles": [
+        "src/blocks/FeatureSplit/Component.tsx",
+        "src/blocks/FeatureSplit/config.ts",
+        "src/blocks/shared/featureFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:16:28.881Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "feature-bento": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "feature-bento",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:16:38.758Z",
+      "installedFiles": [
+        "src/blocks/FeatureBento/Component.tsx",
+        "src/blocks/FeatureBento/config.ts",
+        "src/blocks/shared/featureFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:16:38.758Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "feature-steps": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "feature-steps",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:16:48.891Z",
+      "installedFiles": [
+        "src/blocks/FeatureSteps/Component.tsx",
+        "src/blocks/FeatureSteps/config.ts",
+        "src/blocks/shared/featureFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:16:48.891Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "embed-basic": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "embed-basic",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:16:59.355Z",
+      "installedFiles": [
+        "src/blocks/EmbedBasic/Component.tsx",
+        "src/blocks/EmbedBasic/config.ts",
+        "src/blocks/shared/safeUrls.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:16:59.355Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-columns": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-columns",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:17:10.673Z",
+      "installedFiles": [
+        "src/blocks/ContentColumns/Component.tsx",
+        "src/blocks/ContentColumns/config.ts",
+        "src/blocks/shared/contentFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:17:10.673Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-image-lead": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-image-lead",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:17:21.709Z",
+      "installedFiles": [
+        "src/blocks/ContentImageLead/Component.tsx",
+        "src/blocks/ContentImageLead/config.ts",
+        "src/blocks/shared/contentFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:17:21.709Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-feature-media": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-feature-media",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:17:31.940Z",
+      "installedFiles": [
+        "src/blocks/ContentFeatureMedia/Component.tsx",
+        "src/blocks/ContentFeatureMedia/config.ts",
+        "src/blocks/shared/contentFields.ts",
+        "src/blocks/shared/contentIcons.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:17:31.940Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-feature-split": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-feature-split",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:17:46.839Z",
+      "installedFiles": [
+        "src/blocks/ContentFeatureSplit/Component.tsx",
+        "src/blocks/ContentFeatureSplit/config.ts",
+        "src/blocks/shared/contentFields.ts",
+        "src/blocks/shared/contentIcons.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:17:46.839Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-showcase": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-showcase",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:17:55.971Z",
+      "installedFiles": [
+        "src/blocks/ContentShowcase/Component.tsx",
+        "src/blocks/ContentShowcase/config.ts",
+        "src/blocks/shared/contentFields.ts",
+        "src/blocks/shared/contentIcons.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:17:55.971Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-quote": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-quote",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:18:05.246Z",
+      "installedFiles": [
+        "src/blocks/ContentQuote/Component.tsx",
+        "src/blocks/ContentQuote/config.ts",
+        "src/blocks/shared/contentFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:18:05.246Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-community": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-community",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:18:14.246Z",
+      "installedFiles": [
+        "src/blocks/ContentCommunity/Component.tsx",
+        "src/blocks/ContentCommunity/config.ts",
+        "src/blocks/shared/contentFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:18:14.246Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-split-rows": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-split-rows",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:18:25.131Z",
+      "installedFiles": [
+        "src/blocks/ContentSplitRows/Component.tsx",
+        "src/blocks/ContentSplitRows/config.ts",
+        "src/blocks/shared/contentFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:18:25.131Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-rows": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-rows",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:18:35.401Z",
+      "installedFiles": [
+        "src/blocks/ContentRows/Component.tsx",
+        "src/blocks/ContentRows/config.ts",
+        "src/blocks/shared/contentFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:18:35.401Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-image-frame": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-image-frame",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:18:46.266Z",
+      "installedFiles": [
+        "src/blocks/ContentImageFrame/Component.tsx",
+        "src/blocks/ContentImageFrame/config.ts",
+        "src/blocks/shared/contentFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:18:46.266Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-list": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-list",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:18:56.803Z",
+      "installedFiles": [
+        "src/blocks/ContentList/Component.tsx",
+        "src/blocks/ContentList/config.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:18:56.803Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-list-columns": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-list-columns",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:19:07.380Z",
+      "installedFiles": [
+        "src/blocks/ContentListColumns/Component.tsx",
+        "src/blocks/ContentListColumns/config.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:19:07.380Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "content-list-icons": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "content-list-icons",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:19:17.701Z",
+      "installedFiles": [
+        "src/blocks/ContentListIcons/Component.tsx",
+        "src/blocks/ContentListIcons/config.ts",
+        "src/blocks/shared/contentIcons.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:19:17.701Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "logo-cloud-grid": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "logo-cloud-grid",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:19:28.192Z",
+      "installedFiles": [
+        "src/blocks/LogoCloudGrid/Component.tsx",
+        "src/blocks/LogoCloudGrid/config.ts",
+        "src/blocks/shared/logoCloudFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:19:28.192Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "logo-cloud-hover": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "logo-cloud-hover",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:19:38.689Z",
+      "installedFiles": [
+        "src/blocks/LogoCloudHover/Component.tsx",
+        "src/blocks/LogoCloudHover/config.ts",
+        "src/blocks/shared/logoCloudFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:19:38.689Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "logo-cloud-inline": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "logo-cloud-inline",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:19:53.163Z",
+      "installedFiles": [
+        "src/blocks/LogoCloudInline/Component.tsx",
+        "src/blocks/LogoCloudInline/config.ts",
+        "src/blocks/shared/logoCloudFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:19:53.163Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "logo-cloud-inline-wrap": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "logo-cloud-inline-wrap",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:20:03.697Z",
+      "installedFiles": [
+        "src/blocks/LogoCloudInlineWrap/Component.tsx",
+        "src/blocks/LogoCloudInlineWrap/config.ts",
+        "src/blocks/shared/logoCloudFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:20:03.697Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "integration-grid": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "integration-grid",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:20:14.242Z",
+      "installedFiles": [
+        "src/blocks/IntegrationGrid/Component.tsx",
+        "src/blocks/IntegrationGrid/config.ts",
+        "src/blocks/shared/integrationFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:20:14.242Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "integration-cluster": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "integration-cluster",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:20:25.747Z",
+      "installedFiles": [
+        "src/blocks/IntegrationCluster/Component.tsx",
+        "src/blocks/IntegrationCluster/config.ts",
+        "src/blocks/shared/integrationFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:20:25.747Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "integration-split": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "integration-split",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:20:35.999Z",
+      "installedFiles": [
+        "src/blocks/IntegrationSplit/Component.tsx",
+        "src/blocks/IntegrationSplit/config.ts",
+        "src/blocks/shared/integrationFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:20:35.999Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "integration-connect": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "integration-connect",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:20:46.445Z",
+      "installedFiles": [
+        "src/blocks/IntegrationConnect/Component.tsx",
+        "src/blocks/IntegrationConnect/config.ts",
+        "src/blocks/shared/integrationFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:20:46.445Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "integration-list": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "integration-list",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:20:56.983Z",
+      "installedFiles": [
+        "src/blocks/IntegrationList/Component.tsx",
+        "src/blocks/IntegrationList/config.ts",
+        "src/blocks/shared/integrationFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:20:56.983Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "integration-marquee": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "integration-marquee",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:23:50.288Z",
+      "installedFiles": [
+        "src/blocks/IntegrationMarquee/Component.tsx",
+        "src/blocks/IntegrationMarquee/config.ts",
+        "src/blocks/shared/integrationFields.ts",
+        "src/components/ui/infinite-slider.tsx"
+      ],
+      "lastAttemptAt": "2026-07-13T12:23:50.288Z",
+      "lastError": null,
+      "patchedFiles": [
+        "package.json",
+        "pnpm-lock.yaml",
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "integration-testimonial": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "integration-testimonial",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:21:11.103Z",
+      "installedFiles": [
+        "src/blocks/IntegrationTestimonial/Component.tsx",
+        "src/blocks/IntegrationTestimonial/config.ts",
+        "src/blocks/shared/integrationFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:21:11.103Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "call-to-action-boxed": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "call-to-action-boxed",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:21:21.670Z",
+      "installedFiles": [
+        "src/blocks/CallToActionBoxed/Component.tsx",
+        "src/blocks/CallToActionBoxed/config.ts",
+        "src/blocks/shared/callToActionFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:21:21.670Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "team-roster": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "team-roster",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:21:36.025Z",
+      "installedFiles": [
+        "src/blocks/TeamRoster/Component.tsx",
+        "src/blocks/TeamRoster/config.ts",
+        "src/blocks/shared/teamFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:21:36.025Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "team-grid": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "team-grid",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:21:46.454Z",
+      "installedFiles": [
+        "src/blocks/TeamGrid/Component.tsx",
+        "src/blocks/TeamGrid/config.ts",
+        "src/blocks/shared/teamFields.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:21:46.454Z",
+      "lastError": null,
+      "patchedFiles": [
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    },
+    "call-to-action-signup": {
+      "manifestVersion": "0.1.0",
+      "registryItemName": "call-to-action-signup",
+      "targetId": "payload-website-starter",
+      "installedAt": "2026-07-13T12:24:29.816Z",
+      "installedFiles": [
+        "src/blocks/CallToActionSignup/Component.tsx",
+        "src/blocks/CallToActionSignup/config.ts",
+        "src/blocks/shared/callToActionFields.ts",
+        "src/blocks/shared/safeUrls.ts"
+      ],
+      "lastAttemptAt": "2026-07-13T12:24:29.816Z",
+      "lastError": null,
+      "patchedFiles": [
+        "package.json",
+        "pnpm-lock.yaml",
+        "src/blocks/RenderBlocks.tsx",
+        "src/collections/Pages/index.ts"
+      ],
+      "status": "installed"
+    }
+  }
+}
