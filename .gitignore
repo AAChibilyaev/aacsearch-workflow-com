@@ -51,4 +51,4 @@ node_modules/
 
 # OpenNext
 .open-next
-.wrangler
+.wrangler.dev.vars
