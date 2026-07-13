@@ -41,18 +41,16 @@
     // },
   ],
   // Transactional email (password reset, email verification) via Cloudflare's
-  // native Email Sending — no SMTP/API token. DISABLED until the sender
-  // domain is onboarded: the placeholder sender address made the Workers API
-  // REJECT every version upload ("Deployment failed" in Workers Builds).
-  // To enable: onboard the domain (`wrangler email sending enable <domain>`
-  // + DNS setup in Compute > Email Service), then uncomment with a REAL
-  // address — payload.config.ts picks the binding up automatically.
-  // "send_email": [
-  //   {
-  //     "name": "EMAIL",
-  //     "allowed_sender_addresses": ["noreply@your-onboarded-domain.com"],
-  //   },
-  // ],
+  // native Email Sending — no SMTP/API token.
+  // Prerequisite: onboard the sender domain via Cloudflare Dashboard or CLI:
+  //   wrangler email sending enable aacsearch.com
+  //   wrangler email sending dns setup aacsearch.com
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": ["noreply@aacsearch.com"],
+    },
+  ],
 
   // Here's how to configure an additional environment
   // It can be deployed with `CLOUDFLARE_ENV=staging pnpm run deploy`
