@@ -287,20 +287,26 @@ export default buildConfig({
   },
   db: sqliteD1Adapter({ binding: cloudflare.env.D1 }),
   // Transactional email (password reset, email verification) via Cloudflare's
-  // native `send_email` Workers binding — no SMTP, no API token. Requires the
-  // sender domain to be onboarded for Cloudflare Email Sending (see
-  // wrangler.jsonc `send_email` binding comment) before this can send.
-  email: cloudflareEmailAdapter({
-    // wrangler's generated `SendEmail.send()` is overloaded (raw EmailMessage
-    // | declarative builder object); TS's structural check against the
-    // adapter's single-signature CloudflareEmailBinding fails on the first
-    // overload even though the adapter (verified in its dist/index.js) only
-    // ever calls .send() with the builder-object shape, which env.EMAIL
-    // supports natively. Safe, narrow cast — not `as any`.
-    binding: cloudflare.env.EMAIL as unknown as CloudflareEmailBinding,
-    defaultFromAddress: process.env.EMAIL_FROM_ADDRESS || 'noreply@REPLACE_WITH_YOUR_DOMAIN',
-    defaultFromName: process.env.EMAIL_FROM_NAME || 'AACSearch',
-  }),
+  // native `send_email` Workers binding — no SMTP, no API token. OPTIONAL:
+  // the binding only exists once the sender domain is onboarded and the
+  // send_email block in wrangler.jsonc is uncommented; without it Payload
+  // falls back to its default console-log email adapter (flows keep working,
+  // messages are logged instead of sent).
+  ...(cloudflare.env.EMAIL
+    ? {
+        email: cloudflareEmailAdapter({
+          // wrangler's generated `SendEmail.send()` is overloaded (raw
+          // EmailMessage | declarative builder object); TS's structural check
+          // against the adapter's single-signature CloudflareEmailBinding
+          // fails on the first overload even though the adapter (verified in
+          // its dist/index.js) only ever calls .send() with the builder-object
+          // shape, which env.EMAIL supports natively. Safe, narrow cast.
+          binding: cloudflare.env.EMAIL as unknown as CloudflareEmailBinding,
+          defaultFromAddress: process.env.EMAIL_FROM_ADDRESS || 'noreply@aacsearch.com',
+          defaultFromName: process.env.EMAIL_FROM_NAME || 'AACSearch',
+        }),
+      }
+    : {}),
   // Jobs (ingestion etc.) don't self-run on Workers: a Cloudflare Cron Trigger
   // or external cron must hit GET /api/payload-jobs/run with the Bearer secret.
   // Default access.run allows ANY logged-in user and jobs execute with
