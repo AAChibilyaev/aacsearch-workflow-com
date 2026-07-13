@@ -1,6 +1,14 @@
-import type { CollectionAfterChangeHook, Config, Endpoint, Plugin } from 'payload'
+import type {
+  CollectionAfterChangeHook,
+  CollectionAfterDeleteHook,
+  Config,
+  Endpoint,
+  Plugin,
+} from 'payload'
 
 import { getCloudflareContext } from '@opennextjs/cloudflare'
+
+import type { Client } from 'typesense'
 
 import { isSuperAdmin } from '@/access/isSuperAdmin'
 import { isApiKeyPrincipalValid } from '@/collections/ApiKeys'
@@ -20,6 +28,14 @@ import {
   mergeSearchTenantFilter,
   sanitizeSearchResponse,
 } from '@/lib/search/client'
+import {
+  type CollectionDefinitionInput,
+  type DefinitionDoc,
+  buildEngineCollectionSchema,
+  definitionDocToInput,
+  engineCollectionName,
+  validateCollectionDefinition,
+} from '@/lib/search/collectionSchema'
 import {
   type TenantSearchSettings,
   syncTenantSearchSettings,
@@ -597,6 +613,207 @@ const syncTenantSettingsHook = (): CollectionAfterChangeHook =>
     return doc
   }
 
+/* ───────────────────── collection provisioning (PART V) ──────────────────────
+ *
+ * A customer "collection" is a `collection-definitions` row (DATA, not runtime
+ * Payload schema). When one is created/updated we PROVISION a per-tenant engine
+ * collection so the customer's documents become searchable with all their
+ * configured fields/facets; when one is deleted we DROP that engine collection.
+ *
+ * Engine work is deterministic + idempotent, gated on TYPESENSE_HOST, and NEVER
+ * throws — provisioning must not fail a definition save because the engine is
+ * down. All customer-visible strings say "AACSearch"; the engine is an internal
+ * detail (Typesense identifiers appear only in code/logs, never in responses).
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * A `collection-definitions` document carries a `tenant` relationship (injected
+ * by the multi-tenant plugin) on top of the designer surface the shared contract
+ * knows about.
+ */
+export type ProvisionableDefinition = DefinitionDoc & { id?: number | string; tenant?: unknown }
+
+/**
+ * Map a `collection-definitions` document to the engine-ready
+ * `CollectionDefinitionInput` via the SHARED `definitionDocToInput`, returning
+ * null when there is no usable slug (nothing to provision). Thin wrapper — the
+ * field/type interpretation lives in the shared contract so the collection
+ * designer and this provisioner can never diverge. Pure — exported for tests.
+ */
+export const mapDefinitionToEngineInput = (
+  definition: ProvisionableDefinition,
+): CollectionDefinitionInput | null => {
+  const input = definitionDocToInput(definition)
+  return input.slug ? input : null
+}
+
+/** A minimal engine field view for the additive-diff decision. */
+export type EngineFieldLike = { name: string; type?: unknown }
+
+/**
+ * Decide which fields to ADD to an already-provisioned engine collection. The
+ * engine only supports ADDING fields — never changing a field's type nor
+ * removing one — so a field whose type differs from the live schema is reported
+ * as an unsupported change and skipped (the caller logs it). New fields are
+ * marked `optional` because the collection may already hold documents that lack
+ * them. Pure — exported for unit tests.
+ */
+export const diffFieldsToAdd = (
+  existingFields: EngineFieldLike[],
+  desiredFields: EngineFieldLike[],
+): { toAdd: Record<string, unknown>[]; unsupported: { field: string; reason: string }[] } => {
+  const existingByName = new Map(existingFields.map((field) => [field.name, field]))
+  const toAdd: Record<string, unknown>[] = []
+  const unsupported: { field: string; reason: string }[] = []
+
+  for (const field of desiredFields) {
+    const current = existingByName.get(field.name)
+    if (!current) {
+      // additive to a possibly-populated collection ⇒ must be optional
+      toAdd.push({ ...field, optional: true })
+    } else if (
+      field.type !== undefined &&
+      current.type !== undefined &&
+      current.type !== field.type
+    ) {
+      unsupported.push({ field: field.name, reason: 'field type change' })
+    }
+  }
+
+  return { toAdd, unsupported }
+}
+
+/** True when an engine error signals the object already exists (create race). */
+const isAlreadyExistsError = (err: unknown): boolean => {
+  const e = err as { httpStatus?: number; message?: unknown }
+  return (
+    e?.httpStatus === 409 || (typeof e?.message === 'string' && /already exists/i.test(e.message))
+  )
+}
+
+/** A retrieved engine collection schema, narrowed to what the diff reads. */
+type LiveCollection = { fields?: EngineFieldLike[] }
+
+/**
+ * Retrieve a live engine collection, or null when it does not exist. `retrieve()`
+ * rejects for a missing collection, so any rejection maps to null.
+ */
+const retrieveCollection = async (
+  client: Client,
+  name: string,
+): Promise<LiveCollection | null> => {
+  try {
+    return (await client.collections(name).retrieve()) as LiveCollection
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Provision (create-or-additively-update) one per-definition engine collection.
+ * Idempotent: creates when absent; when present, retrieves the live schema and
+ * adds ONLY new fields — never destructively recreates a populated collection.
+ * A create/retrieve race falls back to the additive path. Throws only on
+ * unexpected engine errors (the calling hook catches + logs).
+ */
+const provisionEngineCollection = async (
+  client: Client,
+  name: string,
+  schema: Record<string, unknown>,
+  logger: { warn: (obj: unknown) => void },
+): Promise<void> => {
+  let existing = await retrieveCollection(client, name)
+
+  if (!existing) {
+    // Bind the no-arg collections() resource — its `.create` exists (the
+    // single-collection overload does not), mirroring settingsSync.
+    const collectionsApi = client.collections()
+    try {
+      await collectionsApi.create(schema as unknown as Parameters<typeof collectionsApi.create>[0])
+      return
+    } catch (err) {
+      if (!isAlreadyExistsError(err)) throw err
+      // raced with a concurrent create ⇒ fall through to the additive diff
+      existing = await retrieveCollection(client, name)
+      if (!existing) return
+    }
+  }
+
+  const desired = Array.isArray(schema.fields) ? (schema.fields as EngineFieldLike[]) : []
+  const live = Array.isArray(existing.fields) ? existing.fields : []
+  const { toAdd, unsupported } = diffFieldsToAdd(live, desired)
+  for (const item of unsupported) {
+    logger.warn({
+      field: item.field,
+      msg: `AACSearch Engine cannot change an existing field (${item.reason}); skipping`,
+    })
+  }
+  if (toAdd.length > 0) {
+    const collection = client.collections(name)
+    await collection.update({ fields: toAdd } as unknown as Parameters<typeof collection.update>[0])
+  }
+}
+
+/**
+ * afterChange on `collection-definitions`: provision the customer's per-tenant
+ * engine collection. Gated on TYPESENSE_HOST; logs & never throws; skips cleanly
+ * when the definition has no tenant/slug or fails engine validation.
+ */
+const provisionCollectionHook = (): CollectionAfterChangeHook =>
+  async ({ doc, req }) => {
+    if (!process.env.TYPESENSE_HOST) return doc
+    try {
+      const definition = doc as ProvisionableDefinition
+      const tenantId = extractTenantId(definition.tenant)
+      const input = mapDefinitionToEngineInput(definition)
+      if (tenantId === null || input === null) return doc
+
+      const validation = validateCollectionDefinition(input)
+      if (validation.ok === false) {
+        req.payload.logger.warn({
+          errors: validation.errors,
+          msg: 'collection definition rejected by engine validation; skipping provisioning',
+        })
+        return doc
+      }
+
+      const schema = buildEngineCollectionSchema(tenantId, input)
+      const name = engineCollectionName(tenantId, input.slug)
+      const client = await getAdminSearchClient()
+      await provisionEngineCollection(client, name, schema, req.payload.logger)
+    } catch (err) {
+      req.payload.logger.error({ err, msg: 'collection provisioning failed' })
+    }
+    return doc
+  }
+
+/**
+ * afterDelete on `collection-definitions`: drop the per-tenant engine collection
+ * (best-effort). Gated on TYPESENSE_HOST; logs & never throws.
+ */
+const deprovisionCollectionHook = (): CollectionAfterDeleteHook =>
+  async ({ doc, req }) => {
+    if (!process.env.TYPESENSE_HOST) return doc
+    try {
+      const definition = doc as ProvisionableDefinition
+      const tenantId = extractTenantId(definition.tenant)
+      const slug = typeof definition.slug === 'string' ? definition.slug.trim() : ''
+      if (tenantId === null || !slug) return doc
+
+      const name = engineCollectionName(tenantId, slug)
+      const client = await getAdminSearchClient()
+      await client
+        .collections(name)
+        .delete()
+        .catch((err: unknown) => {
+          req.payload.logger.warn({ err, msg: 'engine collection drop failed (best-effort)' })
+        })
+    } catch (err) {
+      req.payload.logger.error({ err, msg: 'collection deprovisioning failed' })
+    }
+    return doc
+  }
+
 export const searchGatewayPlugin =
   (opts: SearchGatewayOptions): Plugin =>
   (config: Config): Config => {
@@ -604,17 +821,34 @@ export const searchGatewayPlugin =
 
     return {
       ...config,
-      collections: (config.collections ?? []).map((collection) =>
-        collection.slug === 'tenant-settings'
-          ? {
-              ...collection,
-              hooks: {
-                ...collection.hooks,
-                afterChange: [...(collection.hooks?.afterChange ?? []), syncTenantSettingsHook()],
-              },
-            }
-          : collection,
-      ),
+      collections: (config.collections ?? []).map((collection) => {
+        if (collection.slug === 'tenant-settings') {
+          return {
+            ...collection,
+            hooks: {
+              ...collection.hooks,
+              afterChange: [...(collection.hooks?.afterChange ?? []), syncTenantSettingsHook()],
+            },
+          }
+        }
+        if (collection.slug === 'collection-definitions') {
+          return {
+            ...collection,
+            hooks: {
+              ...collection.hooks,
+              afterChange: [
+                ...(collection.hooks?.afterChange ?? []),
+                provisionCollectionHook(),
+              ],
+              afterDelete: [
+                ...(collection.hooks?.afterDelete ?? []),
+                deprovisionCollectionHook(),
+              ],
+            },
+          }
+        }
+        return collection
+      }),
       endpoints: [...(config.endpoints ?? []), ...gatewayEndpoints(opts)],
     }
   }

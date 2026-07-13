@@ -73,6 +73,7 @@ export interface Config {
     products: Product;
     documents: Document;
     integrations: Integration;
+    invoices: Invoice;
     'collection-definitions': CollectionDefinition;
     'tenant-settings': TenantSetting;
     'api-keys': ApiKey;
@@ -100,6 +101,7 @@ export interface Config {
     products: ProductsSelect<false> | ProductsSelect<true>;
     documents: DocumentsSelect<false> | DocumentsSelect<true>;
     integrations: IntegrationsSelect<false> | IntegrationsSelect<true>;
+    invoices: InvoicesSelect<false> | InvoicesSelect<true>;
     'collection-definitions': CollectionDefinitionsSelect<false> | CollectionDefinitionsSelect<true>;
     'tenant-settings': TenantSettingsSelect<false> | TenantSettingsSelect<true>;
     'api-keys': ApiKeysSelect<false> | ApiKeysSelect<true>;
@@ -313,6 +315,9 @@ export interface Tenant {
       | boolean
       | null;
     syncedAt?: string | null;
+    walletId?: string | null;
+    walletBalanceCents?: number | null;
+    walletCurrency?: string | null;
   };
   updatedAt: string;
   createdAt: string;
@@ -337,6 +342,7 @@ export interface HeroBlock {
  */
 export interface Media {
   id: number;
+  tenant?: (number | null) | Tenant;
   alt: string;
   /**
    * Keywords which describe the image. Used when searching for the image.
@@ -1439,25 +1445,120 @@ export interface Document {
 export interface CollectionDefinition {
   id: number;
   tenant?: (number | null) | Tenant;
+  /**
+   * A friendly name for this collection, shown in your search dashboard.
+   */
   name: string;
+  /**
+   * A short, unique id used in the search API (lowercase letters, numbers, dashes).
+   */
   slug: string;
+  /**
+   * Describe each piece of information a record holds and how AACSearch should treat it.
+   */
   fields?:
     | {
+        /**
+         * Lowercase letters, numbers and underscores only (e.g. product_title).
+         */
         name: string;
         label?: string | null;
-        fieldType: 'text' | 'textarea' | 'number' | 'checkbox' | 'date' | 'select';
+        /**
+         * What kind of information this field holds.
+         */
+        fieldType:
+          | 'text'
+          | 'textarea'
+          | 'string[]'
+          | 'int32'
+          | 'int64'
+          | 'float'
+          | 'number'
+          | 'checkbox'
+          | 'date'
+          | 'select'
+          | 'geopoint'
+          | 'object'
+          | 'object[]'
+          | 'auto';
+        /**
+         * A record cannot be saved without a value for this field.
+         */
         required?: boolean | null;
-        localized?: boolean | null;
+        /**
+         * Include this field when your visitors search. On by default.
+         */
+        searchable?: boolean | null;
+        /**
+         * Let visitors filter and group results by this field.
+         */
         facet?: boolean | null;
+        /**
+         * Allow results to be ordered by this field.
+         */
+        sortable?: boolean | null;
+        /**
+         * Records may leave this field empty in the search index.
+         */
+        optional?: boolean | null;
+        localized?: boolean | null;
+        /**
+         * Match text that appears in the middle of words (e.g. part numbers).
+         */
+        infixSearch?: boolean | null;
+        /**
+         * Match different word forms (e.g. "running" also matches "run").
+         */
+        stem?: boolean | null;
+        /**
+         * Optional language code for this field (e.g. en, ru, de) to improve matching.
+         */
+        language?: string | null;
+        /**
+         * The allowed choices for this field.
+         */
         options?:
           | {
               value: string;
               id?: string | null;
             }[]
           | null;
+        /**
+         * Comma-separated text fields to power semantic ("meaning") search for this field.
+         */
+        embedFrom?: string | null;
+        /**
+         * Advanced: the AACSearch understanding model. Leave as-is unless advised.
+         */
+        embedModel?: string | null;
         id?: string | null;
       }[]
     | null;
+  /**
+   * Advanced AACSearch behaviour for this collection. Smart defaults are already set.
+   */
+  engineSettings?: {
+    /**
+     * Turn on meaning-based ("semantic") search so results match intent, not just words.
+     */
+    semanticSearch?: boolean | null;
+    /**
+     * The number field used to order results by default (must be a sortable number field).
+     */
+    defaultSortingField?: string | null;
+    /**
+     * Allow nested object fields. Enabled automatically when you add a nested field.
+     */
+    enableNestedFields?: boolean | null;
+    /**
+     * Characters that split words apart, comma-separated (helps match "wi-fi" as "wi fi").
+     */
+    tokenSeparators?: string | null;
+    /**
+     * Symbols kept as part of words, comma-separated (so "c++" and "c#" stay searchable).
+     */
+    symbolsToIndex?: string | null;
+  };
   updatedAt: string;
   createdAt: string;
 }
@@ -1486,6 +1587,24 @@ export interface Integration {
     | number
     | boolean
     | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "invoices".
+ */
+export interface Invoice {
+  id: number;
+  externalId?: string | null;
+  number?: string | null;
+  status?: ('draft' | 'finalized' | 'payment_pending' | 'payment_succeeded' | 'payment_failed' | 'void') | null;
+  amountCents?: number | null;
+  currency?: string | null;
+  invoiceType?: ('subscription' | 'wallet_top_up' | 'credit' | 'one_off') | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  paidAt?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -2312,6 +2431,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'integrations';
         value: number | Integration;
+      } | null)
+    | ({
+        relationTo: 'invoices';
+        value: number | Invoice;
       } | null)
     | ({
         relationTo: 'collection-definitions';
@@ -3493,6 +3616,23 @@ export interface IntegrationsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "invoices_select".
+ */
+export interface InvoicesSelect<T extends boolean = true> {
+  externalId?: T;
+  number?: T;
+  status?: T;
+  amountCents?: T;
+  currency?: T;
+  invoiceType?: T;
+  periodStart?: T;
+  periodEnd?: T;
+  paidAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "collection-definitions_select".
  */
 export interface CollectionDefinitionsSelect<T extends boolean = true> {
@@ -3506,15 +3646,32 @@ export interface CollectionDefinitionsSelect<T extends boolean = true> {
         label?: T;
         fieldType?: T;
         required?: T;
-        localized?: T;
+        searchable?: T;
         facet?: T;
+        sortable?: T;
+        optional?: T;
+        localized?: T;
+        infixSearch?: T;
+        stem?: T;
+        language?: T;
         options?:
           | T
           | {
               value?: T;
               id?: T;
             };
+        embedFrom?: T;
+        embedModel?: T;
         id?: T;
+      };
+  engineSettings?:
+    | T
+    | {
+        semanticSearch?: T;
+        defaultSortingField?: T;
+        enableNestedFields?: T;
+        tokenSeparators?: T;
+        symbolsToIndex?: T;
       };
   updatedAt?: T;
   createdAt?: T;
@@ -3655,6 +3812,7 @@ export interface UsersSelect<T extends boolean = true> {
  * via the `definition` "media_select".
  */
 export interface MediaSelect<T extends boolean = true> {
+  tenant?: T;
   alt?: T;
   keywords?: T;
   updatedAt?: T;
@@ -3685,6 +3843,9 @@ export interface TenantsSelect<T extends boolean = true> {
         trialEndsAt?: T;
         entitlements?: T;
         syncedAt?: T;
+        walletId?: T;
+        walletBalanceCents?: T;
+        walletCurrency?: T;
       };
   updatedAt?: T;
   createdAt?: T;
@@ -4252,6 +4413,7 @@ export interface TaskCreateCollectionExport {
       | 'products'
       | 'documents'
       | 'integrations'
+      | 'invoices'
       | 'collection-definitions'
       | 'tenant-settings'
       | 'api-keys'

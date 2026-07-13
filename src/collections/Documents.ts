@@ -1,4 +1,10 @@
-import type { CollectionBeforeValidateHook, CollectionConfig } from 'payload'
+import type {
+  CollectionAfterChangeHook,
+  CollectionAfterDeleteHook,
+  CollectionBeforeValidateHook,
+  CollectionConfig,
+  PayloadRequest,
+} from 'payload'
 
 import { APIError } from 'payload'
 
@@ -9,7 +15,14 @@ import {
   readTenantScoped,
   writeTenantScoped,
 } from '@/access/tenantScopedAccess'
+import {
+  buildEngineDocument,
+  engineCollectionName,
+  validateCollectionDefinition,
+} from '@/lib/search/collectionSchema'
+import { getAdminSearchClient } from '@/lib/search/client'
 import { validateDocumentData } from '@/lib/validateDocumentData'
+import { mapDefinitionToEngineInput } from '@/plugins/searchGateway'
 import { extractID } from '@/utilities/extractID'
 
 /**
@@ -63,6 +76,128 @@ const validateDataAgainstDefinition: CollectionBeforeValidateHook<Document> = as
 }
 
 /**
+ * A concrete request locale, or undefined for the "all"/wildcard locale. The
+ * per-definition engine collection carries a `locale` facet, so every indexed
+ * document is tagged with the locale it was written under.
+ */
+const resolveRequestLocale = (req: PayloadRequest): string | undefined => {
+  const locale = req.locale
+  return typeof locale === 'string' && locale !== 'all' ? locale : undefined
+}
+
+/** Shape we read off a `documents` doc for engine indexing (tenant injected by the plugin). */
+type IndexableDocument = {
+  data?: unknown
+  definition?: unknown
+  id?: number | string
+  tenant?: unknown
+}
+
+/**
+ * Resolve the linked collection-definition and, when it validates, the deterministic
+ * per-tenant engine collection name + the shared `CollectionDefinitionInput`. Threads
+ * `req` so the lookup joins the current transaction. Returns null (skip) whenever the
+ * document is not routable to an engine collection.
+ */
+const resolveEngineTarget = async (
+  doc: IndexableDocument,
+  req: PayloadRequest,
+): Promise<null | {
+  input: ReturnType<typeof mapDefinitionToEngineInput>
+  name: string
+  tenantId: number | string
+}> => {
+  const definitionRef = doc.definition
+  if (definitionRef === undefined || definitionRef === null) return null
+
+  const tenantId = extractID(doc.tenant as never)
+  if (tenantId === undefined || tenantId === null) return null
+
+  const definition = await req.payload.findByID({
+    id: extractID(definitionRef as never),
+    collection: 'collection-definitions',
+    depth: 0,
+    disableErrors: true,
+    req,
+  })
+  if (!definition) return null
+
+  const input = mapDefinitionToEngineInput(definition)
+  if (input === null) return null
+  if (validateCollectionDefinition(input).ok === false) return null
+
+  return {
+    input,
+    name: engineCollectionName(tenantId as number | string, input.slug),
+    tenantId: tenantId as number | string,
+  }
+}
+
+/**
+ * afterChange on `documents`: index the document into its definition's per-tenant
+ * engine collection (upsert by id ⇒ idempotent). Gated on TYPESENSE_HOST; guarded
+ * with `req.context`; logs & never throws (the engine being down must not fail a
+ * document write).
+ */
+const indexDocumentHook: CollectionAfterChangeHook<Document> = async ({ doc, req }) => {
+  if (!process.env.TYPESENSE_HOST) return doc
+  try {
+    const context = req.context as Record<string, unknown>
+    if (context.aacSearchDocumentIndexing) return doc
+    context.aacSearchDocumentIndexing = true
+
+    const indexable = doc as unknown as IndexableDocument
+    const target = await resolveEngineTarget(indexable, req)
+    if (!target || target.input === null) return doc
+
+    const engineDoc = buildEngineDocument(target.input, {
+      data: (indexable.data as Record<string, unknown>) ?? {},
+      id: indexable.id as number | string,
+      locale: resolveRequestLocale(req),
+      tenant: target.tenantId,
+    })
+
+    const client = await getAdminSearchClient()
+    await client
+      .collections(target.name)
+      .documents()
+      .upsert(engineDoc)
+      .catch((err: unknown) => {
+        req.payload.logger.warn({ err, msg: 'document index upsert failed (best-effort)' })
+      })
+  } catch (err) {
+    req.payload.logger.error({ err, msg: 'document indexing failed' })
+  }
+  return doc
+}
+
+/**
+ * afterDelete on `documents`: remove the document from its definition's per-tenant
+ * engine collection (best-effort). Gated on TYPESENSE_HOST; logs & never throws.
+ */
+const deindexDocumentHook: CollectionAfterDeleteHook<Document> = async ({ doc, req }) => {
+  if (!process.env.TYPESENSE_HOST) return doc
+  try {
+    const indexable = doc as unknown as IndexableDocument
+    if (indexable.id === undefined || indexable.id === null) return doc
+    const target = await resolveEngineTarget(indexable, req)
+    if (!target) return doc
+
+    const client = await getAdminSearchClient()
+    await client
+      .collections(target.name)
+      .documents(String(indexable.id))
+      .delete()
+      .catch((err: unknown) => {
+        req.payload.logger.warn({ err, msg: 'document de-index failed (best-effort)' })
+      })
+  } catch (err) {
+    req.payload.logger.error({ err, msg: 'document de-indexing failed' })
+  }
+  return doc
+}
+
+/**
  * Virtual-collection documents (PART V): each doc belongs to a tenant-scoped
  * `collection-definitions` row and carries its payload in `data` (json).
  */
@@ -78,9 +213,16 @@ export const Documents: CollectionConfig = {
   },
   admin: {
     defaultColumns: ['title', 'definition', 'updatedAt'],
+    // White-label: grouped with collection definitions under "Search"
+    group: { en: 'Search', ru: 'Поиск' },
     useAsTitle: 'title',
   },
   hooks: {
+    // Index into / remove from the definition's per-tenant AACSearch Engine
+    // collection. Spread-appended so future hooks compose; each is gated on
+    // TYPESENSE_HOST, guarded, and never throws.
+    afterChange: [indexDocumentHook],
+    afterDelete: [deindexDocumentHook],
     // enforceTenantWriteScope runs first so a cross-tenant `data.tenant` is
     // rejected before the definition payload is validated.
     beforeValidate: [enforceTenantWriteScope, validateDataAgainstDefinition],

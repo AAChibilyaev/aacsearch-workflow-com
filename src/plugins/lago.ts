@@ -365,6 +365,45 @@ const externalCustomerIdOf = (value: unknown): null | string => {
   return null
 }
 
+/** Shape of a Lago wallet object from webhooks. */
+type W = {
+    external_customer_id?: string | null
+    external_id?: string | null
+    lago_id?: string
+    ongoing_balance_cents?: number
+    ongoing_current_usage_balance_cents?: number
+}
+
+/** Mirror Lago wallet balance to tenants.billing. Called by webhook handlers. */
+const mirrorWalletBalance = async (req: PayloadRequest, wallet: W): Promise<void> => {
+    const externalId = wallet.external_customer_id ?? wallet.external_id
+    if (!externalId) return
+    const id = Number(externalId)
+    if (!Number.isFinite(id)) return
+
+    const balance = typeof wallet.ongoing_balance_cents === 'number'
+        ? wallet.ongoing_balance_cents
+        : 0
+
+    try {
+        await req.payload.update({
+            id,
+            collection: 'tenants',
+            context: { billingWebhookSync: true },
+            data: {
+                billing: {
+                    walletId: wallet.lago_id || undefined,
+                    walletBalanceCents: balance,
+                },
+            },
+            overrideAccess: true,
+            req,
+        })
+    } catch (err) {
+        req.payload.logger.error({ err, msg: 'wallet balance mirror update failed' })
+    }
+}
+
 const applyBillingWebhook = async (
   req: PayloadRequest,
   opts: LagoPluginOptions,
@@ -438,6 +477,17 @@ const applyBillingWebhook = async (
       if (invoice?.payment_status === 'succeeded') {
         const externalId = externalCustomerIdOf(event.invoice)
         if (externalId) await updateTenantBilling(req, externalId, { status: 'active' }, type)
+      }
+      return
+    }
+
+    // ── Wallet webhooks ─────────────────────────────────
+    case 'wallet_transaction.created':
+    case 'wallet_transaction.updated': {
+      const payload = event as unknown as { wallet_transaction?: { wallet?: W }; wallet?: W }
+      const walletObj = payload.wallet_transaction?.wallet ?? payload.wallet
+      if (walletObj) {
+        await mirrorWalletBalance(req, walletObj)
       }
       return
     }
@@ -876,6 +926,16 @@ export const billingEndpoints = (opts: LagoPluginOptions): Endpoint[] => [
         for (const subscription of data.subscriptions ?? []) {
           await client.subscriptions.destroySubscription(subscription.external_id)
         }
+        // Optimistically clear the mirror so the UI drops the plan immediately
+        // (webhook reconciles authoritatively when delivered).
+        await updateTenantBilling(
+          req,
+          String(tenant),
+          { entitlements: {}, status: 'canceled' },
+          'cancel',
+        ).catch((err) =>
+          req.payload.logger.warn({ err, msg: 'cancel: optimistic mirror update failed' }),
+        )
         return Response.json({ canceled: true })
       } catch (err) {
         req.payload.logger.error({ err, msg: 'billing cancel failed' })

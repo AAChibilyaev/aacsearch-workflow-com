@@ -68,6 +68,7 @@ import { CommandMenuProvider as CommandMenuProvider_3bf5d3e334c5eaf4f0d216451590
 import { InstructionsProvider as InstructionsProvider_4490b89d4413c1ffaecdacfe72efaf73 } from '@ai-stack/payloadcms/client'
 import { BillingView as BillingView_e5ae7e3966f5465c4344dac4dd93dbf9 } from '../../../components/views/Billing'
 import { IntegrationsView as IntegrationsView_9e1735bac833ebc9ae622ee38570363b } from '../../../components/views/Integrations'
+import { SearchView as SearchView_835c202eebadc702ec7d12e425f24683 } from '../../../components/views/Search'
 import { AltTextHealthWidget as AltTextHealthWidget_a35949d21b38efe8500764b5b0b3638b } from '@jhb.software/payload-alt-text-plugin/server'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 
@@ -143,6 +144,7 @@ export const importMap = {
   "@ai-stack/payloadcms/client#InstructionsProvider": InstructionsProvider_4490b89d4413c1ffaecdacfe72efaf73,
   "/components/views/Billing#BillingView": BillingView_e5ae7e3966f5465c4344dac4dd93dbf9,
   "/components/views/Integrations#IntegrationsView": IntegrationsView_9e1735bac833ebc9ae622ee38570363b,
+  "/components/views/Search#SearchView": SearchView_835c202eebadc702ec7d12e425f24683,
   "@jhb.software/payload-alt-text-plugin/server#AltTextHealthWidget": AltTextHealthWidget_a35949d21b38efe8500764b5b0b3638b,
   "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1
 }

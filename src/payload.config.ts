@@ -20,6 +20,9 @@ import { betterPreview } from 'payload-better-preview'
 import { payloadPluginNotifications } from '@elghaied/payload-plugin-notifications'
 import { openAIResolver, payloadAltTextPlugin } from '@jhb.software/payload-alt-text-plugin'
 import { payloadCmdk } from '@veiag/payload-cmdk'
+import { cloudflareEmailAdapter } from 'payload-cloudflare-email-adapter'
+import { auditorPlugin } from 'payload-auditor'
+import { payloadTotp } from 'payload-totp'
 import { en } from '@payloadcms/translations/languages/en'
 import { ru } from '@payloadcms/translations/languages/ru'
 import { de } from '@payloadcms/translations/languages/de'
@@ -41,6 +44,7 @@ import { Pages } from './collections/Pages'
 import { Tenants } from './collections/Tenants'
 import { Products } from './collections/Products'
 import { Documents } from './collections/Documents'
+import { Invoices } from './collections/Invoices'
 import { Header } from './globals/Header'
 import { Footer } from './globals/Footer'
 import type { Config } from './payload-types'
@@ -99,6 +103,12 @@ export default buildConfig({
           meta: { title: 'Integrations' },
           path: '/integrations',
         },
+        search: {
+          Component: '/components/views/Search#SearchView',
+          exact: true,
+          meta: { title: 'Search' },
+          path: '/search',
+        },
       },
     },
     importMap: {
@@ -121,6 +131,7 @@ export default buildConfig({
     Products,
     Documents,
     Integrations,
+    Invoices,
     CollectionDefinitions,
     TenantSettings,
     ApiKeys,
@@ -150,6 +161,15 @@ export default buildConfig({
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
   db: sqliteD1Adapter({ binding: cloudflare.env.D1 }),
+  // Transactional email (password reset, email verification) via Cloudflare's
+  // native `send_email` Workers binding — no SMTP, no API token. Requires the
+  // sender domain to be onboarded for Cloudflare Email Sending (see
+  // wrangler.jsonc `send_email` binding comment) before this can send.
+  email: cloudflareEmailAdapter({
+    binding: cloudflare.env.EMAIL,
+    defaultFromAddress: process.env.EMAIL_FROM_ADDRESS || 'noreply@REPLACE_WITH_YOUR_DOMAIN',
+    defaultFromName: process.env.EMAIL_FROM_NAME || 'AACSearch',
+  }),
   // Jobs (ingestion etc.) don't self-run on Workers: a Cloudflare Cron Trigger
   // or external cron must hit GET /api/payload-jobs/run with the Bearer secret.
   // Default access.run allows ANY logged-in user and jobs execute with
@@ -204,9 +224,13 @@ export default buildConfig({
         documents: {},
         // customer integration connections — system-managed by webhooks
         integrations: {},
+        // read-only invoice projection — system-managed by billing webhooks
+        invoices: {},
         'collection-definitions': {},
         // tenant service API keys — scoped so a tenant-admin manages only their own
         'api-keys': {},
+        // uploads are tenant-scoped so customers never see each other's media
+        media: {},
         // one settings doc per tenant, rendered like a global in the admin
         'tenant-settings': { isGlobal: true },
       },
@@ -362,6 +386,10 @@ export default buildConfig({
             },
             collections: { pages: true },
             disableSponsorMessage: true,
+            // Never call the AI backend at boot — the seed prompts are generated
+            // lazily on first use. A boot-time call makes getPayload fail (and
+            // spews unhandled 401s in tests) whenever the key is invalid/absent.
+            generatePromptOnInit: false,
             overrideInstructions: {
               access: {
                 create: isSuperAdminAccess,
@@ -395,6 +423,39 @@ export default buildConfig({
       openapiVersion: '3.0',
     }),
     scalar({}),
+    // Security audit trail — tracks privilege-sensitive events (role changes,
+    // API-key issuance/revocation, tenant lifecycle). Log collection is
+    // super-admin only (hidden from tenant users; no tenant field of its own,
+    // same "not exposed to tenants" pattern as the MCP api-keys collection —
+    // see NOTE above re: plugin-ecommerce for why an un-tenant-scoped
+    // collection must never be tenant-visible).
+    auditorPlugin({
+      automation: {
+        logCleanup: {
+          cronTime: '0 3 * * *',
+          olderThan: 90 * 24 * 60 * 60 * 1000, // keep 90 days
+        },
+      },
+      collection: {
+        Accessibility: {
+          customAccess: {
+            read: ({ req }) => isSuperAdmin(req.user),
+          },
+        },
+        configureRootCollection: (defaults) => ({
+          ...defaults,
+          admin: {
+            ...defaults.admin,
+            hidden: ({ user }) => !isSuperAdmin(user),
+          },
+        }),
+        trackCollections: [
+          { slug: 'users', hooks: { afterChange: { enabled: true }, afterLogin: { enabled: true } } },
+          { slug: 'api-keys', hooks: { afterChange: { enabled: true }, afterDelete: { enabled: true } } },
+          { slug: 'tenants', hooks: { afterChange: { enabled: true }, afterDelete: { enabled: true } } },
+        ],
+      },
+    }),
     // Typesense sync activates only when TYPESENSE_HOST is configured.
     // Lazy import: the module (and its deps) never load when the env is absent.
     ...(process.env.TYPESENSE_HOST
@@ -430,6 +491,20 @@ export default buildConfig({
           }),
         ]
       : []),
+    // Optional TOTP 2FA for admin-panel logins (`users` collection only).
+    // Users opt in themselves via account settings — not force-enrolled.
+    // `api-keys` principals (SDK/search-gateway traffic) are NOT affected:
+    // the plugin's access wrapper explicitly bypasses `_strategy === 'api-key'`
+    // (verified in payload-totp's totpAccess.js) — this only gates human
+    // sessions in the shared admin panel that have TOTP configured.
+    // MUST stay the last plugin in this array: it wraps every collection's
+    // and global's access function based on the config as constructed so far,
+    // and per its README should not be followed by plugins that add
+    // collections/globals. Also requires src/middleware.ts (added alongside
+    // this change) to avoid a redirect loop on the setup/verify views.
+    payloadTotp({
+      collection: 'users',
+    }),
   ],
 })
 

@@ -5,6 +5,8 @@ import * as migration_20260711_204901_ui_plugins_notifications_ai from './202607
 import * as migration_20260713_122854_registry_blocks_full_set from './20260713_122854_registry_blocks_full_set';
 import * as migration_20260713_124254_apikeys_globals_cmdk from './20260713_124254_apikeys_globals_cmdk';
 import * as migration_20260713_125137_search_os_core from './20260713_125137_search_os_core';
+import * as migration_20260713_141541_media_multitenant from './20260713_141541_media_multitenant';
+import * as migration_20260713_142000_wallet_invoices from './20260713_142000_wallet_invoices';
 
 export const migrations = [
   {
@@ -40,6 +42,16 @@ export const migrations = [
   {
     up: migration_20260713_125137_search_os_core.up,
     down: migration_20260713_125137_search_os_core.down,
-    name: '20260713_125137_search_os_core'
+    name: '20260713_125137_search_os_core',
+  },
+  {
+    up: migration_20260713_141541_media_multitenant.up,
+    down: migration_20260713_141541_media_multitenant.down,
+    name: '20260713_141541_media_multitenant'
+  },
+  {
+    up: migration_20260713_142000_wallet_invoices.up,
+    down: migration_20260713_142000_wallet_invoices.down,
+    name: '20260713_142000_wallet_invoices',
   },
 ];

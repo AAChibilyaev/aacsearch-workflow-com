@@ -8,10 +8,9 @@ export default defineConfig([
         dts: true,
         clean: true,
         sourcemap: true,
+        minify: true,
         treeshake: true,
-        outExtension() {
-            return { js: '.js' }
-        },
+        outExtension() { return { js: '.js' } },
     },
     {
         entry: { 'aacsearch-ui': 'src/index.ts' },
@@ -20,8 +19,7 @@ export default defineConfig([
         clean: false,
         sourcemap: true,
         treeshake: true,
-        outExtension() {
-            return { js: '.mjs' }
-        },
+        outExtension() { return { js: '.mjs' } },
+        onSuccess: 'cp src/theme.css dist/theme.css 2>/dev/null; echo "✓"',
     },
 ])

@@ -116,6 +116,28 @@ export const Tenants: CollectionConfig = {
           type: 'date',
           label: { en: 'Last billing sync', ru: 'Последняя синхронизация' },
         },
+        {
+          // Lago wallet UUID — created automatically on first top-up
+          name: 'walletId',
+          type: 'text',
+          access: { update: superAdminFieldAccess },
+          admin: { hidden: true },
+        },
+        {
+          // Mirrored from Lago wallet.ongoing_balance_cents via webhook
+          name: 'walletBalanceCents',
+          type: 'number',
+          defaultValue: 0,
+          access: { update: superAdminFieldAccess },
+          label: { en: 'Wallet balance (cents)', ru: 'Баланс кошелька (центы)' },
+        },
+        {
+          name: 'walletCurrency',
+          type: 'text',
+          defaultValue: 'USD',
+          access: { update: superAdminFieldAccess },
+          label: { en: 'Wallet currency', ru: 'Валюта кошелька' },
+        },
       ],
     },
   ],

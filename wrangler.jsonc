@@ -41,6 +41,17 @@
     //   "bucket_name": "<BUCKET_NAME>",
     // },
   ],
+  // Transactional email (password reset, email verification) via Cloudflare's
+  // native Email Sending — no SMTP/API token. REQUIRES manual one-time setup
+  // before this binding works: `wrangler email sending enable <your-domain>`
+  // plus DNS onboarding in the Cloudflare dashboard (Compute > Email Service).
+  // Replace the placeholder sender address below with your onboarded domain.
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": ["noreply@REPLACE_WITH_YOUR_DOMAIN"],
+    },
+  ],
 
   // Here's how to configure an additional environment
   // It can be deployed with `CLOUDFLARE_ENV=staging pnpm run deploy`
