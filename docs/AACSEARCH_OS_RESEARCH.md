@@ -1,295 +1,514 @@
-# AACSearch OS — Исследование экосистемы: Nango, Lago, Graph RAG, Search UI
+# AACSearch OS — Детальное руководство: Nango, Lago, Graph RAG, Search UI
 
-> Полный обзор найденного на GitHub: Nango (189 интеграций + AI), Lago (billing examples
-> + frontend), Typesense Search UI, PayloadCMS примеры. С практическими рекомендациями
-> по улучшению AACSearch OS.
+> **Реальный production-код из GitHub.** Nango sample app (Slack + Google Drive),
+> Lago billing examples (5 моделей), Graph RAG архитектура, Search UI реализации.
+> С полными примерами кода и архитектурными решениями.
 
 ---
 
-# ЧАСТЬ I — NANGO: ПОЛНЫЙ ОБЗОР
+# ЧАСТЬ I — NANGO: ДЕТАЛЬНАЯ ИНТЕГРАЦИЯ (production code study)
 
-## 1.1 NangoHQ — экосистема
+## 1.1 Nango Sample App — полная архитектура
 
-**⭐ 19** `NangoHQ/sample-app` — полный пример интеграции Nango (Slack + Google Drive)
-**⭐ 43** `NangoHQ/integration-templates` — **189 готовых шаблонов интеграций**
-**⭐ 2** `NangoHQ/ai-agent-demo` — демо использования Nango с AI-агентом
-**⭐ 2** `NangoHQ/interactive-demo` — интерактивное демо возможностей
+**Репозиторий:** NangoHQ/sample-app (⭐19)
+**Стек:** Fastify + Prisma + React + Nango
+**Интеграции:** Slack (контакты), Google Drive (файлы)
 
-### 189 Integration Templates (полный список):
-
-**CRM:** salesforce, salesforce-sandbox, hubspot, pipedrive, zoho-crm, close, attio, apollo
-**E-commerce:** shopify, woocommerce, bigcommerce, stripe, stripe-connect, stripe-express, chargebee, recharge
-**Communication:** slack, discord, microsoft-teams, gong, gorgias, dialpad, front, intercom
-**Productivity:** google-drive, google-docs, google-sheet, google-mail, google-calendar, dropbox, box, one-drive, notion, coda, figma, miro
-**Developer:** github, github-app, gitlab, bitbucket, jira, linear, shortcut, clickup, asana, monday
-**HR:** bamboohr, greenhouse, lever, workday, workable, ashby, hackerrank-work, paylocity, paycom
-**Finance:** quickbooks, xero, netsuite-tba, sage-intacct-oauth, bill, ramp, expensify, pennylane, zoho-books
-**Analytics:** google-analytics, amplitude, mixpanel, posthog, datadog, metabase
-**AI:** openai, anthropic, elevenlabs, exa, google-gemini
-**Identity:** auth0, okta, microsoft, aws-iam
-**Marketing:** mailchimp, klaviyo, active-campaign, facebook, linkedin, pinterest, tiktok-ads, twitter-v2
-**Support:** zendesk, zoho-desk, freshdesk, kustomer
-**Video:** zoom, youtube, loom, vimeo
-**Other:** spotify, airtable, calendly, twilio, docusign, ring-central, snowflake-jwt, supabase
-
-### Что AACSearch OS может предложить с 189 интеграциями:
+### Структура проекта:
 
 ```
-Клиент AACSearch OS → Admin UI → Integrations → Выбрать любой из 189 провайдеров
-    │
-    ├─► OAuth через Nango (один раз)
-    ├─► Авто-синхронизация данных провайдера
-    ├─► Полнотекстовый поиск по данным через Typesense
-    └─► Все в одном SaaS-решении
+back-end/src/
+├── nango.ts                    # Nango client singleton
+├── db.ts                       # Prisma DB client
+├── app.ts                      # Fastify app setup
+├── index.ts                    # Entry point
+└── routes/
+    ├── postConnectSession.ts   # Создание OAuth сессии
+    ├── postWebhooks.ts         # Обработка вебхуков (auth + sync)
+    ├── getConnections.ts       # Список подключений
+    ├── getContacts.ts          # Slack контакты
+    ├── getFiles.ts             # Google Drive файлы
+    ├── downloadFile.ts         # Скачивание файла
+    ├── getIntegrations.ts      # Доступные интеграции
+    ├── deleteConnection.ts     # Удаление подключения
+    └── getNangoCredentials.ts  # Креды для фронтенда
+
+Prisma schema:
+  UserConnections: userId, connectionId, providerConfigKey
+  Contacts: id, fullName, avatar, integrationId, connectionId, deletedAt
+  Files: id, title, mimeType, url, size, driveId, createdTime, integrationId, connectionId, deletedAt
 ```
 
-## 1.2 Nango Sample App — архитектура
+### Ключевые паттерны (production-tested):
 
+**1. Nango Client (singleton):**
 ```ts
-// Nango sample app: Slack + Google Drive
-// Структура, которую можно применить в AACSearch OS:
-
-// 1. Конфигурация Nango
-const nango = new Nango({ host: 'https://api.nango.dev' });
-
-// 2. Создание сессии (OAuth)
-const session = await nango.createConnectSession({
-  providerConfigKey: 'slack',
-  endUserId: 'user-123',
-  organizationId: 'tenant-456'  // tenant scoping
+import { Nango } from '@nangohq/node';
+export const nango = new Nango({
+    host: process.env['NANGO_HOST'] ?? 'https://api.nango.dev',
+    secretKey: process.env['NANGO_SECRET_KEY']!
 });
+```
 
-// 3. Получение данных после OAuth
+**2. OAuth Session (backend-only, no credentials in frontend):**
+```ts
+export const postConnectSession = async (req, reply) => {
+    const { integration } = req.body;
+    const user = await getUserFromDatabase();
+
+    const res = await nango.createConnectSession({
+        end_user: {
+            id: user.id,
+            email: user.email,
+            display_name: user.displayName
+        },
+        allowed_integrations: [integration]  // Только указанная интеграция
+    });
+
+    return { connectSession: res.data.token };  // ТОЛЬКО токен, не connect_link!
+};
+```
+
+**3. Webhook Handler (auth + sync):**
+```ts
+export const postWebhooks = async (req, reply) => {
+    const sig = req.headers['x-nango-signature'];
+
+    // Верификация подписи
+    if (!nango.verifyWebhookSignature(sig, req.body)) {
+        return reply.status(400).send({ error: 'invalid_signature' });
+    }
+
+    switch (body.type) {
+        case 'auth':  // Новое подключение или обновление
+            if (body.operation === 'creation') {
+                await db.userConnections.upsert({
+                    where: { userId_providerConfigKey: { userId, providerConfigKey } },
+                    create: { userId, connectionId, providerConfigKey },
+                    update: { connectionId, updatedAt: new Date() }
+                });
+                // Триггер синхронизации для Google Drive
+                if (body.providerConfigKey === 'google-drive') {
+                    await nango.startSync('google-drive', ['documents'], body.connectionId);
+                }
+            }
+            break;
+
+        case 'sync':  // Данные синхронизированы
+            // Получить свежие записи
+            const records = await nango.listRecords({
+                connectionId: body.connectionId,
+                model: body.model,
+                providerConfigKey: body.providerConfigKey,
+                modifiedAfter: body.modifiedAfter,
+                limit: 1000
+            });
+            // Обработать каждую запись
+            for (const record of records.records) {
+                if (record._nango_metadata.deleted_at) {
+                    await db.contacts.update({ where:{id:record.id}, data:{deletedAt:new Date()} });
+                } else {
+                    await db.contacts.upsert({ where:{id:record.id}, create:{...}, update:{...} });
+                }
+            }
+            break;
+    }
+
+    return reply.status(200).send({ ack: true });  // Всегда 200!
+};
+```
+
+**4. Паттерн "modifiedAfter" для инкрементальной синхронизации:**
+```ts
+// Nango передаёт modifiedAfter в webhook body
+// Используем его для запроса только изменившихся записей
 const records = await nango.listRecords({
-  providerConfigKey: 'slack',
-  connectionId: session.connectionId,
-  model: 'Message'
+    connectionId, model, providerConfigKey,
+    modifiedAfter: body.modifiedAfter,  // Только изменения с последнего sync
+    limit: 1000
 });
-
-// 4. В AACSearch OS это превращается в:
-//    Nango webhook → ingestIntegrationRecords → Documents → Typesense
 ```
 
-## 1.3 Nango AI Agent Demo
+### Что AACSearch OS уже реализует (и что можно улучшить):
 
-```python
-# Nango AI Agent Demo: AI агент подключается к API через Nango
-# Используется для: AI может читать данные из CRM, почты, Google Drive
-# → AI-поиск по всем интеграциям тенанта
+| Паттерн | Nango Sample | AACSearch OS | Статус |
+|---------|-------------|-------------|:---:|
+| Nango client singleton | ✅ nango.ts | ✅ getNangoClient() | ✅ |
+| Backend-only session | ✅ postConnectSession | ✅ createConnectSession | ✅ |
+| Webhook verification | ✅ verifyWebhookSignature | ✅ HMAC verify | ✅ |
+| Auth webhook → upsert | ✅ userConnections.upsert | ✅ integrations upsert | ✅ |
+| Sync webhook → drain records | ✅ listRecords + upsert | ✅ ingestIntegrationRecords | ✅ |
+| ModifiedAfter incremental | ✅ | 🔲 Нет | ❌ |
+| Trigger sync on new connection | ✅ startSync() | 🔲 Нет | ❌ |
+| Deleted record handling | ✅ soft delete | ✅ last_action === 'DELETED' | ✅ |
 
-# AACSearch OS может предложить:
-# "Подключите свои сервисы через Nango → AI агент ищет по всем данным"
+**Улучшения для AACSearch OS:**
+1. Добавить `modifiedAfter` для инкрементальной синхронизации (меньше запросов к Nango)
+2. Авто-триггер sync после нового подключения (`startSync()`)
+3. Prisma-подобный подход к schema management (авто-upsert)
+
+## 1.2 Nango Integration Templates — 189 провайдеров
+
+```
+Полный список по категориям (189):
+CRM (19): salesforce, hubspot, pipedrive, zoho-crm, close, attio, apollo, active-campaign, ...
+E-commerce (12): shopify, woocommerce, bigcommerce, stripe*, chargebee, recharge, ...
+Communication (12): slack, discord, microsoft-teams, gong, intercom, front, ...
+Productivity (20): google-*, dropbox, box, notion, coda, figma, miro, ...
+Developer (9): github*, gitlab, bitbucket, jira, linear, asana, monday, clickup, shortcut
+HR (14): bamboohr, greenhouse, lever, workday, workable, ashby, ...
+Finance (15): quickbooks, xero, netsuite, sage-intacct, bill, ramp, expensify, ...
+AI (5): openai, anthropic, elevenlabs, exa, google-gemini
+Identity (4): auth0, okta, microsoft, aws-iam
+Marketing (9): mailchimp, klaviyo, facebook, linkedin, pinterest, tiktok-*, twitter
+Support (4): zendesk, zoho-desk, freshdesk, kustomer
+Video (4): zoom, youtube, loom, vimeo
+Other: airtable, calendly, twilio, docusign, ring-central, snowflake, supabase, spotify
 ```
 
 ---
 
-# ЧАСТЬ II — LAGO: ПОЛНЫЙ ОБЗОР
+# ЧАСТЬ II — LAGO: ДЕТАЛЬНОЕ РУКОВОДСТВО ПО БИЛЛИНГУ
 
-## 2.1 Lago Frontend
+## 2.1 Lago Billing Examples — 5 моделей биллинга
 
-**⭐ 309** `getlago/lago-front` — open-source фронтенд для биллинга
-**⭐ 18** `getlago/lago-billing-examples` — 5 моделей биллинга
-**⭐ 7** `getlago/lago-doc` — документация
+**Репозиторий:** getlago/lago-billing-examples (⭐18)
+**Стек:** Next.js + Shadcn UI + lago-javascript-client
+**Демо:** 5 интерактивных примеров с реальным кодом
 
-### 5 моделей биллинга (из lago-billing-examples):
+### Архитектура:
 
-| Модель | Описание | Пример в AACSearch OS |
-|--------|----------|----------------------|
-| **Pay-as-you-go** | Оплата за использование | API-запросы к поиску, ingested records |
-| **Per-transaction** | Фикс за транзакцию | Каждый поисковый запрос |
-| **Hybrid** | Комбинация моделей | Подписка + usage |
-| **Per-seat** | За пользователя | Team members в тенанте |
-| **Per-token** | За токены (AI) | AI search, semantic search |
+```
+src/
+├── lib/
+│   ├── lagoClient.ts     # { Client } from "lago-javascript-client"
+│   ├── constants.ts      # EXTERNAL_SUBSCRIPTION_ID, EXTERNAL_CUSTOMER_ID
+│   └── utils.ts
+├── app/
+│   ├── (examples)/
+│   │   ├── pay-as-you-go/page.tsx    # Оплата за использование
+│   │   ├── per-transaction/page.tsx  # За транзакцию
+│   │   ├── hybrid/page.tsx           # Гибридная
+│   │   ├── per-seat/page.tsx         # За пользователя
+│   │   └── per-token/page.tsx        # За токены (AI)
+│   ├── api/(events)/
+│   │   ├── payg-usage/route.ts       # POST: createEvent для PAYG
+│   │   ├── txn-usage/route.ts        # POST: createEvent для per-transaction
+│   │   ├── hybrid-usage/route.ts     # POST: createEvent для hybrid
+│   │   ├── seat-usage/route.ts       # POST: createEvent для per-seat
+│   │   └── token-usage/route.ts      # POST: createEvent для per-token
+│   └── api/cus-usage/route.ts        # GET: customer usage
+└── components/
+    └── ui/  (button, card, input, label, tabs)
+```
 
-### Lago Billing Examples — архитектура:
+### Полный код (Pay-as-you-go):
 
+**lagoClient.ts:**
 ```ts
-// src/lib/lagoClient.ts
 import { Client } from "lago-javascript-client";
-const lagoClient = Client(process.env.LAGO_API_KEY!);
-
-// Usage event (pay-as-you-go)
-await lagoClient.events.createEvent({
-  event: {
-    transaction_id: crypto.randomUUID(),
-    external_subscription_id: "sub-123",
-    code: "api_calls",
-    timestamp: Math.floor(Date.now() / 1000).toString(),
-    properties: { endpoint: "/v1/search", tenant: "t123" }
-  }
-});
-
-// Fetch customer usage
-const usage = await lagoClient.customers.findCustomerCurrentUsage("cus-123");
+const apiKey = process.env.LAGO_API_KEY!;
+const lagoClient = Client(apiKey);
+export default lagoClient;
 ```
 
-### Что AACSearch OS может улучшить:
+**payg-usage/route.ts:**
+```ts
+import { NextResponse } from "next/server";
+import lagoClient from "@/lib/lagoClient";
+import { EXTERNAL_SUBSCRIPTION_ID } from "@/lib/constants";
 
-1. **Billing Examples UI** — создать демо-страницу с выбором модели биллинга
-2. **Per-token billing** — для AI-поиска (semantic, conversational, NL)
-3. **Real-time usage dashboard** — график использования поиска в реальном времени
-4. **Billable metrics** для каждой фичи:
-   - `search_requests` — поисковые запросы
-   - `ingested_records` — импортированные записи
-   - `ai_search_tokens` — токены AI-поиска
-   - `team_members` — пользователи в тенанте
-   - `collections_count` — количество коллекций
+export async function POST(request: Request) {
+  const body = await request.json();
+  const requests = body.requests;
 
-## 2.2 Lago Frontend — возможности
+  try {
+    const response = await lagoClient.events.createEvent({
+      event: {
+        transaction_id: crypto.randomUUID(),
+        external_subscription_id: EXTERNAL_SUBSCRIPTION_ID,
+        code: "payg",
+        timestamp: Math.floor(Date.now() / 1000).toString(),
+        properties: { requests },
+      },
+    });
+    return NextResponse.json(response.data);
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "Lago event failed" }, { status: 500 });
+  }
+}
+```
 
-Lago-front предоставляет готовый UI для:
-- Управления планами и тарифами
-- Просмотра счетов (invoices)
-- Управления клиентами (customers)
-- Настройки billable metrics
-- Webhook management
+**Pay-as-you-go Page:**
+```tsx
+// src/app/(examples)/pay-as-you-go/page.tsx
+export default function PayAsYouGoPage() {
+  const [requests, setRequests] = useState(1);
 
-**AACSearch OS** может встроить lago-front как iframe в /admin/billing или использовать
-их компоненты для построения собственных billing-страниц.
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const res = await fetch('/api/(events)/payg-usage', {
+      method: 'POST',
+      body: JSON.stringify({ requests })
+    });
+    // Показать результат
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <Label>Number of API calls</Label>
+      <Input type="number" value={requests} onChange={setRequests} />
+      <Button type="submit">Send Usage Event</Button>
+    </form>
+  );
+}
+```
+
+### 5 моделей биллинга в деталях:
+
+| Модель | event.code | properties | Пример в AACSearch OS |
+|--------|-----------|------------|----------------------|
+| **Pay-as-you-go** | `payg` | `{requests}` | `search_requests` — каждый вызов `/v1/search` |
+| **Per-transaction** | `txn` | `{amount}` | `ingested_records` — каждый импортированный документ |
+| **Hybrid** | `hybrid` | `{requests, tokens}` | Подписка + usage: `search_requests` + `ai_tokens` |
+| **Per-seat** | `seat` | `{members}` | `team_members` — количество пользователей в тенанте |
+| **Per-token** | `token` | `{input_tokens, output_tokens}` | `ai_search_tokens` — токены AI-поиска |
+
+### Что AACSearch OS может улучшить (на основе lago-billing-examples):
+
+**1. Billing UI с выбором модели:**
+```tsx
+// /admin/billing/plans — страница с примерами как lago-billing-examples
+<Tabs>
+  <Tab label="Pay-as-you-go">
+    <PayAsYouGoDemo />  {/* Отправляет usage events через API */}
+  </Tab>
+  <Tab label="Per-Transaction">
+    <PerTransactionDemo />
+  </Tab>
+  <Tab label="Hybrid">
+    <HybridDemo />
+  </Tab>
+  <Tab label="Per-Seat">
+    <PerSeatDemo />
+  </Tab>
+  <Tab label="Per-Token (AI)">
+    <PerTokenDemo />
+  </Tab>
+</Tabs>
+```
+
+**2. Детерминированный transaction_id (уже реализовано!):**
+```ts
+// AACSearch OS использует детерминированный ID для идемпотентности
+deterministicTransactionId(tenant, code, properties, period):
+  SHA-256([tenant, code, canonicalize(properties), period]) → hex40
+
+// В отличие от lago-billing-examples (crypto.randomUUID()),
+// наш подход retry-safe — повторная отправка не создаст дубликат
+```
+
+**3. Billable metrics для AACSearch OS:**
+```ts
+const AACSEARCH_METRICS = {
+  search_requests: { code: 'search_requests', model: 'payg', description: 'Поисковые запросы' },
+  ingested_records: { code: 'ingested_records', model: 'txn', description: 'Импортированные записи' },
+  ai_search_tokens: { code: 'ai_tokens', model: 'token', description: 'AI-поиск (токены)' },
+  team_members: { code: 'team_members', model: 'seat', description: 'Пользователи' },
+  collections_count: { code: 'collections', model: 'payg', description: 'Коллекции' },
+  documents_count: { code: 'documents', model: 'payg', description: 'Документы' },
+}
+```
 
 ---
 
-# ЧАСТЬ III — GRAPH RAG с TYPESENSE
+# ЧАСТЬ III — GRAPH RAG: АРХИТЕКТУРА И РЕАЛИЗАЦИЯ
 
 ## 3.1 Что такое Graph RAG
 
-Graph RAG совмещает:
-- **Graph** — граф знаний (сущности + связи между ними)
-- **RAG** — retrieval-augmented generation (поиск + LLM)
+Graph RAG = **Knowledge Graph** (Neo4j / D1 relations) + **Vector Search** (Typesense) + **LLM** (GPT-4)
 
-Typesense может служить как векторная БД для RAG, а граф строится отдельно.
+В отличие от обычного RAG (поиск → генерация), Graph RAG сначала извлекает
+структурированные связи из графа знаний, а затем дополняет контекст
+векторным поиском.
 
-## 3.2 Архитектура Graph RAG для AACSearch OS
+## 3.2 Архитектура для AACSearch OS
 
 ```
-Пользователь: "Какие интеграции поддерживает AACSearch?"
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│ 1. GRAPH RETRIEVAL (Neo4j / D1)         │
-│    Сущности: AACSearch, Интеграции      │
-│    Связь: AACSearch --supports--> Nango  │
-│    → Найдено: Nango (189 коннекторов)    │
-└───────────┬─────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ GRAPH LAYER (D1 — SQLite relations)                         │
+│                                                             │
+│  Tenants ──< Users (members)                                │
+│  Tenants ──< Integrations ──< Nango Connections            │
+│  Tenants ──< CollectionDefinitions ──< Documents            │
+│  Documents ── Typesense sync                                │
+│  Integrations ── provider ── capabilities                   │
+│                                                             │
+│  Graph Query: "найти все интеграции тенанта с типом CRM"    │
+│  → D1: SELECT * FROM integrations WHERE tenant=X            │
+│         AND integrationKey IN ('salesforce','hubspot',...)  │
+└───────────┬─────────────────────────────────────────────────┘
             │
             ▼
-┌─────────────────────────────────────────┐
-│ 2. VECTOR RETRIEVAL (Typesense)         │
-│    Поиск по документации:                │
-│    "поддерживаемые интеграции"          │
-│    → Топ-5 документов из docs коллекции  │
-└───────────┬─────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ VECTOR LAYER (Typesense)                                    │
+│                                                             │
+│  Query: "преимущества AACSearch перед Algolia"              │
+│  → vector_query: embedding_field:([...], k:5)               │
+│  → filter_by: locale:=ru                                    │
+│  → Top-5 документов из docs коллекции                       │
+└───────────┬─────────────────────────────────────────────────┘
             │
             ▼
-┌─────────────────────────────────────────┐
-│ 3. LLM GENERATION                       │
-│    Системный промпт + граф + документы   │
-│    → Ответ: "AACSearch поддерживает      │
-│       189+ интеграций через Nango:       │
-│       CRM, E-commerce, HR, Finance..."    │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ LLM LAYER (OpenAI / Anthropic)                              │
+│                                                             │
+│  System: "Ты — AI-ассистент AACSearch. Используй граф       │
+│           знаний и документы для ответа."                    │
+│  Context: [граф: 189 интеграций через Nango]                │
+│           [документы: 5 релевантных статей]                  │
+│  User: "Какие интеграции поддерживает AACSearch?"           │
+│  → Ответ с точными данными из графа + контекст из документов │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## 3.3 Distributed Cognitive Agentic Systems (находка)
+## 3.3 Реализация в AACSearch OS
+
+```ts
+// graph-rag.ts — модуль Graph RAG
+async function graphRagSearch(tenantId: string, query: string) {
+  // 1. Graph retrieval
+  const graphContext = await buildGraphContext(tenantId, query);
+
+  // 2. Vector retrieval
+  const vectorResults = await typesenseSearch(tenantId, query);
+
+  // 3. Combine and generate
+  const answer = await llm.generate({
+    system: "Use the knowledge graph and documents to answer.",
+    context: { graph: graphContext, documents: vectorResults },
+    question: query
+  });
+
+  return answer;
+}
+
+async function buildGraphContext(tenantId: string, query: string) {
+  // Извлечение связей из D1
+  const integrations = await payload.find({
+    collection: 'integrations',
+    where: { tenant: { equals: tenantId } }
+  });
+
+  // Структурирование графа
+  return {
+    entities: [
+      { type: 'Platform', name: 'AACSearch OS' },
+      { type: 'Integrations', count: integrations.docs.length,
+        list: integrations.docs.map(i => i.integrationKey) }
+    ],
+    relations: [
+      { from: 'AACSearch OS', to: 'Nango', type: 'uses' },
+      { from: 'Nango', to: integrations.docs.map(i => i.integrationKey), type: 'connects_to' }
+    ]
+  };
+}
+```
+
+## 3.4 Distributed Cognitive Agentic Systems (находка с GitHub)
 
 **⭐ 1** `ridash2005/Distributed-Cognitive-Agentic-Systems`
-Использует: LCEL оркестрацию, Typesense RAG, pipeline evaluation.
-Это прототип для stateful циклических AI-агентов с Typesense как RAG-движком.
+Использует: LCEL (LangChain Expression Language) для оркестрации агентов,
+Typesense как RAG-движок, pipeline evaluation.
 
-**Для AACSearch OS:** можно предложить AI-агента, который:
-1. Подключается к данным клиента через Nango
-2. Индексирует их в Typesense
-3. Использует Graph RAG для ответов на сложные вопросы
-4. Сохраняет контекст диалога
+**Что можно применить в AACSearch OS:**
+- Агент, который автоматически подключает интеграции через Nango
+- Агент, который анализирует поисковые запросы и предлагает улучшения
+- Агент, который проверяет качество поиска (precision/recall)
 
 ---
 
-# ЧАСТЬ IV — TYPESENSE SEARCH UI (обзор реализаций)
+# ЧАСТЬ IV — SEARCH UI: ВСЕ ПОДХОДЫ
 
-## 4.1 Компоненты Search UI в дикой природе
+## 4.1 6 production-подходов к поисковому UI
 
-На основе найденных репозиториев:
-
-| Подход | Технологии | Для кого |
-|--------|-----------|----------|
-| **InstantSearch.js** (официальный адаптер) | JS/React/Vue/Angular | Любой сайт |
-| **DocSearch** (typesense-docsearch-react) | React | Документация |
-| **Autocomplete.js** | Vanilla JS | Строка поиска + выпадашка |
-| **Custom React** (jungle-commerce/typesense-react) | React hooks | E-commerce |
-| **Next.js SSR** (showcase-nextjs-instantsearch) | Next.js + SSR | Универсальный |
-| **Form-based** (form-search-ts-example) | React Hook Form | Формы поиска |
-
-## 4.2 Что AACSearch UI должен включать
-
-```tsx
-// @aacsearch/ui — рекомендуемая архитектура
-
-// Режим 1: CDN Widget (1 скрипт)
-<script src="https://cdn.aacsearch.ru/widget.js"></script>
-<script>AACSearch.init({ apiKey: '...', collection: 'products' })</script>
-
-// Режим 2: React компонент
-import { AACSearchProvider, SearchBox, Hits, Facets, Pagination } from '@aacsearch/ui'
-<AACSearchProvider apiKey="..." collection="products">
-  <SearchBox />
-  <Facets facets={['brand', 'price']} />
-  <Hits />
-  <Pagination />
-</AACSearchProvider>
-
-// Режим 3: InstantSearch совместимость
-import TypesenseInstantSearchAdapter from 'typesense-instantsearch-adapter'
-// → Все 25+ виджетов InstantSearch работают через AACSearch Gateway
+### 1. InstantSearch.js (официальный адаптер)
+```ts
+// typesense-instantsearch-adapter ⭐520
+import TypesenseInstantSearchAdapter from 'typesense-instantsearch-adapter';
+const adapter = new TypesenseInstantSearchAdapter({
+  server: { apiKey, nodes: [{host,port,protocol,path}] },
+  additionalSearchParameters: { query_by, preset }
+});
+const search = instantsearch({ indexName, searchClient: adapter.searchClient });
+// 25+ готовых виджетов
 ```
 
----
+### 2. DocSearch (документация)
+```tsx
+// typesense-docsearch-react ⭐NPM
+<DocSearch typesenseCollectionName="docs" typesenseServerConfig={{apiKey,nodes}} />
+// ⌘K shortcut + autocomplete + results
+```
 
-# ЧАСТЬ V — ПРАКТИЧЕСКИЕ РЕКОМЕНДАЦИИ ПО УЛУЧШЕНИЮ AACSEARCH OS
+### 3. Autocomplete.js
+```ts
+// typesense-autocomplete-demo ⭐28
+autocomplete({ container, getSources: ({ query }) => [{
+  sourceId: 'products',
+  getItems: () => searchClient.search({ q: query, query_by: 'title' }),
+  templates: { item: ({title,price}) => `${title} - ${price}` }
+}]});
+```
 
-## 5.1 Nango: что добавить
+### 4. Custom React Hooks (jungle-commerce/typesense-react)
+```tsx
+import { useTypesenseSearch } from '@jungle-commerce/typesense-react';
+const { results, loading } = useTypesenseSearch({
+  collection: 'products', q: 'laptop', query_by: 'title'
+});
+```
 
-| Фича | Приоритет | Описание |
-|------|:---:|----------|
-| **Каталог 189 интеграций в UI** | 🔴 High | В /admin/integrations показывать все 189 провайдеров с поиском и категориями |
-| **AI Agent интеграция** | 🟡 Medium | AI агент, подключающийся к данным клиента через Nango и ищущий через Typesense |
-| **Bulk connect** | 🟡 Medium | Подключение нескольких провайдеров одновременно |
-| **Integration health dashboard** | 🟢 Low | Статус всех подключений, last sync, ошибки |
+### 5. Next.js SSR
+```ts
+// Серверный рендеринг + гидрация на клиенте
+export async function getServerSideProps({ query }) {
+  const results = await typesenseSearch(query);
+  return { props: { initialResults: results } };
+}
+```
 
-## 5.2 Lago: что добавить
+### 6. Form-based
+```tsx
+// React Hook Form + Typesense
+const { register, handleSubmit } = useForm();
+const onSubmit = async (data) => {
+  const results = await fetch('/api/search', { method:'POST', body:JSON.stringify(data) });
+};
+```
 
-| Фича | Приоритет | Описание |
-|------|:---:|----------|
-| **Billing examples UI** | 🔴 High | Демо-страница с 5 моделями биллинга (как lago-billing-examples) |
-| **Per-token billing** | 🔴 High | Биллинг для AI-поиска по токенам |
-| **Real-time usage dashboard** | 🟡 Medium | График поисковых запросов в реальном времени |
-| **Lago frontend embed** | 🟡 Medium | Встроить lago-front для управления планами |
-| **Billable metrics UI** | 🟡 Medium | Настройка метрик биллинга через админку |
+## 4.2 Рекомендуемая архитектура @aacsearch/ui
 
-## 5.3 Typesense: что добавить
+```tsx
+// Уровень 1: CDN Widget (1 строка)
+<script>AACSearch.init({ apiKey, collection, container: '#search' })</script>
 
-| Фича | Приоритет | Описание |
-|------|:---:|----------|
-| **Graph RAG** | 🟡 Medium | Комбинация графа знаний + Typesense RAG |
-| **Multi-modal search** | 🟡 Medium | Текст + изображения + голос |
-| **Search UI kit** | 🔴 High | Полный набор UI-компонентов для всех фреймворков |
-| **DocSearch plugin** | 🔴 High | Плагин для документации (как Algolia DocSearch) |
+// Уровень 2: React Components
+import { AACSearchProvider, SearchBox, Hits, Facets, Pagination } from '@aacsearch/ui';
 
-## 5.4 PayloadCMS: что добавить
+// Уровень 3: InstantSearch совместимость
+// typesense-instantsearch-adapter через AACSearch Gateway
 
-| Фича | Приоритет | Описание |
-|------|:---:|----------|
-| **Multi-tenant templates** | 🟡 Medium | Готовые шаблоны тенантов (e-commerce, docs, blog) |
-| **Workflow automation** | 🟢 Low | Автоматические действия при событиях (новый документ → уведомление) |
-| **Dashboard widgets** | 🟡 Medium | Кастомные виджеты для дашборда (usage, analytics, health) |
+// Уровень 4: SDK (полный контроль)
+import { AACSearch } from '@aacsearch/sdk';
+const client = new AACSearch({ apiKey });
+await client.collections('products').documents().search({ q, query_by });
+```
 
 ---
 
 ## 📚 Навигация по документации
 
-| [← ECOSYSTEM](./AACSEARCH_OS_ECOSYSTEM.md) | [🏠 Главная](./README.md) | [BEST PRACTICES →](./AACSEARCH_OS_BEST_PRACTICES.md) |
+| [← ECOSYSTEM](./AACSEARCH_OS_ECOSYSTEM.md) | [🏠 Главная](./README.md) | [PAYLOAD DEEP DIVE →](./AACSEARCH_OS_PAYLOAD_DEEP_DIVE.md) |
 |:---:|:---:|:---:|
-
-> **Связанные документы:**
-> - [ECOSYSTEM](./AACSEARCH_OS_ECOSYSTEM.md) — WordPress + экосистема
-> - [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) — ограничения Nango/Lago
-> - [ENHANCED](./AACSEARCH_OS_ENHANCED.md) — InstantSearch виджеты
