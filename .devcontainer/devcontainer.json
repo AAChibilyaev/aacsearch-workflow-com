@@ -9,6 +9,7 @@
     "3000": { "label": "next dev", "onAutoForward": "notify" }
   },
   "postCreateCommand": "corepack enable && corepack prepare pnpm@latest --activate && pnpm install --frozen-lockfile || true",
+  "postStartCommand": "test -x /workspaces/.awf/start.sh && /workspaces/.awf/start.sh || true",
   "customizations": {
     "vscode": {
       "extensions": [
