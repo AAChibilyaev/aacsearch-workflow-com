@@ -1596,6 +1596,7 @@ export interface Integration {
  */
 export interface Invoice {
   id: number;
+  tenant?: (number | null) | Tenant;
   externalId?: string | null;
   number?: string | null;
   status?: ('draft' | 'finalized' | 'payment_pending' | 'payment_succeeded' | 'payment_failed' | 'void') | null;
@@ -3619,6 +3620,7 @@ export interface IntegrationsSelect<T extends boolean = true> {
  * via the `definition` "invoices_select".
  */
 export interface InvoicesSelect<T extends boolean = true> {
+  tenant?: T;
   externalId?: T;
   number?: T;
   status?: T;

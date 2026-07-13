@@ -18,6 +18,7 @@ import { getPrincipalTenantIDs } from '@/lib/principal'
 import { getUserTenantIDs } from '@/utilities/getUserTenantIDs'
 
 import type { BillingStatus, EntitlementsRecord, PlanDTO, TenantBillingMirror } from '@/lib/billing/dto'
+import type { Invoice } from '@/payload-types'
 
 /**
  * Billing plugin (Lago backend, fully white-label).
@@ -365,6 +366,93 @@ const externalCustomerIdOf = (value: unknown): null | string => {
   return null
 }
 
+/** Map a backend invoice type/status onto the Invoices projection enums. */
+const mirrorInvoiceType = (value: unknown): NonNullable<Invoice['invoiceType']> => {
+  const v = String(value ?? '')
+  if (v.includes('credit')) return 'credit'
+  if (v.includes('one_off') || v.includes('add_on')) return 'one_off'
+  if (v.includes('wallet') || v.includes('top_up')) return 'wallet_top_up'
+  return 'subscription'
+}
+
+const mirrorInvoiceStatus = (invoice: {
+  payment_status?: unknown
+  status?: unknown
+}): NonNullable<Invoice['status']> => {
+  const pay = String(invoice.payment_status ?? '')
+  if (pay === 'succeeded') return 'payment_succeeded'
+  if (pay === 'failed') return 'payment_failed'
+  if (pay === 'pending') return 'payment_pending'
+  const status = String(invoice.status ?? '')
+  if (status === 'finalized') return 'finalized'
+  if (status === 'voided') return 'void'
+  return 'draft'
+}
+
+/**
+ * Upserts the read-only Invoices projection from a signed webhook invoice
+ * payload (system context, overrideAccess). Tenant is resolved from the signed
+ * external_customer_id — never client input. Failures never abort the webhook.
+ */
+const mirrorInvoiceToCollection = async (req: PayloadRequest, invoiceRaw: unknown): Promise<void> => {
+  try {
+    if (!invoiceRaw || typeof invoiceRaw !== 'object') return
+    const invoice = invoiceRaw as {
+      amount_cents?: number
+      currency?: string
+      issuing_date?: string
+      lago_id?: string
+      number?: string
+      payment_status?: string
+      status?: string
+      total_amount_cents?: number
+      invoice_type?: string
+    }
+    const externalId = invoice.lago_id
+    const tenantExternalId = externalCustomerIdOf(invoiceRaw)
+    if (!externalId || !tenantExternalId) return
+
+    const tenant = await req.payload
+      .findByID({ id: tenantExternalId, collection: 'tenants', depth: 0, req })
+      .catch((): null => null)
+    if (!tenant) return
+
+    const data = {
+      amountCents: invoice.total_amount_cents ?? invoice.amount_cents ?? 0,
+      currency: invoice.currency ?? 'USD',
+      externalId,
+      invoiceType: mirrorInvoiceType(invoice.invoice_type),
+      number: invoice.number ?? externalId,
+      paidAt: invoice.payment_status === 'succeeded' ? new Date().toISOString() : undefined,
+      periodStart: invoice.issuing_date ?? undefined,
+      status: mirrorInvoiceStatus(invoice),
+      tenant: tenant.id,
+    }
+
+    const existing = await req.payload.find({
+      collection: 'invoices',
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      req,
+      where: { externalId: { equals: externalId } },
+    })
+    if (existing.docs.length > 0) {
+      await req.payload.update({
+        id: existing.docs[0].id,
+        collection: 'invoices',
+        data,
+        overrideAccess: true,
+        req,
+      })
+    } else {
+      await req.payload.create({ collection: 'invoices', data, overrideAccess: true, req })
+    }
+  } catch (err) {
+    req.payload.logger.error({ err, msg: 'invoice projection upsert failed' })
+  }
+}
+
 /** Shape of a Lago wallet object from webhooks. */
 type W = {
     external_customer_id?: string | null
@@ -469,6 +557,7 @@ const applyBillingWebhook = async (
               .payment_provider_invoice_payment_error
       const externalId = externalCustomerIdOf(source)
       if (externalId) await updateTenantBilling(req, externalId, { status: 'past_due' }, type)
+      if ('invoice' in event) await mirrorInvoiceToCollection(req, event.invoice)
       return
     }
 
@@ -478,6 +567,16 @@ const applyBillingWebhook = async (
         const externalId = externalCustomerIdOf(event.invoice)
         if (externalId) await updateTenantBilling(req, externalId, { status: 'active' }, type)
       }
+      await mirrorInvoiceToCollection(req, event.invoice)
+      return
+    }
+
+    // Keep the read-only Invoices projection in sync on every invoice event.
+    case 'invoice.created':
+    case 'invoice.generated':
+    case 'invoice.one_off_created':
+    case 'invoice.voided': {
+      if ('invoice' in event) await mirrorInvoiceToCollection(req, event.invoice)
       return
     }
 

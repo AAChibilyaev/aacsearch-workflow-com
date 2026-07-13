@@ -31,6 +31,7 @@ import { PreviewComponent as PreviewComponent_a8a977ebc872c5d5ea7ee689724c0860 }
 import { ExportListMenuItem as ExportListMenuItem_cdf7e044479f899a31f804427d568b36 } from '@payloadcms/plugin-import-export/rsc'
 import { ImportListMenuItem as ImportListMenuItem_cdf7e044479f899a31f804427d568b36 } from '@payloadcms/plugin-import-export/rsc'
 import { AssignTenantFieldTrigger as AssignTenantFieldTrigger_1d0591e3cf4f332c83a86da13a0de59a } from '@payloadcms/plugin-multi-tenant/client'
+import { TOTPField as TOTPField_4eaf6cb33cfb75be01716613e3c9a512 } from 'payload-totp/rsc'
 import { AltTextField as AltTextField_0a0a871430f540863f89f94882312cf1 } from '@jhb.software/payload-alt-text-plugin/client'
 import { BulkGenerateAltTextsButton as BulkGenerateAltTextsButton_0a0a871430f540863f89f94882312cf1 } from '@jhb.software/payload-alt-text-plugin/client'
 import { WatchTenantCollection as WatchTenantCollection_1d0591e3cf4f332c83a86da13a0de59a } from '@payloadcms/plugin-multi-tenant/client'
@@ -66,6 +67,9 @@ import { ImportExportProvider as ImportExportProvider_cdf7e044479f899a31f804427d
 import { AdminBlockSyncProvider as AdminBlockSyncProvider_5c2fb41b02405b9edc17e0e235c72608 } from 'payload-better-preview/client'
 import { CommandMenuProvider as CommandMenuProvider_3bf5d3e334c5eaf4f0d216451590d3c2 } from '@veiag/payload-cmdk/client'
 import { InstructionsProvider as InstructionsProvider_4490b89d4413c1ffaecdacfe72efaf73 } from '@ai-stack/payloadcms/client'
+import { TOTPProvider as TOTPProvider_4eaf6cb33cfb75be01716613e3c9a512 } from 'payload-totp/rsc'
+import { TOTPSetup as TOTPSetup_4eaf6cb33cfb75be01716613e3c9a512 } from 'payload-totp/rsc'
+import { TOTPVerify as TOTPVerify_4eaf6cb33cfb75be01716613e3c9a512 } from 'payload-totp/rsc'
 import { BillingView as BillingView_e5ae7e3966f5465c4344dac4dd93dbf9 } from '../../../components/views/Billing'
 import { IntegrationsView as IntegrationsView_9e1735bac833ebc9ae622ee38570363b } from '../../../components/views/Integrations'
 import { SearchView as SearchView_835c202eebadc702ec7d12e425f24683 } from '../../../components/views/Search'
@@ -107,6 +111,7 @@ export const importMap = {
   "@payloadcms/plugin-import-export/rsc#ExportListMenuItem": ExportListMenuItem_cdf7e044479f899a31f804427d568b36,
   "@payloadcms/plugin-import-export/rsc#ImportListMenuItem": ImportListMenuItem_cdf7e044479f899a31f804427d568b36,
   "@payloadcms/plugin-multi-tenant/client#AssignTenantFieldTrigger": AssignTenantFieldTrigger_1d0591e3cf4f332c83a86da13a0de59a,
+  "payload-totp/rsc#TOTPField": TOTPField_4eaf6cb33cfb75be01716613e3c9a512,
   "@jhb.software/payload-alt-text-plugin/client#AltTextField": AltTextField_0a0a871430f540863f89f94882312cf1,
   "@jhb.software/payload-alt-text-plugin/client#BulkGenerateAltTextsButton": BulkGenerateAltTextsButton_0a0a871430f540863f89f94882312cf1,
   "@payloadcms/plugin-multi-tenant/client#WatchTenantCollection": WatchTenantCollection_1d0591e3cf4f332c83a86da13a0de59a,
@@ -142,6 +147,9 @@ export const importMap = {
   "payload-better-preview/client#AdminBlockSyncProvider": AdminBlockSyncProvider_5c2fb41b02405b9edc17e0e235c72608,
   "@veiag/payload-cmdk/client#CommandMenuProvider": CommandMenuProvider_3bf5d3e334c5eaf4f0d216451590d3c2,
   "@ai-stack/payloadcms/client#InstructionsProvider": InstructionsProvider_4490b89d4413c1ffaecdacfe72efaf73,
+  "payload-totp/rsc#TOTPProvider": TOTPProvider_4eaf6cb33cfb75be01716613e3c9a512,
+  "payload-totp/rsc#TOTPSetup": TOTPSetup_4eaf6cb33cfb75be01716613e3c9a512,
+  "payload-totp/rsc#TOTPVerify": TOTPVerify_4eaf6cb33cfb75be01716613e3c9a512,
   "/components/views/Billing#BillingView": BillingView_e5ae7e3966f5465c4344dac4dd93dbf9,
   "/components/views/Integrations#IntegrationsView": IntegrationsView_9e1735bac833ebc9ae622ee38570363b,
   "/components/views/Search#SearchView": SearchView_835c202eebadc702ec7d12e425f24683,
