@@ -7,8 +7,6 @@ import { RenderBlocks } from '@/blocks/RenderBlocks'
 import { Button } from '@/components/ui/button'
 import { getLocale, type Locale } from '@/lib/locale'
 
-const LOCALE_LABELS: Record<string, Locale> = { en: 'en', ru: 'ru', de: 'de' }
-
 export const dynamic = 'force-dynamic'
 
 const HERO: Record<Locale, { heading: string; sub: string; cta1: string; cta2: string }> = {

@@ -1,6 +1,6 @@
 import ApiCall from './ApiCall';
 import Configuration from './Configuration';
-import RequestWithCache from './RequestWithCache';
+import RequestWithCache, { type CacheableRequestContext } from './RequestWithCache';
 import type { DocumentSchema, SearchParams, SearchResponse } from './Types';
 
 export default class SearchOnlyDocuments<T extends DocumentSchema = DocumentSchema> {
@@ -27,9 +27,9 @@ export default class SearchOnlyDocuments<T extends DocumentSchema = DocumentSche
 
     if (options.cacheSearchResultsForSeconds !== undefined) {
       return this.requestWithCache.perform(
-        this.apiCall as any,
+        this.apiCall as unknown as CacheableRequestContext,
         'get',
-        { path, queryParams } as any,
+        { path, queryParams },
         { cacheResponseForSeconds: options.cacheSearchResultsForSeconds },
       ) as Promise<SearchResponse<T>>;
     }

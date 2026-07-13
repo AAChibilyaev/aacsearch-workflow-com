@@ -29,13 +29,7 @@ import Conversation from './Conversation';
 import NLSearchModels from './NLSearchModels';
 import NLSearchModel from './NLSearchModel';
 import SearchClient from './SearchClient';
-import type {
-  ConfigurationOptions,
-  DocumentSchema,
-  SearchResponse,
-  MultiSearchRequestsSchema,
-  MultiSearchResponse,
-} from './Types';
+import type { ConfigurationOptions, DocumentSchema, SearchResponse } from './Types';
 
 export default class Client {
   configuration: Configuration;

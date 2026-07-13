@@ -5,7 +5,6 @@ import type {
   CurationRuleSchema,
   DocumentSchema,
   PresetCreateSchema,
-  SearchParams,
 } from 'typesense'
 
 import type { Payload } from 'payload'

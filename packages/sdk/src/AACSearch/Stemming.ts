@@ -1,7 +1,6 @@
 import ApiCall from './ApiCall';
 import StemmingDictionaries from './StemmingDictionaries';
 import StemmingDictionary from './StemmingDictionary';
-import type { StemmingDictionarySchema } from './Types';
 
 export default class Stemming {
   static RESOURCEPATH = '/stemming';
