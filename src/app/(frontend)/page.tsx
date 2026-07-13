@@ -8,6 +8,9 @@ import { RenderBlocks } from '@/blocks/RenderBlocks'
 const LOCALES = ['en', 'ru', 'de'] as const
 type Locale = (typeof LOCALES)[number]
 
+// Reads pages from D1 per-request — never prerender at build (unmigrated DB).
+export const dynamic = 'force-dynamic'
+
 /**
  * Marketing home page. Renders the `home`-slug Page's blocks when an editor has
  * created one; otherwise shows a minimal built-in hero so the site is never

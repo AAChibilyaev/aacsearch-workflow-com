@@ -4,6 +4,10 @@ import { getPayload } from 'payload'
 
 import config from '@payload-config'
 
+// Queries the DB, so it must render per-request — never prerendered at build
+// time (the build has no migrated D1). Keeps `next build` from hitting D1.
+export const dynamic = 'force-dynamic'
+
 /**
  * Marketing-site sitemap (served at /sitemap.xml). Lists published page slugs.
  * Base URL comes from NEXT_PUBLIC_SERVER_URL; falls back to a relative root so

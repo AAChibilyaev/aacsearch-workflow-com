@@ -9,6 +9,9 @@ import { RefreshRouteOnSave } from './RefreshRouteOnSave'
 const LOCALES = ['en', 'ru', 'de'] as const
 type Locale = (typeof LOCALES)[number]
 
+// Reads pages from D1 per-request — never prerender at build (unmigrated DB).
+export const dynamic = 'force-dynamic'
+
 export default async function Page(props: {
   params: Promise<{ slug: string }>
   searchParams: Promise<{ locale?: string }>
