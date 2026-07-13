@@ -34,8 +34,22 @@ const dict = {
     en: 'You are not a member of any workspace yet.',
     ru: 'Вы пока не состоите ни в одном рабочем пространстве.',
   },
+  reconnect: { en: 'Reconnect', ru: 'Переподключить' },
+  reconnectFailed: {
+    en: 'Could not reconnect. Please try again.',
+    ru: 'Не удалось переподключить. Попробуйте ещё раз.',
+  },
   retry: { en: 'Retry', ru: 'Повторить' },
   searchPlaceholder: { en: 'Search integrations…', ru: 'Поиск интеграций…' },
+  syncFailed: {
+    en: 'Could not start the sync. Please try again.',
+    ru: 'Не удалось запустить синхронизацию. Попробуйте ещё раз.',
+  },
+  syncNow: { en: 'Sync now', ru: 'Синхронизировать' },
+  syncStarted: {
+    en: 'Sync started — fresh data will appear shortly.',
+    ru: 'Синхронизация запущена — свежие данные появятся в ближайшее время.',
+  },
   title: { en: 'Integrations', ru: 'Интеграции' },
   workspace: { en: 'Workspace', ru: 'Рабочее пространство' },
 } as const

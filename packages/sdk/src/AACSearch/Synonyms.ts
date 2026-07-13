@@ -1,5 +1,4 @@
 import ApiCall from './ApiCall';
-import Synonym from './Synonym';
 import type { SynonymSchema } from './Types';
 
 const RESOURCEPATH = '/synonyms';

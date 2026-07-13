@@ -12,7 +12,11 @@ import type { Client } from 'typesense'
 
 import { isSuperAdmin } from '@/access/isSuperAdmin'
 import { isApiKeyPrincipalValid } from '@/collections/ApiKeys'
-import { emitUsageEvent, type LagoClientOptions } from '@/lib/billing/usage'
+import {
+  deterministicTransactionId,
+  emitUsageEvent,
+  type LagoClientOptions,
+} from '@/lib/billing/usage'
 import { getPrincipalTenantIDs } from '@/lib/principal'
 import {
   DEFAULT_LIMIT_MULTI_SEARCHES,
@@ -40,6 +44,7 @@ import {
 import {
   type TenantSearchSettings,
   syncTenantSearchSettings,
+  tenantEventRuleName,
   tenantNoHitsQueriesCollection,
   tenantPopularQueriesCollection,
 } from '@/lib/search/settingsSync'
@@ -161,6 +166,43 @@ export const resolveProxyCollectionPath = (enginePath: string, tenant: number | 
 const isCollectionDocumentsPath = (enginePath: string): boolean =>
   /^\/collections\/[^/]+\/documents(\/.*)?$/.test(enginePath)
 
+/**
+ * True when a proxy path targets a shared platform collection (`products`).
+ * Those are tenant-isolated ONLY by a `tenant` facet — the generic proxy
+ * forwards under the admin key and strips `filter_by`, so letting a tenant
+ * reach them here would expose cross-tenant search/export/by-id read/delete
+ * and write poisoning. Their traffic must go through /v1/search and
+ * /v1/multi_search, which force the tenant filter server-side.
+ */
+export const targetsReservedEngineCollection = (enginePath: string): boolean => {
+  const match = enginePath.match(/^\/collections\/([^/?]+)/)
+  if (!match) return false
+  let name = match[1]
+  try {
+    name = decodeURIComponent(name)
+  } catch {
+    // keep the raw segment — an undecodable name can't match a reserved one
+  }
+  return RESERVED_ENGINE_COLLECTIONS.has(name)
+}
+
+/**
+ * Stable per-request metering id (CLAUDE.md rule: deterministic transaction
+ * IDs). The CF ray id uniquely identifies the request, so duplicate delivery
+ * of the same request's metering can never double-bill; dev/tests without a
+ * ray id fall back to a random UUID, which is still idempotent across the
+ * billing client's own retries.
+ */
+const meteringTransactionId = async (
+  req: { headers: { get: (key: string) => null | string } },
+  tenant: string,
+  searches: number,
+): Promise<string> => {
+  const rayId = req.headers.get('cf-ray')
+  if (!rayId) return crypto.randomUUID()
+  return deterministicTransactionId(tenant, 'search_requests', { rayId, searches }, '')
+}
+
 /** Loose, cast-once view of the engine's heavily generic multiSearch.perform */
 type PerformMultiSearch = (
   requests: { searches: GatewaySearchEntry[]; union?: true },
@@ -180,24 +222,50 @@ const readJsonBody = async (req: {
   }
 }
 
-const stripSynonymSets = (search: GatewaySearchEntry): GatewaySearchEntry => {
-  const { synonym_sets: _synonymSets, ...rest } = search
-  return rest
+/**
+ * Degradation retry: drop the tenant relevance objects the gateway injected
+ * (synonym/curation/stopword/preset `tenant_*` names) so a tenant that never
+ * synced settings still gets plain search results. Client-supplied
+ * non-tenant values survive the retry.
+ */
+const stripTenantRelevanceParams = (search: GatewaySearchEntry): GatewaySearchEntry => {
+  const {
+    curation_sets: curationSets,
+    preset,
+    stopwords,
+    synonym_sets: _synonymSets,
+    ...rest
+  } = search
+  const out: GatewaySearchEntry = rest
+  if (typeof preset === 'string' && preset && !preset.startsWith('tenant_')) out.preset = preset
+  if (typeof stopwords === 'string' && stopwords && !stopwords.startsWith('tenant_')) {
+    out.stopwords = stopwords
+  }
+  if (Array.isArray(curationSets)) {
+    const kept = curationSets.filter(
+      (name): name is string => typeof name === 'string' && !name.startsWith('tenant_'),
+    )
+    if (kept.length > 0) out.curation_sets = kept
+  }
+  return out
 }
 
-/** true when any per-search result failed specifically on synonym sets */
-const hasSynonymError = (response: unknown): boolean => {
+/** true when any per-search result failed on a missing relevance object */
+const hasRelevanceObjectError = (response: unknown): boolean => {
   const results = (response as { results?: unknown } | null)?.results
   if (!Array.isArray(results)) return false
   return results.some((result) => {
     const error = (result as { error?: unknown } | null)?.error
-    return typeof error === 'string' && /synonym/i.test(error)
+    return typeof error === 'string' && /synonym|preset|curation|stopword/i.test(error)
   })
 }
 
 const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
   const scopedSearchHandler: Endpoint['handler'] = async (req) => {
-    const scopedKey = req.headers.get('x-typesense-api-key') ?? undefined
+    // Neutral header preferred; the vendor-named one stays for back-compat
+    // with widgets built on the engine's own browser SDK.
+    const scopedKey =
+      req.headers.get('x-aacsearch-key') ?? req.headers.get('x-typesense-api-key') ?? undefined
     const verified = verifyScopedKeyParams(opts.searchOnlyKey, scopedKey)
     if (!verified) return Response.json(GATEWAY_ERRORS.unauthorized, { status: 401 })
 
@@ -263,15 +331,25 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
     const baseUrl = `${process.env.TYPESENSE_PROTOCOL || 'https'}://${opts.host}:${process.env.TYPESENSE_PORT || 443}`
 
     try {
-      const upstream = await fetch(`${baseUrl}/multi_search${qs ? '?' + qs : ''}`, {
-        body: JSON.stringify(body.union === true ? { searches: scoped, union: true } : { searches: scoped }),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-TYPESENSE-API-KEY': scopedKey as string,
-        },
-        method: 'POST',
-      })
-      const data = await upstream.json()
+      const performScoped = async (searches: GatewaySearchEntry[]) => {
+        const upstream = await fetch(`${baseUrl}/multi_search${qs ? '?' + qs : ''}`, {
+          body: JSON.stringify(
+            body.union === true ? { searches, union: true } : { searches },
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            'X-TYPESENSE-API-KEY': scopedKey as string,
+          },
+          method: 'POST',
+        })
+        return { data: (await upstream.json()) as unknown, status: upstream.status }
+      }
+
+      let { data, status } = await performScoped(scoped)
+      if (hasRelevanceObjectError(data)) {
+        // tenant relevance objects may not exist yet — degrade gracefully
+        ;({ data, status } = await performScoped(scoped.map(stripTenantRelevanceParams)))
+      }
 
       const metering = emitUsageEvent(
         opts.billing ?? {},
@@ -279,7 +357,7 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
           code: 'search_requests',
           properties: { searches: scoped.length },
           tenant,
-          transactionId: crypto.randomUUID(),
+          transactionId: await meteringTransactionId(req, tenant, scoped.length),
         },
         req.payload.logger,
       )
@@ -291,7 +369,7 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
         void metering
       }
 
-      return Response.json(sanitizeSearchResponse(data, opts.host), { status: upstream.status })
+      return Response.json(sanitizeSearchResponse(data, opts.host), { status })
     } catch (err) {
       req.payload.logger.error({ err, msg: 'scoped search gateway upstream error' })
       return Response.json(GATEWAY_ERRORS.searchUnavailable, { status: 502 })
@@ -392,19 +470,19 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
       let response: unknown
       try {
         response = await performWith(scoped)
-        if (hasSynonymError(response)) {
-          // tenant synonym set may not exist yet — degrade gracefully
-          response = await performWith(scoped.map(stripSynonymSets))
+        if (hasRelevanceObjectError(response)) {
+          // tenant relevance objects may not exist yet — degrade gracefully
+          response = await performWith(scoped.map(stripTenantRelevanceParams))
         }
       } catch (err) {
         req.payload.logger.warn({
           err,
-          msg: 'multi-search failed, retrying without tenant synonym sets',
+          msg: 'multi-search failed, retrying without tenant relevance objects',
         })
-        response = await performWith(scoped.map(stripSynonymSets))
+        response = await performWith(scoped.map(stripTenantRelevanceParams))
       }
 
-      // Meter exactly once per request (per-request UUID idempotency id; the
+      // Meter exactly once per request (deterministic per-request id; the
       // billing client reuses it across its own retries so it never
       // double-bills). On Workers the isolate can be frozen the moment the
       // Response settles, dropping an un-awaited promise -> LOST billing. Hand
@@ -416,7 +494,7 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
           code: 'search_requests',
           properties: { searches: scoped.length },
           tenant: String(tenant),
-          transactionId: crypto.randomUUID(),
+          transactionId: await meteringTransactionId(req, String(tenant), scoped.length),
         },
         req.payload.logger,
       )
@@ -583,6 +661,12 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
         // browsing) the path is left exactly as given.
         const enginePath = tenant ? resolveProxyCollectionPath(rawEnginePath, tenant) : rawEnginePath
 
+        // Shared facet-isolated collections are off-limits through the
+        // generic proxy for everyone but super-admin (see helper docblock).
+        if (!isSuperAdmin(req.user) && targetsReservedEngineCollection(enginePath)) {
+          return Response.json(GATEWAY_ERRORS.forbidden, { status: 403 })
+        }
+
         // Write operations require tenant-scoped admin access
         const isWrite = ['post', 'put', 'patch', 'delete'].includes(engineMethod.toLowerCase())
 
@@ -665,20 +749,28 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
           const contentType = upstreamResponse.headers.get('content-type') ?? ''
           const raw = await upstreamResponse.text()
 
+          // Vendor scrub: engine name, absolute URLs, and the configured host
+          // (engine errors can embed any of them, e.g. connection failures).
+          const scrubVendorText = (text: string): string => {
+            let out = text.replace(/typesense/gi, 'search engine')
+            out = out.replace(/https?:\/\/[^\s"'\\]+/g, '[redacted-url]')
+            if (opts.host) out = out.split(opts.host).join('[redacted-host]')
+            return out
+          }
+
           if (contentType.includes('application/json')) {
             let parsed: unknown
             try { parsed = JSON.parse(raw) } catch { parsed = raw }
-            // Scrub vendor strings from error messages
             const scrubbed =
               typeof parsed === 'object' && parsed !== null
-                ? JSON.parse(
-                    JSON.stringify(parsed).replace(/typesense/gi, 'search engine'),
-                  )
-                : parsed
+                ? JSON.parse(scrubVendorText(JSON.stringify(parsed)))
+                : typeof parsed === 'string'
+                  ? scrubVendorText(parsed)
+                  : parsed
             return Response.json(scrubbed, { status: upstreamResponse.status })
           }
 
-          return new Response(raw, {
+          return new Response(upstreamResponse.ok ? raw : scrubVendorText(raw), {
             status: upstreamResponse.status,
             headers: { 'Content-Type': contentType },
           })
@@ -777,7 +869,9 @@ const gatewayEndpoints = (opts: SearchGatewayOptions): Endpoint[] => {
               q: query,
               user_id: userId,
             },
-            name: `${tenant}_${eventType}`,
+            // Must match a provisioned log rule (settingsSync) — the engine
+            // rejects events whose rule name does not exist.
+            name: tenantEventRuleName(tenant, eventType),
           })
           return Response.json({ ok: true, recorded: true })
         } catch (err) {
@@ -1058,7 +1152,30 @@ const syncTenantSettingsHook = (): CollectionAfterChangeHook =>
 
       context.aacSearchSettingsSyncing = true
       const client = await getAdminSearchClient()
-      await syncTenantSearchSettings(client, tenantId, settings, { logger: req.payload.logger })
+      // Analytics rules must reference REAL engine collections — resolve the
+      // tenant's provisioned collections plus the shared products collection.
+      const definitions = await req.payload.find({
+        collection: 'collection-definitions',
+        depth: 0,
+        limit: 200,
+        overrideAccess: true,
+        req,
+        where: { tenant: { equals: tenantId } },
+      })
+      const sourceCollections = [
+        'products',
+        ...definitions.docs
+          .map((definition) =>
+            typeof (definition as { slug?: unknown }).slug === 'string'
+              ? engineCollectionName(tenantId, (definition as { slug: string }).slug)
+              : '',
+          )
+          .filter(Boolean),
+      ]
+      await syncTenantSearchSettings(client, tenantId, settings, {
+        logger: req.payload.logger,
+        sourceCollections,
+      })
     } catch (err) {
       req.payload.logger.error({ err, msg: 'tenant search settings sync failed' })
     }

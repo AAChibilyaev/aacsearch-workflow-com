@@ -174,11 +174,21 @@ export async function search(
 
     const widgetList: ReturnType<typeof widgets.searchBox>[] = []
 
-    // Hits with click event
+    // Hits with click event. Field values are INDEXED CUSTOMER DATA rendered
+    // into arbitrary storefront pages — always HTML-escape them (stored-XSS
+    // otherwise: one poisoned document would run script on every site
+    // embedding the widget).
+    const escapeHtml = (value: unknown): string =>
+        String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
     const defaultRender = (hit: Record<string, unknown>) =>
         `<div class="aac-hit" data-aac-hit>
-            <div class="aac-hit-title">${hit.title || hit.name || hit.id || ''}</div>
-            ${hit.description ? `<div class="aac-hit-desc">${hit.description}</div>` : ''}
+            <div class="aac-hit-title">${escapeHtml(hit.title || hit.name || hit.id || '')}</div>
+            ${hit.description ? `<div class="aac-hit-desc">${escapeHtml(hit.description)}</div>` : ''}
         </div>`
 
     hitsContainer.addEventListener('click', (e) => {

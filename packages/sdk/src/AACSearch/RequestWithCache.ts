@@ -1,3 +1,9 @@
+/** Shape `perform` needs from its context: HTTP verbs looked up by name. */
+export type CacheableRequestContext = Record<
+  string,
+  (path: string, queryParams?: Record<string, unknown>, body?: unknown) => Promise<unknown>
+>;
+
 export default class RequestWithCache {
   private responseCache: Map<string, { timestamp: number; response: unknown }> = new Map();
   private promiseCache: Map<string, { timestamp: number; promise: Promise<unknown> }> = new Map();
@@ -8,7 +14,7 @@ export default class RequestWithCache {
   }
 
   async perform<T>(
-    context: any,
+    context: CacheableRequestContext,
     methodName: string,
     params: { path: string; queryParams?: Record<string,unknown>; body?: unknown },
     cacheOptions: { cacheResponseForSeconds?: number } = {},

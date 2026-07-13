@@ -3,8 +3,6 @@ import Configuration from './Configuration';
 import SearchOnlyDocuments from './SearchOnlyDocuments';
 import type {
   DocumentSchema,
-  SearchParams,
-  SearchResponse,
   DocumentWriteParameters,
   UpdateByFilterParameters,
   UpdateByFilterResponse,

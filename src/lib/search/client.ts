@@ -242,6 +242,11 @@ const capPageSize = (value: unknown): number | undefined => {
  * - client-supplied upstream api-key/user-id headers-in-params are stripped
  * - per_page / limit are capped at MAX_PER_PAGE
  * - the tenant's synonym set is injected (foreign tenant_* sets dropped)
+ * - the tenant's preset / curation set / stopword set are applied by default
+ *   (engine relevance objects are opt-in PER SEARCH — synced-but-unreferenced
+ *   sets do nothing). A client value referencing ANOTHER tenant's `tenant_*`
+ *   object is replaced with the caller's own; the gateway's degradation retry
+ *   strips these again if the engine reports them missing.
  */
 export const mergeSearchTenantFilter = (
   search: GatewaySearchEntry,
@@ -249,14 +254,25 @@ export const mergeSearchTenantFilter = (
   commonFilterBy?: string,
 ): GatewaySearchEntry => {
   const {
+    curation_sets: curationSets,
     filter_by: rawFilter,
     limit,
     per_page: perPage,
+    preset,
+    stopwords,
     synonym_sets: synonymSets,
     'x-typesense-api-key': _clientApiKey,
     'x-typesense-user-id': _clientUserId,
     ...rest
   } = search
+
+  // All tenant relevance objects share the `tenant_<id>` base name
+  // (see settingsSync name helpers).
+  const own = tenantSynonymSetName(tenant)
+  const ownOrSafe = (value: unknown): string =>
+    typeof value === 'string' && value && !(value.startsWith('tenant_') && value !== own)
+      ? value
+      : own
 
   const clientFilter =
     typeof rawFilter === 'string' && rawFilter.trim()
@@ -267,7 +283,10 @@ export const mergeSearchTenantFilter = (
 
   const merged: GatewaySearchEntry = {
     ...rest,
+    curation_sets: mergeTenantSynonymSets(tenant, curationSets),
     filter_by: clientFilter ? `tenant:=${tenant} && (${clientFilter})` : `tenant:=${tenant}`,
+    preset: ownOrSafe(preset),
+    stopwords: ownOrSafe(stopwords),
     synonym_sets: mergeTenantSynonymSets(tenant, synonymSets),
   }
 

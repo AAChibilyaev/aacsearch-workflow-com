@@ -21,6 +21,7 @@ type TabKey =
   | 'keys'
   | 'operations'
   | 'overview'
+  | 'pipelines'
   | 'reindex'
   | 'stemming'
 
@@ -47,6 +48,19 @@ type ReindexJobEntry = {
   status?: string
   targetCollection?: string
   totalDocuments?: number
+}
+type PipelineConnection = {
+  connectionId?: string
+  name?: string
+  schedule?: { scheduleType?: string }
+  status?: string
+}
+type PipelineJob = {
+  connectionId?: string
+  jobId?: number | string
+  jobType?: string
+  startTime?: string
+  status?: string
 }
 
 const cardStyle: React.CSSProperties = {
@@ -1147,6 +1161,210 @@ const Reindex: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }
   )
 }
 
+/** Airbyte data pipelines — platform ops surface. Like Reindex, this tab is
+ * NOT built on `useProxy`: it talks to our OWN white-label proxy endpoints
+ * (`/api/pipelines/*`, super-admin only), which sanitize every vendor
+ * response (URLs/secrets/hostnames redacted) before it reaches the browser. */
+const Pipelines: React.FC<{ apiURL: (path: `/${string}`) => string; lang: string }> = ({
+  apiURL,
+  lang,
+}) => {
+  const [connections, setConnections] = React.useState<null | PipelineConnection[]>(null)
+  const [jobs, setJobs] = React.useState<null | PipelineJob[]>(null)
+  const [unavailable, setUnavailable] = React.useState(false)
+  const [busy, setBusy] = React.useState<null | string>(null)
+  const [notice, setNotice] = React.useState<null | string>(null)
+  const [reloadKey, setReloadKey] = React.useState(0)
+
+  React.useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const [connectionsRes, jobsRes] = await Promise.all([
+          fetch(apiURL('/pipelines/connections'), { credentials: 'include' }),
+          fetch(`${apiURL('/pipelines/jobs')}?limit=25`, { credentials: 'include' }),
+        ])
+        if (!connectionsRes.ok || !jobsRes.ok) throw new Error('load')
+        const connectionsJson = (await connectionsRes.json()) as { data?: PipelineConnection[] }
+        const jobsJson = (await jobsRes.json()) as { data?: PipelineJob[] }
+        if (!cancelled) {
+          setConnections(connectionsJson.data ?? [])
+          setJobs(jobsJson.data ?? [])
+          setUnavailable(false)
+        }
+      } catch {
+        if (!cancelled) setUnavailable(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [apiURL, reloadKey])
+
+  const refresh = () => {
+    setConnections(null)
+    setJobs(null)
+    setNotice(null)
+    setReloadKey((key) => key + 1)
+  }
+
+  const startJob = async (connectionId: string, jobType: 'reset' | 'sync') => {
+    if (busy) return
+    setBusy(connectionId)
+    setNotice(null)
+    try {
+      const res = await fetch(apiURL('/pipelines/sync'), {
+        body: JSON.stringify({ connectionId, jobType }),
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      })
+      if (!res.ok) throw new Error(String(res.status))
+      setNotice(t(lang, 'pipelineSyncStarted'))
+      setReloadKey((key) => key + 1)
+    } catch {
+      setNotice(t(lang, 'errorGeneric'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const cancelJob = async (jobId: number | string) => {
+    if (busy) return
+    setBusy(String(jobId))
+    setNotice(null)
+    try {
+      const res = await fetch(
+        apiURL(`/pipelines/jobs/${encodeURIComponent(String(jobId))}/cancel` as `/${string}`),
+        { credentials: 'include', method: 'POST' },
+      )
+      if (!res.ok) throw new Error(String(res.status))
+      setReloadKey((key) => key + 1)
+    } catch {
+      setNotice(t(lang, 'errorGeneric'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t(lang, 'pipelinesTitle')}</CardTitle>
+        <CardDescription>{t(lang, 'pipelinesHint')}</CardDescription>
+        <CardAction>
+          <Button onClick={refresh} size="sm" type="button" variant="outline">
+            {t(lang, 'refresh')}
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {notice && <p style={{ ...mutedStyle, margin: 0 }}>{notice}</p>}
+        {unavailable ? (
+          <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'pipelinesUnavailable')}</p>
+        ) : connections === null || jobs === null ? (
+          <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'loading')}</p>
+        ) : (
+          <>
+            <h4 style={{ margin: '0.25rem 0 0' }}>{t(lang, 'pipelineConnections')}</h4>
+            {connections.length === 0 ? (
+              <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'pipelineNoConnections')}</p>
+            ) : (
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Name</th>
+                    <th style={thStyle}>Status</th>
+                    <th style={thStyle}>Schedule</th>
+                    <th style={thStyle} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {connections.map((connection) => (
+                    <tr key={connection.connectionId ?? connection.name}>
+                      <td style={tdStyle}>{connection.name ?? connection.connectionId}</td>
+                      <td style={tdStyle}>
+                        <Pill>{connection.status ?? '—'}</Pill>
+                      </td>
+                      <td style={tdStyle}>{connection.schedule?.scheduleType ?? '—'}</td>
+                      <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                        {connection.connectionId && (
+                          <span style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                            <Button
+                              disabled={busy !== null}
+                              onClick={() => void startJob(connection.connectionId!, 'sync')}
+                              size="sm"
+                              type="button"
+                            >
+                              {t(lang, 'pipelineSync')}
+                            </Button>
+                            <Button
+                              disabled={busy !== null}
+                              onClick={() => void startJob(connection.connectionId!, 'reset')}
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              {t(lang, 'pipelineReset')}
+                            </Button>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            <h4 style={{ margin: '0.75rem 0 0' }}>{t(lang, 'pipelineJobs')}</h4>
+            {jobs.length === 0 ? (
+              <p style={{ ...mutedStyle, margin: 0 }}>{t(lang, 'pipelineNoJobs')}</p>
+            ) : (
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>ID</th>
+                    <th style={thStyle}>Type</th>
+                    <th style={thStyle}>Status</th>
+                    <th style={thStyle}>Started</th>
+                    <th style={thStyle} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {jobs.map((job) => (
+                    <tr key={String(job.jobId)}>
+                      <td style={tdStyle}>{String(job.jobId ?? '—')}</td>
+                      <td style={tdStyle}>{job.jobType ?? '—'}</td>
+                      <td style={tdStyle}>
+                        <Pill>{job.status ?? '—'}</Pill>
+                      </td>
+                      <td style={tdStyle}>{job.startTime ?? '—'}</td>
+                      <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                        {job.jobId !== undefined &&
+                          (job.status === 'running' || job.status === 'pending') && (
+                            <Button
+                              disabled={busy !== null}
+                              onClick={() => void cancelJob(job.jobId!)}
+                              size="sm"
+                              type="button"
+                              variant="destructive"
+                            >
+                              {t(lang, 'pipelineCancel')}
+                            </Button>
+                          )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export const EnginePanel: React.FC<Props> = ({ lang }) => {
   const { config } = useConfig()
   const apiRoute = config.routes.api
@@ -1167,6 +1385,7 @@ export const EnginePanel: React.FC<Props> = ({ lang }) => {
         <TabsTrigger value="analyticsRules">{t(lang, 'tabAnalyticsRules')}</TabsTrigger>
         <TabsTrigger value="operations">{t(lang, 'tabOperations')}</TabsTrigger>
         <TabsTrigger value="reindex">{t(lang, 'tabReindex')}</TabsTrigger>
+        <TabsTrigger value="pipelines">{t(lang, 'tabPipelines')}</TabsTrigger>
       </TabsList>
 
       <TabsContent value="overview">
@@ -1192,6 +1411,9 @@ export const EnginePanel: React.FC<Props> = ({ lang }) => {
       </TabsContent>
       <TabsContent value="reindex">
         <Reindex apiURL={apiURL} lang={lang} />
+      </TabsContent>
+      <TabsContent value="pipelines">
+        <Pipelines apiURL={apiURL} lang={lang} />
       </TabsContent>
     </Tabs>
   )

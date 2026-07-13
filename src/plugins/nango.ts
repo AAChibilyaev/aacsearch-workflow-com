@@ -28,6 +28,7 @@ import {
   type ProviderDTO,
 } from '@/lib/integrations/dto'
 import { getPrincipalCollection, getPrincipalTenantIDs } from '@/lib/principal'
+import { getUserTenantIDs } from '@/utilities/getUserTenantIDs'
 
 /**
  * Integrations plugin — per-tenant third-party connections, fully white-label.
@@ -91,6 +92,23 @@ const guardTenantParam = (req: PayloadRequest, tenant: string | undefined): stri
     throw new APIError('Forbidden', 403, { code: 'forbidden' })
   }
   return tenant
+}
+
+/**
+ * Connection lifecycle (connect / reconnect / disconnect / manual sync)
+ * follows the integrations collection contract: tenant-admin or super-admin.
+ * API-key principals are denied — no api-key scope grants integration
+ * management, and `guardTenantParam` alone only proves membership.
+ */
+const guardTenantAdmin = (req: PayloadRequest, tenant: string): void => {
+  if (isSuperAdmin(req.user)) return
+  if (getPrincipalCollection(req.user) === 'api-keys') {
+    throw new APIError('Forbidden', 403, { code: 'forbidden' })
+  }
+  const adminTenants = getUserTenantIDs(req.user as Parameters<typeof getUserTenantIDs>[0], 'tenant-admin')
+  if (!adminTenants.some((id) => String(id) === String(tenant))) {
+    throw new APIError('Forbidden', 403, { code: 'forbidden' })
+  }
 }
 
 /**
@@ -272,6 +290,8 @@ const markIntegrationStatus = async (
   })
   const doc = existing.docs[0]
   if (!doc) return
+  // A late sync webhook must not resurrect a connection an admin revoked.
+  if (doc.status === 'revoked') return
   await integrationsAPI.update({
     collection: 'integrations',
     data: { status },
@@ -363,6 +383,7 @@ const integrationEndpoints = (opts: NangoPluginOptions): Endpoint[] => [
         req,
         body.tenant !== undefined && body.tenant !== null ? String(body.tenant) : undefined,
       )
+      guardTenantAdmin(req, tenant)
       const user = req.user!
 
       const nango = await getClient(opts)
@@ -404,6 +425,7 @@ const integrationEndpoints = (opts: NangoPluginOptions): Endpoint[] => [
         req,
         typeof req.query?.tenant === 'string' ? req.query.tenant : undefined,
       )
+      guardTenantAdmin(req, tenant)
       const rawID = req.routeParams?.id
       if (rawID === undefined || rawID === null || rawID === '') {
         throw new APIError('Connection id is required', 400, { code: 'id_required' })
@@ -449,6 +471,33 @@ const integrationEndpoints = (opts: NangoPluginOptions): Endpoint[] => [
     },
   },
   {
+    // Reconnect a broken connection ('error' status: revoked/expired upstream
+    // credentials) WITHOUT minting a new connectionId — the standard repair
+    // path. Returns a session token for the same headless frontend flow as
+    // /integrations/session; white-label rules identical (no connect_link).
+    path: '/integrations/connections/:id/reconnect',
+    method: 'post',
+    handler: async (req) => {
+      const doc = await loadOwnedConnection(req)
+      const tenant = String(extractRelationID(doc.tenant))
+      guardTenantAdmin(req, tenant)
+      const user = req.user!
+
+      const nango = await getClient(opts)
+      const session = await nango.createReconnectSession({
+        connection_id: doc.connectionId,
+        integration_id: doc.integrationKey,
+        end_user: {
+          id: String(user.id),
+          email: 'email' in user && typeof user.email === 'string' ? user.email : undefined,
+        },
+        organization: { id: tenant },
+      })
+
+      return Response.json({ expiresAt: session.data.expires_at, token: session.data.token })
+    },
+  },
+  {
     // Manual "Sync now": re-run this connection's data pull on demand.
     // tenant-admins may sync their own connections; super-admin any. `?full=true`
     // requests a full re-sync instead of incremental.
@@ -456,6 +505,7 @@ const integrationEndpoints = (opts: NangoPluginOptions): Endpoint[] => [
     method: 'post',
     handler: async (req) => {
       const doc = await loadOwnedConnection(req)
+      guardTenantAdmin(req, String(extractRelationID(doc.tenant)))
       const fullResync = req.query?.full === 'true' || req.query?.full === '1'
       const nango = await getClient(opts)
       try {

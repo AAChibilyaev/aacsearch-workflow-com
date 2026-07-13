@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
-import { buildConfig } from 'payload'
+import { buildConfig, type PayloadLogger } from 'payload'
 import { fileURLToPath } from 'url'
 import { CloudflareContext, getCloudflareContext } from '@opennextjs/cloudflare'
 import { GetPlatformProxyOptions } from 'wrangler'
@@ -18,7 +18,11 @@ import { mcpPlugin } from '@payloadcms/plugin-mcp'
 import { openapi, scalar } from 'payload-oapi'
 import { betterPreview } from 'payload-better-preview'
 import { payloadPluginNotifications } from '@elghaied/payload-plugin-notifications'
-import { openAIResolver, payloadAltTextPlugin } from '@jhb.software/payload-alt-text-plugin'
+import {
+  openAIResolver,
+  payloadAltTextPlugin,
+  type AltTextResolver,
+} from '@jhb.software/payload-alt-text-plugin'
 import { payloadCmdk } from '@veiag/payload-cmdk'
 import { cloudflareEmailAdapter, type CloudflareEmailBinding } from 'payload-cloudflare-email-adapter'
 import { auditorPlugin } from 'payload-auditor'
@@ -58,8 +62,41 @@ const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 const realpath = (value: string) => (fs.existsSync(value) ? fs.realpathSync(value) : undefined)
 
-const isCLI = process.argv.some((value) => realpath(value).endsWith(path.join('payload', 'bin.js')))
+const isCLI = process.argv.some((value) =>
+  realpath(value)?.endsWith(path.join('payload', 'bin.js')),
+)
 const isProduction = process.env.NODE_ENV === 'production'
+
+/**
+ * Wraps openAIResolver so the OpenAI client is constructed at GENERATION
+ * time, not at config-load time. The upstream resolver throws "Missing
+ * credentials" from its constructor when OPENAI_API_KEY is unset, which
+ * killed `next build` on every host without the key (CI included). Without
+ * a key the buttons stay visible but return a neutral error.
+ */
+const lazyOpenAIAltTextResolver = (): AltTextResolver => {
+  let real: AltTextResolver | null = null
+  const get = (): AltTextResolver | null => {
+    const apiKey = process.env.OPENAI_API_KEY
+    if (!apiKey) return null
+    if (!real) real = openAIResolver({ apiKey })
+    return real
+  }
+  const NOT_CONFIGURED = 'Alt-text generation is not configured on this deployment'
+  return {
+    key: 'openai',
+    resolve: async (args) => {
+      const resolver = get()
+      if (!resolver) return { error: NOT_CONFIGURED, success: false }
+      return resolver.resolve(args)
+    },
+    resolveBulk: async (args) => {
+      const resolver = get()
+      if (!resolver) return { error: NOT_CONFIGURED, success: false }
+      return resolver.resolveBulk(args)
+    },
+  }
+}
 
 const createLog =
   (level: string, fn: typeof console.log) => (objOrMsg: object | string, msg?: string) => {
@@ -79,7 +116,7 @@ const cloudflareLogger = {
   error: createLog('error', console.error),
   fatal: createLog('fatal', console.error),
   silent: () => {},
-} as any // Use PayloadLogger type when it's exported
+} as unknown as PayloadLogger // structural JSON logger; narrower than pino's full surface
 
 const cloudflare =
   isCLI || !isProduction
@@ -311,6 +348,11 @@ export default buildConfig({
       tenantField: {
         access: {
           read: () => true,
+          // Field access must stay open: denying here silently STRIPS the
+          // incoming value before hooks run, hiding cross-tenant writes as
+          // no-ops. Re-parenting is instead rejected with an explicit 403 by
+          // `enforceTenantWriteScope` (for BOTH principal shapes) on every
+          // tenant-scoped collection.
           update: () => true,
         },
       },
@@ -333,16 +375,56 @@ export default buildConfig({
     }),
     redirectsPlugin({
       collections: ['pages'],
+      overrides: {
+        // Platform-site plumbing — keep it out of the customer panel
+        access: {
+          create: isSuperAdminAccess,
+          delete: isSuperAdminAccess,
+          read: () => true,
+          update: isSuperAdminAccess,
+        },
+        admin: { hidden: ({ user }) => !isSuperAdmin(user) },
+      },
     }),
     searchPlugin({
       collections: ['pages'],
       defaultPriorities: {
         pages: 10,
       },
+      searchOverrides: {
+        // Index rows mirror page content across tenants — super-admin surface
+        access: {
+          read: isSuperAdminAccess,
+        },
+        admin: { hidden: ({ user }) => !isSuperAdmin(user) },
+      },
     }),
     formBuilderPlugin({
       fields: {
         payment: false,
+      },
+      // The generated collections are NOT tenant-scoped (they're used for the
+      // platform marketing site only). Their plugin defaults are cross-tenant
+      // readable by any logged-in customer — lock management to super-admin
+      // and hide them from the customer panel. Public visitors may still
+      // read forms (to render them) and create submissions.
+      formOverrides: {
+        access: {
+          create: isSuperAdminAccess,
+          delete: isSuperAdminAccess,
+          read: () => true,
+          update: isSuperAdminAccess,
+        },
+        admin: { hidden: ({ user }) => !isSuperAdmin(user) },
+      },
+      formSubmissionOverrides: {
+        access: {
+          create: () => true,
+          delete: isSuperAdminAccess,
+          read: isSuperAdminAccess,
+          update: isSuperAdminAccess,
+        },
+        admin: { hidden: ({ user }) => !isSuperAdmin(user) },
       },
     }),
     importExportPlugin({
@@ -433,6 +515,8 @@ export default buildConfig({
     airbytePlugin({
       apiToken: process.env.AIRBYTE_API_TOKEN,
       apiUrl: process.env.AIRBYTE_API_URL,
+      clientId: process.env.AIRBYTE_CLIENT_ID,
+      clientSecret: process.env.AIRBYTE_CLIENT_SECRET,
       workspaceId: process.env.AIRBYTE_WORKSPACE_ID,
     }),
     // Cluster-ops: chunked reindex of one engine collection into another,
@@ -488,11 +572,13 @@ export default buildConfig({
     // AI alt-text for media. Always on (it owns the required `alt` field, so
     // gating it on env would make the schema env-dependent); generation itself
     // needs OPENAI_API_KEY plus NEXT_PUBLIC_SERVER_URL so the model can fetch
-    // the image.
+    // the image. The resolver is LAZY: openAIResolver news up an OpenAI client
+    // immediately and THROWS when the key is unset — that crashed `next build`
+    // (page-data collection) in every environment without the key.
     payloadAltTextPlugin({
       collections: ['media'],
       getImageThumbnail: (doc) => `${process.env.NEXT_PUBLIC_SERVER_URL ?? ''}${doc.url}`,
-      resolver: openAIResolver({ apiKey: process.env.OPENAI_API_KEY ?? '' }),
+      resolver: lazyOpenAIAltTextResolver(),
     }),
     // NOTE: @payloadcms/plugin-ecommerce is installed but intentionally NOT
     // enabled: it generates its own carts/orders/transactions collections that

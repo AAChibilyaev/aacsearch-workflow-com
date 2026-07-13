@@ -90,7 +90,6 @@ export interface Config {
     imports: Import;
     notifications: Notification;
     'plugin-ai-instructions': PluginAiInstruction;
-    'Audit-log': AuditLog;
     'payload-mcp-api-keys': PayloadMcpApiKey;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
@@ -121,7 +120,6 @@ export interface Config {
     imports: ImportsSelect<false> | ImportsSelect<true>;
     notifications: NotificationsSelect<false> | NotificationsSelect<true>;
     'plugin-ai-instructions': PluginAiInstructionsSelect<false> | PluginAiInstructionsSelect<true>;
-    'Audit-log': AuditLogSelect<false> | AuditLogSelect<true>;
     'payload-mcp-api-keys': PayloadMcpApiKeysSelect<false> | PayloadMcpApiKeysSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
@@ -136,12 +134,10 @@ export interface Config {
   globals: {
     header: Header;
     footer: Footer;
-    'payload-jobs-stats': PayloadJobsStat;
   };
   globalsSelect: {
     header: HeaderSelect<false> | HeaderSelect<true>;
     footer: FooterSelect<false> | FooterSelect<true>;
-    'payload-jobs-stats': PayloadJobsStatsSelect<false> | PayloadJobsStatsSelect<true>;
   };
   locale: 'en' | 'ru' | 'de';
   widgets: {
@@ -154,7 +150,6 @@ export interface Config {
       createCollectionExport: TaskCreateCollectionExport;
       createCollectionImport: TaskCreateCollectionImport;
       reindexCollection: TaskReindexCollection;
-      'cleanup-payload-auditor-log': TaskCleanupPayloadAuditorLog;
       inline: {
         input: unknown;
         output: unknown;
@@ -2599,8 +2594,6 @@ export interface User {
         id?: string | null;
       }[]
     | null;
-  totpSecret?: string | null;
-  hasTotp?: boolean | null;
   updatedAt: string;
   createdAt: string;
   enableAPIKey?: boolean | null;
@@ -2945,7 +2938,7 @@ export interface PluginAiInstruction {
    */
   'field-type'?: ('text' | 'textarea' | 'upload' | 'richText') | null;
   'relation-to'?: string | null;
-  'model-id'?: ('Oai-text' | 'dall-e' | 'gpt-image-1' | 'tts' | 'Oai-object' | '11Labs-m-v2') | null;
+  'model-id'?: ('Oai-text' | 'dall-e' | 'gpt-image-1' | 'tts' | 'Oai-object' | 'ANTH-C-text' | 'ANTH-C-object') | null;
   /**
    * Please reload your collection after applying the changes
    */
@@ -3002,32 +2995,39 @@ export interface PluginAiInstruction {
     temperature?: number | null;
     extractAttachments?: boolean | null;
   };
-  '11Labs-settings'?: {
-    voice_id: string;
-    stability: number;
-    similarity_boost: number;
-    style?: number | null;
-    use_speaker_boost?: boolean | null;
-    seed?: number | null;
-    previous_text?: string | null;
-    next_text?: string | null;
+  'ANTH-C-text-settings'?: {
+    model?:
+      | (
+          | 'claude-opus-4-1'
+          | 'claude-opus-4-0'
+          | 'claude-sonnet-4-0'
+          | 'claude-3-opus-latest'
+          | 'claude-3-5-haiku-latest'
+          | 'claude-3-5-sonnet-latest'
+          | 'claude-3-7-sonnet-latest'
+        )
+      | null;
+    maxTokens?: number | null;
+    temperature?: number | null;
+    extractAttachments?: boolean | null;
+  };
+  'ANTH-C-object-settings'?: {
+    model?:
+      | (
+          | 'claude-opus-4-1'
+          | 'claude-opus-4-0'
+          | 'claude-sonnet-4-0'
+          | 'claude-3-opus-latest'
+          | 'claude-3-5-haiku-latest'
+          | 'claude-3-5-sonnet-latest'
+          | 'claude-3-7-sonnet-latest'
+        )
+      | null;
+    maxTokens?: number | null;
+    temperature?: number | null;
+    extractAttachments?: boolean | null;
   };
   updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "Audit-log".
- */
-export interface AuditLog {
-  id: number;
-  operation: string;
-  onCollection: string;
-  documentId?: string | null;
-  user: number | User;
-  userAgent?: string | null;
-  hook?: string | null;
-  type: 'info' | 'debug' | 'warning' | 'error' | 'audit' | 'security' | 'unknown';
   createdAt: string;
 }
 /**
@@ -3180,12 +3180,7 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug:
-          | 'inline'
-          | 'createCollectionExport'
-          | 'createCollectionImport'
-          | 'reindexCollection'
-          | 'cleanup-payload-auditor-log';
+        taskSlug: 'inline' | 'createCollectionExport' | 'createCollectionImport' | 'reindexCollection';
         taskID: string;
         input?:
           | {
@@ -3218,15 +3213,7 @@ export interface PayloadJob {
         id?: string | null;
       }[]
     | null;
-  taskSlug?:
-    | (
-        | 'inline'
-        | 'createCollectionExport'
-        | 'createCollectionImport'
-        | 'reindexCollection'
-        | 'cleanup-payload-auditor-log'
-      )
-    | null;
+  taskSlug?: ('inline' | 'createCollectionExport' | 'createCollectionImport' | 'reindexCollection') | null;
   queue?: string | null;
   waitUntil?: string | null;
   processing?: boolean | null;
@@ -3234,15 +3221,6 @@ export interface PayloadJob {
    * Used for concurrency control. Jobs with the same key are subject to exclusive/supersedes rules.
    */
   concurrencyKey?: string | null;
-  meta?:
-    | {
-        [k: string]: unknown;
-      }
-    | unknown[]
-    | string
-    | number
-    | boolean
-    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -3328,10 +3306,6 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'plugin-ai-instructions';
         value: number | PluginAiInstruction;
-      } | null)
-    | ({
-        relationTo: 'Audit-log';
-        value: number | AuditLog;
       } | null)
     | ({
         relationTo: 'payload-mcp-api-keys';
@@ -5321,8 +5295,6 @@ export interface UsersSelect<T extends boolean = true> {
         roles?: T;
         id?: T;
       };
-  totpSecret?: T;
-  hasTotp?: T;
   updatedAt?: T;
   createdAt?: T;
   enableAPIKey?: T;
@@ -5697,33 +5669,23 @@ export interface PluginAiInstructionsSelect<T extends boolean = true> {
         temperature?: T;
         extractAttachments?: T;
       };
-  '11Labs-settings'?:
+  'ANTH-C-text-settings'?:
     | T
     | {
-        voice_id?: T;
-        stability?: T;
-        similarity_boost?: T;
-        style?: T;
-        use_speaker_boost?: T;
-        seed?: T;
-        previous_text?: T;
-        next_text?: T;
+        model?: T;
+        maxTokens?: T;
+        temperature?: T;
+        extractAttachments?: T;
+      };
+  'ANTH-C-object-settings'?:
+    | T
+    | {
+        model?: T;
+        maxTokens?: T;
+        temperature?: T;
+        extractAttachments?: T;
       };
   updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "Audit-log_select".
- */
-export interface AuditLogSelect<T extends boolean = true> {
-  operation?: T;
-  onCollection?: T;
-  documentId?: T;
-  user?: T;
-  userAgent?: T;
-  hook?: T;
-  type?: T;
   createdAt?: T;
 }
 /**
@@ -5801,7 +5763,6 @@ export interface PayloadJobsSelect<T extends boolean = true> {
   waitUntil?: T;
   processing?: T;
   concurrencyKey?: T;
-  meta?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -5888,24 +5849,6 @@ export interface Footer {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "payload-jobs-stats".
- */
-export interface PayloadJobsStat {
-  id: number;
-  stats?:
-    | {
-        [k: string]: unknown;
-      }
-    | unknown[]
-    | string
-    | number
-    | boolean
-    | null;
-  updatedAt?: string | null;
-  createdAt?: string | null;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "header_select".
  */
 export interface HeaderSelect<T extends boolean = true> {
@@ -5945,16 +5888,6 @@ export interface FooterSelect<T extends boolean = true> {
         id?: T;
       };
   copyright?: T;
-  updatedAt?: T;
-  createdAt?: T;
-  globalType?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "payload-jobs-stats_select".
- */
-export interface PayloadJobsStatsSelect<T extends boolean = true> {
-  stats?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;
@@ -6062,14 +5995,6 @@ export interface TaskReindexCollection {
     status?: string | null;
     totalDocuments?: number | null;
   };
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "TaskCleanup-payload-auditor-log".
- */
-export interface TaskCleanupPayloadAuditorLog {
-  input?: unknown;
-  output?: unknown;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
