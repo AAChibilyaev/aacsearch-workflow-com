@@ -2,6 +2,8 @@ import type { ServerProps } from 'payload'
 
 import React from 'react'
 
+import { isSuperAdmin } from '@/access/isSuperAdmin'
+
 /**
  * Tenant-scoped dashboard overview. Counts run through access control
  * (overrideAccess: false), so customers see only their tenant's numbers
@@ -67,10 +69,14 @@ export async function BeforeDashboard(props: ServerProps) {
           </a>
         ))}
       </div>
-      <p style={{ color: 'var(--theme-elevation-500)', margin: 'calc(var(--base) * 0.75) 0 0' }}>
-        API docs: <a href="/api/docs">/api/docs</a> · OpenAPI spec:{' '}
-        <a href="/api/openapi.json">/api/openapi.json</a>
-      </p>
+      {isSuperAdmin(user) && (
+        <p style={{ color: 'var(--theme-elevation-500)', margin: 'calc(var(--base) * 0.75) 0 0' }}>
+          {/* API endpoints, not Next pages — <Link> prefetch would 404 for the crawler */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          API docs: <a href="/api/docs">/api/docs</a> · OpenAPI spec:{' '}
+          <a href="/api/openapi.json">/api/openapi.json</a>
+        </p>
+      )}
     </div>
   )
 }

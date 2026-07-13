@@ -185,7 +185,48 @@ export interface Page {
   tenant?: (number | null) | Tenant;
   title?: string | null;
   slug: string;
-  layout?: (HeroBlock | ContentBlock | CallToActionBlock | HeroBasicBlock)[] | null;
+  layout?:
+    | (
+        | HeroBlock
+        | ContentBlock
+        | CallToActionBlock
+        | HeroBasicBlock
+        | FeatureGridBasicBlock
+        | CallToActionCenteredBlock
+        | ContentStatsBlock
+        | IntegrationOrbitBlock
+        | FeatureSplitBlock
+        | FeatureBentoBlock
+        | FeatureStepsBlock
+        | EmbedBasicBlock
+        | ContentColumnsBlock
+        | ContentImageLeadBlock
+        | ContentFeatureMediaBlock
+        | ContentFeatureSplitBlock
+        | ContentShowcaseBlock
+        | ContentQuoteBlock
+        | ContentCommunityBlock
+        | ContentSplitRowsBlock
+        | ContentRowsBlock
+        | ContentImageFrameBlock
+        | ContentListBlock
+        | ContentListColumnsBlock
+        | ContentListIconsBlock
+        | LogoCloudGridBlock
+        | LogoCloudHoverBlock
+        | LogoCloudInlineBlock
+        | LogoCloudInlineWrapBlock
+        | IntegrationGridBlock
+        | IntegrationClusterBlock
+        | IntegrationSplitBlock
+        | IntegrationConnectBlock
+        | IntegrationListBlock
+        | IntegrationTestimonialBlock
+        | CallToActionBoxedBlock
+        | TeamRosterBlock
+        | TeamGridBlock
+      )[]
+    | null;
   meta?: {
     title?: string | null;
     description?: string | null;
@@ -356,6 +397,886 @@ export interface HeroBasicBlock {
   id?: string | null;
   blockName?: string | null;
   blockType: 'heroBasic';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FeatureGridBasicBlock".
+ */
+export interface FeatureGridBasicBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  items: {
+    title: string;
+    description: string;
+    id?: string | null;
+  }[];
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'featureGridBasic';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "CallToActionCenteredBlock".
+ */
+export interface CallToActionCenteredBlock {
+  title: string;
+  description?: string | null;
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'callToActionCentered';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentStatsBlock".
+ */
+export interface ContentStatsBlock {
+  eyebrow?: string | null;
+  title: string;
+  paragraphs?:
+    | {
+        text: string;
+        id?: string | null;
+      }[]
+    | null;
+  features?:
+    | {
+        icon?: ('zap' | 'cpu' | 'lock' | 'sparkles' | 'gauge' | 'shield') | null;
+        title: string;
+        description: string;
+        id?: string | null;
+      }[]
+    | null;
+  stats?:
+    | {
+        value: string;
+        label: string;
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentStats';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationOrbitBlock".
+ */
+export interface IntegrationOrbitBlock {
+  heading: string;
+  subtext?: string | null;
+  integrations: {
+    logo: number | Media;
+    name: string;
+    description?: string | null;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  /**
+   * Optional center brand mark shown at the focal point of the integration layout.
+   */
+  featuredLogo?: (number | null) | Media;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'integrationOrbit';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FeatureSplitBlock".
+ */
+export interface FeatureSplitBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  items: {
+    title: string;
+    description: string;
+    id?: string | null;
+  }[];
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'featureSplit';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FeatureBentoBlock".
+ */
+export interface FeatureBentoBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  /**
+   * The first item leads the grid as the featured cell.
+   */
+  items: {
+    title: string;
+    description: string;
+    id?: string | null;
+  }[];
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'featureBento';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FeatureStepsBlock".
+ */
+export interface FeatureStepsBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  /**
+   * Steps are numbered automatically in array order.
+   */
+  items: {
+    title: string;
+    description: string;
+    id?: string | null;
+  }[];
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'featureSteps';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "EmbedBasicBlock".
+ */
+export interface EmbedBasicBlock {
+  /**
+   * Approved HTTPS embed URL (e.g. https://www.youtube.com/embed/VIDEO_ID).
+   */
+  url: string;
+  /**
+   * Accessible title announced to screen readers for the embedded frame.
+   */
+  title: string;
+  aspectRatio: '16:9' | '4:3' | '1:1' | '21:9';
+  caption?: string | null;
+  allowFullscreen?: boolean | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'embedBasic';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentColumnsBlock".
+ */
+export interface ContentColumnsBlock {
+  eyebrow?: string | null;
+  title: string;
+  paragraphs?:
+    | {
+        text: string;
+        id?: string | null;
+      }[]
+    | null;
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentColumns';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentImageLeadBlock".
+ */
+export interface ContentImageLeadBlock {
+  eyebrow?: string | null;
+  title: string;
+  paragraphs?:
+    | {
+        text: string;
+        id?: string | null;
+      }[]
+    | null;
+  image?: (number | null) | Media;
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentImageLead';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentFeatureMediaBlock".
+ */
+export interface ContentFeatureMediaBlock {
+  eyebrow?: string | null;
+  title: string;
+  paragraphs?:
+    | {
+        text: string;
+        id?: string | null;
+      }[]
+    | null;
+  features?:
+    | {
+        icon?: ('zap' | 'cpu' | 'lock' | 'sparkles' | 'gauge' | 'shield') | null;
+        title: string;
+        description: string;
+        id?: string | null;
+      }[]
+    | null;
+  image?: (number | null) | Media;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentFeatureMedia';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentFeatureSplitBlock".
+ */
+export interface ContentFeatureSplitBlock {
+  eyebrow?: string | null;
+  title: string;
+  paragraphs?:
+    | {
+        text: string;
+        id?: string | null;
+      }[]
+    | null;
+  features?:
+    | {
+        icon?: ('zap' | 'cpu' | 'lock' | 'sparkles' | 'gauge' | 'shield') | null;
+        title: string;
+        description: string;
+        id?: string | null;
+      }[]
+    | null;
+  image?: (number | null) | Media;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentFeatureSplit';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentShowcaseBlock".
+ */
+export interface ContentShowcaseBlock {
+  eyebrow?: string | null;
+  title: string;
+  paragraphs?:
+    | {
+        text: string;
+        id?: string | null;
+      }[]
+    | null;
+  image?: (number | null) | Media;
+  features?:
+    | {
+        icon?: ('zap' | 'cpu' | 'lock' | 'sparkles' | 'gauge' | 'shield') | null;
+        title: string;
+        description: string;
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentShowcase';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentQuoteBlock".
+ */
+export interface ContentQuoteBlock {
+  eyebrow?: string | null;
+  title: string;
+  paragraphs?:
+    | {
+        text: string;
+        id?: string | null;
+      }[]
+    | null;
+  image?: (number | null) | Media;
+  quote: string;
+  citation: string;
+  logo?: (number | null) | Media;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentQuote';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentCommunityBlock".
+ */
+export interface ContentCommunityBlock {
+  eyebrow?: string | null;
+  title: string;
+  paragraphs?:
+    | {
+        text: string;
+        id?: string | null;
+      }[]
+    | null;
+  avatars: {
+    avatar: number | Media;
+    name: string;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentCommunity';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentSplitRowsBlock".
+ */
+export interface ContentSplitRowsBlock {
+  eyebrow?: string | null;
+  title: string;
+  paragraphs?:
+    | {
+        text: string;
+        id?: string | null;
+      }[]
+    | null;
+  rows: {
+    image?: (number | null) | Media;
+    title: string;
+    description: string;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentSplitRows';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentRowsBlock".
+ */
+export interface ContentRowsBlock {
+  eyebrow?: string | null;
+  title: string;
+  paragraphs?:
+    | {
+        text: string;
+        id?: string | null;
+      }[]
+    | null;
+  rows: {
+    image?: (number | null) | Media;
+    title: string;
+    description: string;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentRows';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentImageFrameBlock".
+ */
+export interface ContentImageFrameBlock {
+  eyebrow?: string | null;
+  title: string;
+  paragraphs?:
+    | {
+        text: string;
+        id?: string | null;
+      }[]
+    | null;
+  image?: (number | null) | Media;
+  backgroundImage?: (number | null) | Media;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentImageFrame';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentListBlock".
+ */
+export interface ContentListBlock {
+  eyebrow?: string | null;
+  title: string;
+  items: {
+    term: string;
+    description: string;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentList';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentListColumnsBlock".
+ */
+export interface ContentListColumnsBlock {
+  eyebrow?: string | null;
+  title: string;
+  items: {
+    term: string;
+    description: string;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentListColumns';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentListIconsBlock".
+ */
+export interface ContentListIconsBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  items: {
+    icon?: ('zap' | 'cpu' | 'lock' | 'sparkles' | 'gauge' | 'shield') | null;
+    term: string;
+    description: string;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'contentListIcons';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "LogoCloudGridBlock".
+ */
+export interface LogoCloudGridBlock {
+  heading: string;
+  logos: {
+    logo: number | Media;
+    name: string;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'logoCloudGrid';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "LogoCloudHoverBlock".
+ */
+export interface LogoCloudHoverBlock {
+  heading: string;
+  logos: {
+    logo: number | Media;
+    name: string;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'logoCloudHover';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "LogoCloudInlineBlock".
+ */
+export interface LogoCloudInlineBlock {
+  heading: string;
+  logos: {
+    logo: number | Media;
+    name: string;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'logoCloudInline';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "LogoCloudInlineWrapBlock".
+ */
+export interface LogoCloudInlineWrapBlock {
+  heading: string;
+  logos: {
+    logo: number | Media;
+    name: string;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'logoCloudInlineWrap';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationGridBlock".
+ */
+export interface IntegrationGridBlock {
+  heading: string;
+  subtext?: string | null;
+  integrations: {
+    logo: number | Media;
+    name: string;
+    description?: string | null;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'integrationGrid';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationClusterBlock".
+ */
+export interface IntegrationClusterBlock {
+  heading: string;
+  subtext?: string | null;
+  integrations: {
+    logo: number | Media;
+    name: string;
+    description?: string | null;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  /**
+   * Optional center brand mark shown at the focal point of the integration layout.
+   */
+  featuredLogo?: (number | null) | Media;
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'integrationCluster';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationSplitBlock".
+ */
+export interface IntegrationSplitBlock {
+  heading: string;
+  subtext?: string | null;
+  integrations: {
+    logo: number | Media;
+    name: string;
+    description?: string | null;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  /**
+   * Optional center brand mark shown at the focal point of the integration layout.
+   */
+  featuredLogo?: (number | null) | Media;
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'integrationSplit';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationConnectBlock".
+ */
+export interface IntegrationConnectBlock {
+  heading: string;
+  subtext?: string | null;
+  integrations: {
+    logo: number | Media;
+    name: string;
+    description?: string | null;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  /**
+   * Optional center brand mark shown at the focal point of the integration layout.
+   */
+  featuredLogo?: (number | null) | Media;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'integrationConnect';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationListBlock".
+ */
+export interface IntegrationListBlock {
+  heading: string;
+  subtext?: string | null;
+  integrations: {
+    logo: number | Media;
+    name: string;
+    description?: string | null;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'integrationList';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationTestimonialBlock".
+ */
+export interface IntegrationTestimonialBlock {
+  heading: string;
+  subtext?: string | null;
+  integrations: {
+    logo: number | Media;
+    name: string;
+    description?: string | null;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  quote: string;
+  author: string;
+  role?: string | null;
+  authorAvatar?: (number | null) | Media;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'integrationTestimonial';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "CallToActionBoxedBlock".
+ */
+export interface CallToActionBoxedBlock {
+  title: string;
+  description?: string | null;
+  links?:
+    | {
+        link: {
+          type?: ('reference' | 'custom') | null;
+          newTab?: boolean | null;
+          reference?: {
+            relationTo: 'pages';
+            value: number | Page;
+          } | null;
+          url?: string | null;
+          label: string;
+          /**
+           * Choose how the link should be rendered.
+           */
+          appearance?: ('default' | 'outline') | null;
+        };
+        id?: string | null;
+      }[]
+    | null;
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'callToActionBoxed';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TeamRosterBlock".
+ */
+export interface TeamRosterBlock {
+  eyebrow?: string | null;
+  title: string;
+  groups: {
+    label: string;
+    members: {
+      avatar: number | Media;
+      name: string;
+      role: string;
+      href?: string | null;
+      id?: string | null;
+    }[];
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'teamRoster';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TeamGridBlock".
+ */
+export interface TeamGridBlock {
+  eyebrow?: string | null;
+  title: string;
+  description?: string | null;
+  members: {
+    avatar: number | Media;
+    name: string;
+    role: string;
+    href?: string | null;
+    id?: string | null;
+  }[];
+  id?: string | null;
+  blockName?: string | null;
+  blockType: 'teamGrid';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -1219,6 +2140,40 @@ export interface PagesSelect<T extends boolean = true> {
         content?: T | ContentBlockSelect<T>;
         cta?: T | CallToActionBlockSelect<T>;
         heroBasic?: T | HeroBasicBlockSelect<T>;
+        featureGridBasic?: T | FeatureGridBasicBlockSelect<T>;
+        callToActionCentered?: T | CallToActionCenteredBlockSelect<T>;
+        contentStats?: T | ContentStatsBlockSelect<T>;
+        integrationOrbit?: T | IntegrationOrbitBlockSelect<T>;
+        featureSplit?: T | FeatureSplitBlockSelect<T>;
+        featureBento?: T | FeatureBentoBlockSelect<T>;
+        featureSteps?: T | FeatureStepsBlockSelect<T>;
+        embedBasic?: T | EmbedBasicBlockSelect<T>;
+        contentColumns?: T | ContentColumnsBlockSelect<T>;
+        contentImageLead?: T | ContentImageLeadBlockSelect<T>;
+        contentFeatureMedia?: T | ContentFeatureMediaBlockSelect<T>;
+        contentFeatureSplit?: T | ContentFeatureSplitBlockSelect<T>;
+        contentShowcase?: T | ContentShowcaseBlockSelect<T>;
+        contentQuote?: T | ContentQuoteBlockSelect<T>;
+        contentCommunity?: T | ContentCommunityBlockSelect<T>;
+        contentSplitRows?: T | ContentSplitRowsBlockSelect<T>;
+        contentRows?: T | ContentRowsBlockSelect<T>;
+        contentImageFrame?: T | ContentImageFrameBlockSelect<T>;
+        contentList?: T | ContentListBlockSelect<T>;
+        contentListColumns?: T | ContentListColumnsBlockSelect<T>;
+        contentListIcons?: T | ContentListIconsBlockSelect<T>;
+        logoCloudGrid?: T | LogoCloudGridBlockSelect<T>;
+        logoCloudHover?: T | LogoCloudHoverBlockSelect<T>;
+        logoCloudInline?: T | LogoCloudInlineBlockSelect<T>;
+        logoCloudInlineWrap?: T | LogoCloudInlineWrapBlockSelect<T>;
+        integrationGrid?: T | IntegrationGridBlockSelect<T>;
+        integrationCluster?: T | IntegrationClusterBlockSelect<T>;
+        integrationSplit?: T | IntegrationSplitBlockSelect<T>;
+        integrationConnect?: T | IntegrationConnectBlockSelect<T>;
+        integrationList?: T | IntegrationListBlockSelect<T>;
+        integrationTestimonial?: T | IntegrationTestimonialBlockSelect<T>;
+        callToActionBoxed?: T | CallToActionBoxedBlockSelect<T>;
+        teamRoster?: T | TeamRosterBlockSelect<T>;
+        teamGrid?: T | TeamGridBlockSelect<T>;
       };
   meta?:
     | T
@@ -1306,6 +2261,832 @@ export interface HeroBasicBlockSelect<T extends boolean = true> {
     | T
     | {
         label?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FeatureGridBasicBlock_select".
+ */
+export interface FeatureGridBasicBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  items?:
+    | T
+    | {
+        title?: T;
+        description?: T;
+        id?: T;
+      };
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "CallToActionCenteredBlock_select".
+ */
+export interface CallToActionCenteredBlockSelect<T extends boolean = true> {
+  title?: T;
+  description?: T;
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentStatsBlock_select".
+ */
+export interface ContentStatsBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  paragraphs?:
+    | T
+    | {
+        text?: T;
+        id?: T;
+      };
+  features?:
+    | T
+    | {
+        icon?: T;
+        title?: T;
+        description?: T;
+        id?: T;
+      };
+  stats?:
+    | T
+    | {
+        value?: T;
+        label?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationOrbitBlock_select".
+ */
+export interface IntegrationOrbitBlockSelect<T extends boolean = true> {
+  heading?: T;
+  subtext?: T;
+  integrations?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        description?: T;
+        href?: T;
+        id?: T;
+      };
+  featuredLogo?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FeatureSplitBlock_select".
+ */
+export interface FeatureSplitBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  items?:
+    | T
+    | {
+        title?: T;
+        description?: T;
+        id?: T;
+      };
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FeatureBentoBlock_select".
+ */
+export interface FeatureBentoBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  items?:
+    | T
+    | {
+        title?: T;
+        description?: T;
+        id?: T;
+      };
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "FeatureStepsBlock_select".
+ */
+export interface FeatureStepsBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  items?:
+    | T
+    | {
+        title?: T;
+        description?: T;
+        id?: T;
+      };
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "EmbedBasicBlock_select".
+ */
+export interface EmbedBasicBlockSelect<T extends boolean = true> {
+  url?: T;
+  title?: T;
+  aspectRatio?: T;
+  caption?: T;
+  allowFullscreen?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentColumnsBlock_select".
+ */
+export interface ContentColumnsBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  paragraphs?:
+    | T
+    | {
+        text?: T;
+        id?: T;
+      };
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentImageLeadBlock_select".
+ */
+export interface ContentImageLeadBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  paragraphs?:
+    | T
+    | {
+        text?: T;
+        id?: T;
+      };
+  image?: T;
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentFeatureMediaBlock_select".
+ */
+export interface ContentFeatureMediaBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  paragraphs?:
+    | T
+    | {
+        text?: T;
+        id?: T;
+      };
+  features?:
+    | T
+    | {
+        icon?: T;
+        title?: T;
+        description?: T;
+        id?: T;
+      };
+  image?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentFeatureSplitBlock_select".
+ */
+export interface ContentFeatureSplitBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  paragraphs?:
+    | T
+    | {
+        text?: T;
+        id?: T;
+      };
+  features?:
+    | T
+    | {
+        icon?: T;
+        title?: T;
+        description?: T;
+        id?: T;
+      };
+  image?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentShowcaseBlock_select".
+ */
+export interface ContentShowcaseBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  paragraphs?:
+    | T
+    | {
+        text?: T;
+        id?: T;
+      };
+  image?: T;
+  features?:
+    | T
+    | {
+        icon?: T;
+        title?: T;
+        description?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentQuoteBlock_select".
+ */
+export interface ContentQuoteBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  paragraphs?:
+    | T
+    | {
+        text?: T;
+        id?: T;
+      };
+  image?: T;
+  quote?: T;
+  citation?: T;
+  logo?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentCommunityBlock_select".
+ */
+export interface ContentCommunityBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  paragraphs?:
+    | T
+    | {
+        text?: T;
+        id?: T;
+      };
+  avatars?:
+    | T
+    | {
+        avatar?: T;
+        name?: T;
+        href?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentSplitRowsBlock_select".
+ */
+export interface ContentSplitRowsBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  paragraphs?:
+    | T
+    | {
+        text?: T;
+        id?: T;
+      };
+  rows?:
+    | T
+    | {
+        image?: T;
+        title?: T;
+        description?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentRowsBlock_select".
+ */
+export interface ContentRowsBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  paragraphs?:
+    | T
+    | {
+        text?: T;
+        id?: T;
+      };
+  rows?:
+    | T
+    | {
+        image?: T;
+        title?: T;
+        description?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentImageFrameBlock_select".
+ */
+export interface ContentImageFrameBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  paragraphs?:
+    | T
+    | {
+        text?: T;
+        id?: T;
+      };
+  image?: T;
+  backgroundImage?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentListBlock_select".
+ */
+export interface ContentListBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  items?:
+    | T
+    | {
+        term?: T;
+        description?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentListColumnsBlock_select".
+ */
+export interface ContentListColumnsBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  items?:
+    | T
+    | {
+        term?: T;
+        description?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ContentListIconsBlock_select".
+ */
+export interface ContentListIconsBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  items?:
+    | T
+    | {
+        icon?: T;
+        term?: T;
+        description?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "LogoCloudGridBlock_select".
+ */
+export interface LogoCloudGridBlockSelect<T extends boolean = true> {
+  heading?: T;
+  logos?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        href?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "LogoCloudHoverBlock_select".
+ */
+export interface LogoCloudHoverBlockSelect<T extends boolean = true> {
+  heading?: T;
+  logos?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        href?: T;
+        id?: T;
+      };
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "LogoCloudInlineBlock_select".
+ */
+export interface LogoCloudInlineBlockSelect<T extends boolean = true> {
+  heading?: T;
+  logos?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        href?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "LogoCloudInlineWrapBlock_select".
+ */
+export interface LogoCloudInlineWrapBlockSelect<T extends boolean = true> {
+  heading?: T;
+  logos?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        href?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationGridBlock_select".
+ */
+export interface IntegrationGridBlockSelect<T extends boolean = true> {
+  heading?: T;
+  subtext?: T;
+  integrations?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        description?: T;
+        href?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationClusterBlock_select".
+ */
+export interface IntegrationClusterBlockSelect<T extends boolean = true> {
+  heading?: T;
+  subtext?: T;
+  integrations?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        description?: T;
+        href?: T;
+        id?: T;
+      };
+  featuredLogo?: T;
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationSplitBlock_select".
+ */
+export interface IntegrationSplitBlockSelect<T extends boolean = true> {
+  heading?: T;
+  subtext?: T;
+  integrations?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        description?: T;
+        href?: T;
+        id?: T;
+      };
+  featuredLogo?: T;
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationConnectBlock_select".
+ */
+export interface IntegrationConnectBlockSelect<T extends boolean = true> {
+  heading?: T;
+  subtext?: T;
+  integrations?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        description?: T;
+        href?: T;
+        id?: T;
+      };
+  featuredLogo?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationListBlock_select".
+ */
+export interface IntegrationListBlockSelect<T extends boolean = true> {
+  heading?: T;
+  subtext?: T;
+  integrations?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        description?: T;
+        href?: T;
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "IntegrationTestimonialBlock_select".
+ */
+export interface IntegrationTestimonialBlockSelect<T extends boolean = true> {
+  heading?: T;
+  subtext?: T;
+  integrations?:
+    | T
+    | {
+        logo?: T;
+        name?: T;
+        description?: T;
+        href?: T;
+        id?: T;
+      };
+  quote?: T;
+  author?: T;
+  role?: T;
+  authorAvatar?: T;
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "CallToActionBoxedBlock_select".
+ */
+export interface CallToActionBoxedBlockSelect<T extends boolean = true> {
+  title?: T;
+  description?: T;
+  links?:
+    | T
+    | {
+        link?:
+          | T
+          | {
+              type?: T;
+              newTab?: T;
+              reference?: T;
+              url?: T;
+              label?: T;
+              appearance?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TeamRosterBlock_select".
+ */
+export interface TeamRosterBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  groups?:
+    | T
+    | {
+        label?: T;
+        members?:
+          | T
+          | {
+              avatar?: T;
+              name?: T;
+              role?: T;
+              href?: T;
+              id?: T;
+            };
+        id?: T;
+      };
+  id?: T;
+  blockName?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TeamGridBlock_select".
+ */
+export interface TeamGridBlockSelect<T extends boolean = true> {
+  eyebrow?: T;
+  title?: T;
+  description?: T;
+  members?:
+    | T
+    | {
+        avatar?: T;
+        name?: T;
+        role?: T;
+        href?: T;
         id?: T;
       };
   id?: T;

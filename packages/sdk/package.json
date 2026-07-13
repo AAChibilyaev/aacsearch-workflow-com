@@ -1,0 +1,35 @@
+{
+  "name": "@aacsearch/sdk",
+  "version": "1.0.0",
+  "description": "AACSearch SDK — TypeScript/JavaScript client for AACSearch search engine (AACSearch-native API v31)",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "sideEffects": false,
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["aacsearch", "search", "sdk", "aacsearch", "fulltext", "typescript", "russian"],
+  "license": "MIT",
+  "engines": { "node": ">=18.0.0" },
+  "dependencies": { "axios": "^1.7.0" },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0"
+  }
+}

@@ -48,6 +48,10 @@ security rules, anti-patterns, verification tests. Read it before non-trivial Pa
    use `curl --http1.1`.
 7. Workers: no sharp (crop/focalPoint disabled on Media), ~3 MB bundle limit —
    check worker size after adding plugins; GraphQL unreliable on Workers, use REST/Local API.
+8. `@ai-stack/payloadcms` registers its `plugin-ai-instructions` collection ONLY when an
+   AI key env is set (both our env-gate and the plugin's own isPluginActivated check) —
+   run `migrate:create` / `generate:types` WITH `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+   set (any non-empty value), or the diff will DROP the instructions table/types.
 
 ## Local API security (the #1 Payload footgun)
 
