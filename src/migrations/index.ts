@@ -6,7 +6,8 @@ import * as migration_20260713_122854_registry_blocks_full_set from './20260713_
 import * as migration_20260713_124254_apikeys_globals_cmdk from './20260713_124254_apikeys_globals_cmdk';
 import * as migration_20260713_125137_search_os_core from './20260713_125137_search_os_core';
 import * as migration_20260713_141541_media_multitenant from './20260713_141541_media_multitenant';
-import * as migration_20260713_142000_wallet_invoices from './20260713_142000_wallet_invoices';
+import * as migration_20260713_142500_wallet_invoices_search_fields from './20260713_142500_wallet_invoices_search_fields';
+import * as migration_20260713_143841_search_designer_capabilities from './20260713_143841_search_designer_capabilities';
 
 export const migrations = [
   {
@@ -47,11 +48,16 @@ export const migrations = [
   {
     up: migration_20260713_141541_media_multitenant.up,
     down: migration_20260713_141541_media_multitenant.down,
-    name: '20260713_141541_media_multitenant'
+    name: '20260713_141541_media_multitenant',
   },
   {
-    up: migration_20260713_142000_wallet_invoices.up,
-    down: migration_20260713_142000_wallet_invoices.down,
-    name: '20260713_142000_wallet_invoices',
+    up: migration_20260713_142500_wallet_invoices_search_fields.up,
+    down: migration_20260713_142500_wallet_invoices_search_fields.down,
+    name: '20260713_142500_wallet_invoices_search_fields',
+  },
+  {
+    up: migration_20260713_143841_search_designer_capabilities.up,
+    down: migration_20260713_143841_search_designer_capabilities.down,
+    name: '20260713_143841_search_designer_capabilities',
   },
 ];

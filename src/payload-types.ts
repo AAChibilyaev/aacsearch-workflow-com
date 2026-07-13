@@ -88,6 +88,7 @@ export interface Config {
     imports: Import;
     notifications: Notification;
     'plugin-ai-instructions': PluginAiInstruction;
+    'Audit-log': AuditLog;
     'payload-mcp-api-keys': PayloadMcpApiKey;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
@@ -116,6 +117,7 @@ export interface Config {
     imports: ImportsSelect<false> | ImportsSelect<true>;
     notifications: NotificationsSelect<false> | NotificationsSelect<true>;
     'plugin-ai-instructions': PluginAiInstructionsSelect<false> | PluginAiInstructionsSelect<true>;
+    'Audit-log': AuditLogSelect<false> | AuditLogSelect<true>;
     'payload-mcp-api-keys': PayloadMcpApiKeysSelect<false> | PayloadMcpApiKeysSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
@@ -130,10 +132,12 @@ export interface Config {
   globals: {
     header: Header;
     footer: Footer;
+    'payload-jobs-stats': PayloadJobsStat;
   };
   globalsSelect: {
     header: HeaderSelect<false> | HeaderSelect<true>;
     footer: FooterSelect<false> | FooterSelect<true>;
+    'payload-jobs-stats': PayloadJobsStatsSelect<false> | PayloadJobsStatsSelect<true>;
   };
   locale: 'en' | 'ru' | 'de';
   widgets: {
@@ -145,6 +149,7 @@ export interface Config {
     tasks: {
       createCollectionExport: TaskCreateCollectionExport;
       createCollectionImport: TaskCreateCollectionImport;
+      'cleanup-payload-auditor-log': TaskCleanupPayloadAuditorLog;
       inline: {
         input: unknown;
         output: unknown;
@@ -1511,9 +1516,9 @@ export interface CollectionDefinition {
          */
         stem?: boolean | null;
         /**
-         * Optional language code for this field (e.g. en, ru, de) to improve matching.
+         * Language of this field, to improve matching of word forms.
          */
-        language?: string | null;
+        language?: ('' | 'en' | 'ru' | 'de') | null;
         /**
          * The allowed choices for this field.
          */
@@ -1528,9 +1533,9 @@ export interface CollectionDefinition {
          */
         embedFrom?: string | null;
         /**
-         * Advanced: the AACSearch understanding model. Leave as-is unless advised.
+         * The AACSearch understanding model. "Standard" fits most cases.
          */
-        embedModel?: string | null;
+        embedModel?: ('ts/e5-small' | 'ts/all-MiniLM-L12-v2' | 'openai/text-embedding-3-small') | null;
         id?: string | null;
       }[]
     | null;
@@ -1806,6 +1811,8 @@ export interface User {
         id?: string | null;
       }[]
     | null;
+  totpSecret?: string | null;
+  hasTotp?: boolean | null;
   updatedAt: string;
   createdAt: string;
   enableAPIKey?: boolean | null;
@@ -2221,6 +2228,21 @@ export interface PluginAiInstruction {
   createdAt: string;
 }
 /**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "Audit-log".
+ */
+export interface AuditLog {
+  id: number;
+  operation: string;
+  onCollection: string;
+  documentId?: string | null;
+  user: number | User;
+  userAgent?: string | null;
+  hook?: string | null;
+  type: 'info' | 'debug' | 'warning' | 'error' | 'audit' | 'security' | 'unknown';
+  createdAt: string;
+}
+/**
  * API keys control which collections, resources, tools, and prompts MCP clients can access
  *
  * This interface was referenced by `Config`'s JSON-Schema
@@ -2370,7 +2392,7 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'createCollectionExport' | 'createCollectionImport';
+        taskSlug: 'inline' | 'createCollectionExport' | 'createCollectionImport' | 'cleanup-payload-auditor-log';
         taskID: string;
         input?:
           | {
@@ -2403,10 +2425,19 @@ export interface PayloadJob {
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'createCollectionExport' | 'createCollectionImport') | null;
+  taskSlug?: ('inline' | 'createCollectionExport' | 'createCollectionImport' | 'cleanup-payload-auditor-log') | null;
   queue?: string | null;
   waitUntil?: string | null;
   processing?: boolean | null;
+  meta?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -2484,6 +2515,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'plugin-ai-instructions';
         value: number | PluginAiInstruction;
+      } | null)
+    | ({
+        relationTo: 'Audit-log';
+        value: number | AuditLog;
       } | null)
     | ({
         relationTo: 'payload-mcp-api-keys';
@@ -3789,6 +3824,8 @@ export interface UsersSelect<T extends boolean = true> {
         roles?: T;
         id?: T;
       };
+  totpSecret?: T;
+  hasTotp?: T;
   updatedAt?: T;
   createdAt?: T;
   enableAPIKey?: T;
@@ -4180,6 +4217,20 @@ export interface PluginAiInstructionsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "Audit-log_select".
+ */
+export interface AuditLogSelect<T extends boolean = true> {
+  operation?: T;
+  onCollection?: T;
+  documentId?: T;
+  user?: T;
+  userAgent?: T;
+  hook?: T;
+  type?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-mcp-api-keys_select".
  */
 export interface PayloadMcpApiKeysSelect<T extends boolean = true> {
@@ -4252,6 +4303,7 @@ export interface PayloadJobsSelect<T extends boolean = true> {
   queue?: T;
   waitUntil?: T;
   processing?: T;
+  meta?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -4338,6 +4390,24 @@ export interface Footer {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-jobs-stats".
+ */
+export interface PayloadJobsStat {
+  id: number;
+  stats?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "header_select".
  */
 export interface HeaderSelect<T extends boolean = true> {
@@ -4377,6 +4447,16 @@ export interface FooterSelect<T extends boolean = true> {
         id?: T;
       };
   copyright?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-jobs-stats_select".
+ */
+export interface PayloadJobsStatsSelect<T extends boolean = true> {
+  stats?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;
@@ -4466,6 +4546,14 @@ export interface TaskCreateCollectionImport {
     defaultVersionStatus?: ('draft' | 'published') | null;
     maxLimit?: number | null;
   };
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskCleanup-payload-auditor-log".
+ */
+export interface TaskCleanupPayloadAuditorLog {
+  input?: unknown;
   output?: unknown;
 }
 /**

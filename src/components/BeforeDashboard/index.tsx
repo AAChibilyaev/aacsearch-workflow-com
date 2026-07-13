@@ -6,34 +6,59 @@ import React from 'react'
 import { isSuperAdmin } from '@/access/isSuperAdmin'
 
 /**
- * Compact "Search OS" dashboard rendered above the default admin dashboard:
- * quick-link cards (Billing / Integrations / API keys / Search settings) and
- * a getting-started checklist. Counts run through access control
- * (overrideAccess: false), so customers see only their tenant's numbers.
+ * Compact "Search OS" dashboard rendered above the default admin dashboard in
+ * the UNIFIED panel: quick-link cards + a getting-started checklist for the
+ * customer, plus a super-admin-only "Platform" card and API-docs links. Counts
+ * run through access control (overrideAccess: false), so a customer sees only
+ * their tenant's numbers. Localized en/ru/de.
  */
 
-type LocalizedText = { en: string; ru: string }
+type LocalizedText = { de: string; en: string; ru: string }
 
 const COPY = {
-  apiKeys: { en: 'API keys', ru: 'API-ключи' },
-  apiKeysDesc: { en: 'Keys for the search API', ru: 'Ключи для поискового API' },
-  billing: { en: 'Billing', ru: 'Тариф и оплата' },
-  billingDesc: { en: 'Plan, usage and limits', ru: 'Тариф, использование и лимиты' },
-  checklistTitle: { en: 'Getting started', ru: 'Первые шаги' },
-  heading: { en: 'Search OS', ru: 'Search OS' },
-  integrations: { en: 'Integrations', ru: 'Интеграции' },
-  integrationsDesc: { en: 'Connect data sources', ru: 'Подключение источников данных' },
-  searchSettings: { en: 'Search settings', ru: 'Настройки поиска' },
-  searchSettingsDesc: { en: 'Fields, facets and synonyms', ru: 'Поля, фасеты и синонимы' },
-  step1: { en: 'Create a collection', ru: 'Создайте коллекцию' },
-  step2: { en: 'Add documents', ru: 'Добавьте документы' },
-  step3: { en: 'Get an API key', ru: 'Получите API-ключ' },
-  step4: { en: 'Run your first search', ru: 'Выполните первый поиск' },
+  apiKeys: { de: 'API-Schlüssel', en: 'API keys', ru: 'API-ключи' },
+  apiKeysDesc: {
+    de: 'Schlüssel für die Such-API',
+    en: 'Keys for the search API',
+    ru: 'Ключи для поискового API',
+  },
+  billing: { de: 'Abrechnung', en: 'Billing', ru: 'Тариф и оплата' },
+  billingDesc: {
+    de: 'Tarif, Nutzung und Limits',
+    en: 'Plan, usage and limits',
+    ru: 'Тариф, использование и лимиты',
+  },
+  checklistTitle: { de: 'Erste Schritte', en: 'Getting started', ru: 'Первые шаги' },
+  heading: { de: 'Search OS', en: 'Search OS', ru: 'Search OS' },
+  integrations: { de: 'Integrationen', en: 'Integrations', ru: 'Интеграции' },
+  integrationsDesc: {
+    de: 'Datenquellen verbinden',
+    en: 'Connect data sources',
+    ru: 'Подключение источников данных',
+  },
+  platform: { de: 'Plattform', en: 'Platform', ru: 'Платформа' },
+  platformDesc: {
+    de: 'Alle Arbeitsbereiche & Tarife',
+    en: 'All workspaces & plans',
+    ru: 'Все пространства и тарифы',
+  },
+  searchSettings: { de: 'Sucheinstellungen', en: 'Search settings', ru: 'Настройки поиска' },
+  searchSettingsDesc: {
+    de: 'Felder, Facetten und Synonyme',
+    en: 'Fields, facets and synonyms',
+    ru: 'Поля, фасеты и синонимы',
+  },
+  step1: { de: 'Sammlung erstellen', en: 'Create a collection', ru: 'Создайте коллекцию' },
+  step2: { de: 'Dokumente hinzufügen', en: 'Add documents', ru: 'Добавьте документы' },
+  step3: { de: 'API-Schlüssel holen', en: 'Get an API key', ru: 'Получите API-ключ' },
+  step4: { de: 'Erste Suche starten', en: 'Run your first search', ru: 'Выполните первый поиск' },
   step4Hint: {
+    de: 'POST /api/v1/search mit Ihrem API-Schlüssel',
     en: 'POST /api/v1/search with your API key',
     ru: 'POST /api/v1/search с вашим API-ключом',
   },
   subtitle: {
+    de: 'Alles, was Sie für die Suche in Ihrem Arbeitsbereich brauchen.',
     en: 'Everything you need to run search for your workspace.',
     ru: 'Всё необходимое для поиска в вашем рабочем пространстве.',
   },
@@ -44,15 +69,16 @@ export async function BeforeDashboard(props: ServerProps) {
 
   if (!user) return null
 
+  const superAdmin = isSuperAdmin(user)
   const lang = (i18n?.language ?? 'en').toLowerCase()
-  const tr = (text: LocalizedText): string => (lang.startsWith('ru') ? text.ru : text.en)
+  const tr = (text: LocalizedText): string =>
+    lang.startsWith('ru') ? text.ru : lang.startsWith('de') ? text.de : text.en
   const adminRoute = payload.config.routes.admin
   const href = (path: `/${string}`): string => formatAdminURL({ adminRoute, path })
 
   const count = async (collection: string): Promise<number> => {
     try {
       const { totalDocs } = await payload.count({
-        // 'api-keys' lands with a later track; until then count() throws and we fall back to 0
         collection: collection as CollectionSlug,
         overrideAccess: false,
         user,
@@ -63,10 +89,11 @@ export async function BeforeDashboard(props: ServerProps) {
     }
   }
 
-  const [definitions, documents, apiKeys] = await Promise.all([
+  const [definitions, documents, apiKeys, tenants] = await Promise.all([
     count('collection-definitions'),
     count('documents'),
     count('api-keys'),
+    superAdmin ? count('tenants') : Promise.resolve(0),
   ])
 
   const cards: { desc: string; href: string; label: string }[] = [
@@ -78,6 +105,16 @@ export async function BeforeDashboard(props: ServerProps) {
       href: href('/collections/tenant-settings'),
       label: tr(COPY.searchSettings),
     },
+    // Super-admin only: jump to the platform tenant registry.
+    ...(superAdmin
+      ? [
+          {
+            desc: `${tr(COPY.platformDesc)} · ${tenants}`,
+            href: href('/collections/tenants'),
+            label: tr(COPY.platform),
+          },
+        ]
+      : []),
   ]
 
   const steps: { done: boolean; hint?: string; href: string; label: string }[] = [
@@ -171,7 +208,7 @@ export async function BeforeDashboard(props: ServerProps) {
         ))}
       </ol>
 
-      {isSuperAdmin(user) && (
+      {superAdmin && (
         <p style={{ color: 'var(--theme-elevation-500)', margin: 'calc(var(--base) * 0.75) 0 0' }}>
           {/* API endpoints, not Next pages — <Link> prefetch would 404 for the crawler */}
           {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}

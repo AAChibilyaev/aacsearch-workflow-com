@@ -56,19 +56,63 @@ const autofillAndValidateDefinition: CollectionBeforeValidateHook = ({ data }) =
     fields?: Array<Record<string, unknown>>
   }
 
-  // (a) normalize field names + default `searchable` ON
+  // (a) normalize field names + smart per-field defaults
   for (const row of doc.fields ?? []) {
     if (typeof row.name === 'string') row.name = row.name.trim().toLowerCase()
     if (row.searchable === undefined || row.searchable === null) row.searchable = true
+    // Engine footgun guard: a non-optional field must exist in EVERY indexed
+    // document or indexing fails. A field the customer did not mark "required"
+    // may be absent, so it MUST be optional in the engine — auto-derive it.
+    if (row.required !== true) row.optional = true
+    else row.optional = false
+    // Numbers are almost always worth sorting by — suggest it on by default
+    // (the customer can still turn it off; only applies to number types).
+    if (
+      (row.sortable === undefined || row.sortable === null) &&
+      NUMBER_LIKE.includes(row.fieldType as string)
+    ) {
+      row.sortable = true
+    }
+  }
+
+  const settings = (): Record<string, unknown> => {
+    if (!doc.engineSettings || typeof doc.engineSettings !== 'object') doc.engineSettings = {}
+    return doc.engineSettings as Record<string, unknown>
   }
 
   // (a) auto-enable nested fields when any object field is present
   const hasObjectField = (doc.fields ?? []).some(
     (row) => row.fieldType === 'object' || row.fieldType === 'object[]',
   )
-  if (hasObjectField) {
-    if (!doc.engineSettings || typeof doc.engineSettings !== 'object') doc.engineSettings = {}
-    ;(doc.engineSettings as Record<string, unknown>).enableNestedFields = true
+  if (hasObjectField) settings().enableNestedFields = true
+
+  // (a) auto-pick a default sort field: the first sortable number field, when
+  // the customer hasn't chosen one — so ordering "just works".
+  const current = settings().defaultSortingField
+  if (!current || (typeof current === 'string' && current.trim() === '')) {
+    const firstSortableNumber = (doc.fields ?? []).find(
+      (row) =>
+        NUMBER_LIKE.includes(row.fieldType as string) &&
+        row.sortable === true &&
+        typeof row.name === 'string' &&
+        row.name.length > 0,
+    )
+    if (firstSortableNumber) settings().defaultSortingField = firstSortableNumber.name
+  }
+
+  // (a) when semantic search is on, auto-fill each field's "understand meaning
+  // from" with the searchable text fields, if the customer left it blank.
+  if (settings().semanticSearch === true) {
+    const searchableText = (doc.fields ?? [])
+      .filter((row) => row.searchable === true && isTextLike(row.fieldType) && typeof row.name === 'string')
+      .map((row) => row.name as string)
+      .join(', ')
+    for (const row of doc.fields ?? []) {
+      const ef = row.embedFrom
+      if (searchableText && (!ef || (typeof ef === 'string' && ef.trim() === ''))) {
+        row.embedFrom = searchableText
+      }
+    }
   }
 
   // (b) validate the mapped, engine-ready definition
@@ -325,14 +369,19 @@ export const CollectionDefinitions: CollectionConfig = {
             },
             {
               name: 'language',
-              type: 'text',
+              type: 'select',
               admin: {
                 description: {
-                  en: 'Optional language code for this field (e.g. en, ru, de) to improve matching.',
-                  ru: 'Необязательный код языка поля (например, en, ru, de) для точности поиска.',
+                  en: 'Language of this field, to improve matching of word forms.',
+                  ru: 'Язык этого поля для более точного поиска словоформ.',
                 },
-                placeholder: 'en',
               },
+              options: [
+                { label: { en: 'Auto', ru: 'Автоматически' }, value: '' },
+                { label: { en: 'English', ru: 'Английский' }, value: 'en' },
+                { label: { en: 'Russian', ru: 'Русский' }, value: 'ru' },
+                { label: { en: 'German', ru: 'Немецкий' }, value: 'de' },
+              ],
               label: { en: 'Language', ru: 'Язык' },
             },
           ],
@@ -371,14 +420,20 @@ export const CollectionDefinitions: CollectionConfig = {
             },
             {
               name: 'embedModel',
-              type: 'text',
+              type: 'select',
               defaultValue: 'ts/e5-small',
               admin: {
                 description: {
-                  en: 'Advanced: the AACSearch understanding model. Leave as-is unless advised.',
-                  ru: 'Дополнительно: модель понимания AACSearch. Оставьте без изменений, если не указано иное.',
+                  en: 'The AACSearch understanding model. "Standard" fits most cases.',
+                  ru: 'Модель понимания AACSearch. «Стандартная» подходит в большинстве случаев.',
                 },
               },
+              // White-label labels; option values are the engine model ids.
+              options: [
+                { label: { en: 'Standard (fast)', ru: 'Стандартная (быстрая)' }, value: 'ts/e5-small' },
+                { label: { en: 'Balanced', ru: 'Сбалансированная' }, value: 'ts/all-MiniLM-L12-v2' },
+                { label: { en: 'Premium (highest quality)', ru: 'Премиум (высшее качество)' }, value: 'openai/text-embedding-3-small' },
+              ],
               label: { en: 'Understanding model', ru: 'Модель понимания' },
             },
           ],
