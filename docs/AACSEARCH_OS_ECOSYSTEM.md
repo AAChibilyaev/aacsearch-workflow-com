@@ -254,3 +254,17 @@ Admin → Settings → Host:search.aacsearch.ru, Port:443, Protocol:https, API K
 ---
 
 **AACSearch OS — Экосистема.** WordPress + Nango + Airbyte + InstantSearch + 48 блоков + полный флоу.
+
+
+---
+
+## 📚 Навигация по документации
+
+| [← ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) | [🏠 Главная](./README.md) | [ARCHITECTURE →](./AACSEARCH_OS_ARCHITECTURE.md) |
+|:---:|:---:|:---:|
+
+> **Связанные документы:**
+> - [ENHANCED](./AACSEARCH_OS_ENHANCED.md) — InstantSearch виджеты и примеры кода
+> - [ULTIMATE](./AACSEARCH_OS_ULTIMATE.md) — полная экосистема Typesense (50+ репо)
+> - [COMPLETE REFERENCE](./AACSEARCH_OS_COMPLETE_REFERENCE.md) — все API эндпоинты
+> - [DEFINITIVE](./AACSEARCH_OS_DEFINITIVE.md) — ограничения Nango/Airbyte
