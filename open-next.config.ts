@@ -1,7 +1,7 @@
 // default open-next.config.ts file created by @opennextjs/cloudflare
 import { defineCloudflareConfig } from '@opennextjs/cloudflare/config'
 
-export default {
+const openNextConfig = {
   ...defineCloudflareConfig({}),
   // `opennextjs-cloudflare build` runs the project's `npm run build` by
   // default — but our `build` script IS what invokes opennextjs (so the
@@ -10,3 +10,5 @@ export default {
   // that recursion.
   buildCommand: 'cross-env NODE_OPTIONS="--no-deprecation --max-old-space-size=8000" next build',
 }
+
+export default openNextConfig
