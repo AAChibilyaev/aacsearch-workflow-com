@@ -555,8 +555,14 @@ export default buildConfig({
     // Cluster-ops: chunked reindex of one engine collection into another,
     // driven from the Engine panel's "Reindex" tab (super-admin only).
     reindexJobsPlugin(),
-    // Stripe: card payments + webhooks (enable with STRIPE_SECRET_KEY)
-    ...(process.env.STRIPE_SECRET_KEY
+    // Stripe: card payments + webhooks. Disabled at build time (not just by
+    // env var) — `process.env.STRIPE_SECRET_KEY` can't be resolved until the
+    // Worker actually runs, so esbuild can't prove this branch dead and bundles
+    // the whole SDK regardless of whether the key is set. Unused in this
+    // deployment (no STRIPE_SECRET_KEY configured) and costs real bytes toward
+    // the Workers 3 MiB limit — flip back to `process.env.STRIPE_SECRET_KEY`
+    // (and redeploy) if Stripe is actually needed.
+    ...(false
       ? [
           (await import('@payloadcms/plugin-stripe')).stripePlugin({
             stripeSecretKey: process.env.STRIPE_SECRET_KEY,
@@ -564,9 +570,11 @@ export default buildConfig({
           }),
         ]
       : []),
-    // Sentry error reporting (enable with SENTRY_DSN; see instrumentation docs
-    // for OpenNext/Cloudflare caveats)
-    ...(process.env.SENTRY_DSN
+    // Sentry error reporting — same build-time-disabled reasoning as Stripe
+    // above (env-gated dynamic imports still get bundled for a single-file
+    // Workers deploy). Unused in this deployment (no SENTRY_DSN configured);
+    // flip back to `process.env.SENTRY_DSN` (and redeploy) to re-enable.
+    ...(false
       ? [
           (await import('@payloadcms/plugin-sentry')).sentryPlugin({
             Sentry: await import('@sentry/nextjs'),
