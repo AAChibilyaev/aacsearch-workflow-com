@@ -621,9 +621,9 @@ export default buildConfig({
       getImageThumbnail: (doc) => `${process.env.NEXT_PUBLIC_SERVER_URL ?? ''}${doc.url}`,
       resolver: lazyOpenAIAltTextResolver(),
     }),
-    // NOTE: @payloadcms/plugin-ecommerce is installed but intentionally NOT
-    // enabled: it generates its own carts/orders/transactions collections that
-    // must first be wrapped into multiTenantPlugin to keep tenant isolation.
+    // NOTE: @payloadcms/plugin-ecommerce is intentionally NOT used here: it
+    // generates its own carts/orders/transactions collections that must first
+    // be wrapped into multiTenantPlugin to keep tenant isolation.
     // Public developer portal: OpenAPI spec at /api/openapi.json, Scalar API
     // reference UI at /api/docs. Intentionally PUBLIC (openable without auth) —
     // it is the product's API documentation. The endpoints it documents remain
@@ -640,7 +640,7 @@ export default buildConfig({
     // API-key issuance/revocation, tenant lifecycle). Log collection is
     // super-admin only (hidden from tenant users; no tenant field of its own,
     // same "not exposed to tenants" pattern as the MCP api-keys collection —
-    // see NOTE above re: plugin-ecommerce for why an un-tenant-scoped
+    // see NOTE above re: @payloadcms/plugin-ecommerce for why an un-tenant-scoped
     // collection must never be tenant-visible).
     // Skipped under vitest: the auditor injects afterLogin/afterChange hooks that
     // write audit-log docs, which fail in the headless int-test environment and
