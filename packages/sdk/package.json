@@ -14,7 +14,9 @@
     }
   },
   "sideEffects": false,
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -23,13 +25,25 @@
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
-  "keywords": ["aacsearch", "search", "sdk", "aacsearch", "fulltext", "typescript", "russian"],
+  "keywords": [
+    "aacsearch",
+    "search",
+    "sdk",
+    "aacsearch",
+    "fulltext",
+    "typescript",
+    "russian"
+  ],
   "license": "MIT",
-  "engines": { "node": ">=18.0.0" },
-  "dependencies": { "axios": "^1.7.0" },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "axios": "^1.18.1"
+  },
   "devDependencies": {
-    "tsup": "^8.0.0",
-    "typescript": "^5.6.0",
-    "vitest": "^2.0.0"
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
   }
 }

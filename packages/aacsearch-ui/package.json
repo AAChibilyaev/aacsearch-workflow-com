@@ -11,21 +11,28 @@
             "import": "./dist/aacsearch-ui.js"
         }
     },
-    "files": ["dist"],
+    "files": [
+        "dist"
+    ],
     "scripts": {
         "build": "tsup",
         "dev": "tsup --watch",
         "typecheck": "tsc --noEmit"
     },
-    "keywords": ["aacsearch", "search", "ui", "widget"],
+    "keywords": [
+        "aacsearch",
+        "search",
+        "ui",
+        "widget"
+    ],
     "license": "MIT",
     "dependencies": {
-        "typesense": "^1.8.0",
-        "typesense-instantsearch-adapter": "^3.0.0",
-        "instantsearch.js": "^4.0.0"
+        "instantsearch.js": "^4.105.0",
+        "typesense": "^1.8.2",
+        "typesense-instantsearch-adapter": "^3.0.2"
     },
     "devDependencies": {
-        "tsup": "^8.0.0",
-        "typescript": "^5.6.0"
+        "tsup": "^8.5.1",
+        "typescript": "^5.9.3"
     }
 }
