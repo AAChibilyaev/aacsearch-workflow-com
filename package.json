@@ -22,7 +22,7 @@
     "preview": "pnpm run build && opennextjs-cloudflare preview --env=$CLOUDFLARE_ENV",
     "start": "cross-env NODE_OPTIONS=--no-deprecation next start",
     "test": "pnpm run test:int && pnpm run test:e2e",
-    "test:e2e": "cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" playwright test --config=playwright.config.ts",
+    "test:e2e": "rm -rf .wrangler/e2e-state && cross-env NODE_OPTIONS=--no-deprecation PAYLOAD_E2E=1 WRANGLER_PERSIST_PATH=.wrangler/e2e-state playwright test --config=playwright.config.ts; status=$?; pnpm run generate:importmap; exit $status",
     "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts"
   },
   "dependencies": {
@@ -101,13 +101,6 @@
   "engines": {
     "node": ">=22.16.0",
     "pnpm": "^9 || ^10 || ^11"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "sharp",
-      "esbuild",
-      "unrs-resolver"
-    ]
   },
   "cloudflare": {
     "bindings": {

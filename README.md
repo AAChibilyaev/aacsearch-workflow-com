@@ -50,7 +50,7 @@ white-label границей:
 | `@payloadcms/db-d1-sqlite` (`sqliteD1Adapter`) | Адаптер БД — Cloudflare D1 (SQLite). Биндинг берётся из Cloudflare-контекста (`getCloudflareContext` в рантайме, `getPlatformProxy` в dev/CLI) |
 | `@payloadcms/storage-r2` (`r2Storage`) | Хранение загрузок коллекции `media` в Cloudflare R2 |
 | `@payloadcms/richtext-lexical` (`lexicalEditor`) | Rich-text редактор (Lexical) |
-| `payload-cloudflare-email-adapter` | Отправка почты через Cloudflare Email Routing (биндинг `SEB`); письма приглашений/сброса пароля |
+| `payload-cloudflare-email-adapter` | Отправка почты через Cloudflare Email Sending (биндинг `EMAIL`); письма приглашений/сброса пароля |
 | `@payloadcms/translations` (en/ru/de) | Переводы админки |
 
 ## Официальные плагины `@payloadcms/*` (все версии 3.86.0)

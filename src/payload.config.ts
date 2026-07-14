@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
-import { buildConfig, type PayloadLogger } from 'payload'
+import { buildConfig, type PayloadLogger, type Plugin } from 'payload'
 import { fileURLToPath } from 'url'
 import { CloudflareContext, getCloudflareContext } from '@opennextjs/cloudflare'
 import { GetPlatformProxyOptions } from 'wrangler'
@@ -16,14 +16,12 @@ import { nestedDocsPlugin } from '@payloadcms/plugin-nested-docs'
 import { importExportPlugin } from '@payloadcms/plugin-import-export'
 import { mcpPlugin } from '@payloadcms/plugin-mcp'
 import { openapi, scalar } from 'payload-oapi'
-import { betterPreview } from 'payload-better-preview'
 import { payloadPluginNotifications } from '@elghaied/payload-plugin-notifications'
 import {
   openAIResolver,
   payloadAltTextPlugin,
   type AltTextResolver,
 } from '@jhb.software/payload-alt-text-plugin'
-import { payloadCmdk } from '@veiag/payload-cmdk'
 import { cloudflareEmailAdapter, type CloudflareEmailBinding } from 'payload-cloudflare-email-adapter'
 import { auditorPlugin } from 'payload-auditor'
 import { payloadTotp } from 'payload-totp'
@@ -66,6 +64,7 @@ const isCLI = process.argv.some((value) =>
   realpath(value)?.endsWith(path.join('payload', 'bin.js')),
 )
 const isProduction = process.env.NODE_ENV === 'production'
+const isTestRuntime = Boolean(process.env.VITEST || process.env.PAYLOAD_E2E)
 // True inside `next build` (Next sets NEXT_PHASE in the build process and its
 // page-data/static workers inherit it via process.env).
 const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build'
@@ -120,6 +119,32 @@ const cloudflareLogger = {
   fatal: createLog('fatal', console.error),
   silent: () => {},
 } as unknown as PayloadLogger // structural JSON logger; narrower than pino's full surface
+
+const betterPreviewProviderPlugin = (): Plugin => (config) => {
+  config.admin = config.admin || {}
+  config.admin.components = config.admin.components || {}
+  config.admin.components.providers = config.admin.components.providers || []
+  config.admin.components.providers.push({
+    path: 'payload-better-preview/client#AdminBlockSyncProvider',
+  })
+  return config
+}
+
+const payloadCmdkProviderPlugin = (): Plugin => (config) => {
+  config.admin = config.admin || {}
+  config.admin.components = config.admin.components || {}
+  config.admin.components.providers = config.admin.components.providers || []
+  config.admin.components.actions = config.admin.components.actions || []
+  config.admin.components.providers.push({
+    clientProps: { pluginConfig: {} },
+    path: '@veiag/payload-cmdk/client#CommandMenuProvider',
+  })
+  config.admin.components.actions.push({
+    clientProps: { position: 'actions', shortcut: ['meta+k', 'ctrl+k'] },
+    path: '@veiag/payload-cmdk/client#SearchButton',
+  })
+  return config
+}
 
 /**
  * Inert stand-in for Cloudflare bindings during `next build`. A recursive
@@ -501,9 +526,9 @@ export default buildConfig({
       }),
     }),
     // Scroll-synced live-preview overlay (highlights the edited block in the iframe)
-    betterPreview(),
+    betterPreviewProviderPlugin(),
     // ⌘K command palette for fast nav in the shared panel (client-only, no schema)
-    payloadCmdk(),
+    payloadCmdkProviderPlugin(),
     // In-admin notification bell; notifications are tenant-scoped so customers
     // in the shared panel only see their own
     payloadPluginNotifications({
@@ -646,7 +671,7 @@ export default buildConfig({
     // write audit-log docs, which fail in the headless int-test environment and
     // surface as Forbidden on the audited operations. It changes no tested
     // business behavior — it only records an audit trail in the real app.
-    ...(process.env.VITEST
+    ...(isTestRuntime
       ? []
       : [
           auditorPlugin({
@@ -729,7 +754,7 @@ export default buildConfig({
     // request scope" when getPayload runs headless in int tests — breaking auth
     // (and thus access) for every collection. It only gates human admin sessions
     // with TOTP configured, so omitting it in tests changes no tested behavior.
-    ...(process.env.VITEST
+    ...(isTestRuntime
       ? []
       : [
           payloadTotp({

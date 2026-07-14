@@ -11,6 +11,13 @@
     // see https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public
     "global_fetch_strictly_public",
   ],
+  // Workers Logs — ingests/indexes/stores logs emitted from this Worker
+  // (up to 7 days). Was showing as "Disabled" in the dashboard because this
+  // block was never added. Takes effect on the next successful deploy.
+  // https://developers.cloudflare.com/workers/observability/logs/workers-logs/
+  "observability": {
+    "enabled": true,
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS",
